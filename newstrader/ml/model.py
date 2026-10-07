@@ -29,7 +29,7 @@ NUMERIC = ["pos", "neg", "neu", "net", "relevance", "in_headline", "tagged", "lo
            "time_of_day"]
 C_GRID = (0.03, 0.1, 0.3, 1.0, 3.0)
 THRESHOLDS = (55, 60, 65, 70, 75, 80, 85, 90)
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 
 
 @dataclass
@@ -124,6 +124,12 @@ class TrainingSample:
     at: datetime
     adj_ret: float  # stock return minus S&P 500 return over the horizon, in %
     group: str  # news id - samples from one article stay on the same side of a split
+    ret: float = 0.0  # the stock's own return over the horizon, in % (what a plain long trade earns)
+    small: bool = False  # moved less than the minimum vs the market: not used for fitting, still tested on
+
+    @property
+    def day(self) -> str:
+        return self.at.date().isoformat()
 
 
 def _fit(x, y, c: float):
@@ -145,6 +151,31 @@ def _auc(y: np.ndarray, p: np.ndarray) -> float | None:
     from sklearn.metrics import roc_auc_score
 
     return float(roc_auc_score(y, p))
+
+
+def day_bootstrap_auc(y: np.ndarray, p: np.ndarray, days: list[str], rounds: int = 400,
+                      seed: int = 7) -> tuple[float | None, float | None]:
+    """5th and 95th percentile of the test AUC when whole trading days are resampled.
+
+    News on the same day moves together (same market mood), so resampling single headlines would make the
+    result look far more certain than it is."""
+    uniq = sorted(set(days))
+    if len(uniq) < 5:
+        return None, None
+    idx_by_day = {d: [] for d in uniq}
+    for i, d in enumerate(days):
+        idx_by_day[d].append(i)
+    rng = np.random.default_rng(seed)
+    aucs = []
+    for _ in range(rounds):
+        pick = rng.choice(len(uniq), size=len(uniq), replace=True)
+        idx = np.concatenate([idx_by_day[uniq[k]] for k in pick])
+        a = _auc(y[idx], p[idx])
+        if a is not None:
+            aucs.append(a)
+    if len(aucs) < rounds // 2:
+        return None, None
+    return float(np.percentile(aucs, 5)), float(np.percentile(aucs, 95))
 
 
 def time_split(samples: list[TrainingSample], embargo_minutes: int, test_frac: float = 0.2,
@@ -176,13 +207,20 @@ def time_split(samples: list[TrainingSample], embargo_minutes: int, test_frac: f
     return train, valid, test
 
 
+MIN_TEST_DAYS = 10
+
+
 def train_price_model(samples: list[TrainingSample], horizon_minutes: int, min_move_pct: float,
                       sentiment_model: str, trained_range: tuple[str, str], progress=None) -> tuple[PriceModel, dict]:
-    """Fit, evaluate on the newest 20% (never seen while fitting), then refit on everything for live use."""
-    if len(samples) < 200:
-        raise ValueError(f"Only {len(samples)} usable headlines - need at least 200. Use a longer date range.")
+    """Fit on older headlines that clearly moved, test on EVERY newer headline (never seen while fitting, and
+    not filtered on how it turned out), then refit on everything for live use."""
+    if sum(not s.small for s in samples) < 200:
+        raise ValueError(f"Only {sum(not s.small for s in samples)} usable headlines - need at least 200. "
+                         "Use a longer date range.")
     # each label ends 1 minute (latency) + horizon after the headline, so keep that much gap between the parts
     train, valid, test = time_split(samples, embargo_minutes=horizon_minutes + 2)
+    train = [r for r in train if not r.small]  # learn only from clear reactions...
+    valid = [r for r in valid if not r.small]
     if len(train) < 100 or len(valid) < 30 or len(test) < 50:
         raise ValueError("Not enough headlines to split into train/validation/test - use a longer date range.")
 
@@ -208,7 +246,7 @@ def train_price_model(samples: list[TrainingSample], horizon_minutes: int, min_m
             progress(0.2 + 0.4 * (i + 1) / len(C_GRID), f"tuning model ({i + 1}/{len(C_GRID)})")
     best_c = min(scores, key=scores.get)
 
-    # 2) honest test: fit on train+validation, score the newest part
+    # 2) honest test: fit on train+validation, score EVERY newest headline (...but judge on all of them)
     fit_rows = train + valid
     mean, std = norm_stats(fit_rows)
     x_fit, y_fit = xy(fit_rows, mean, std)
@@ -216,7 +254,11 @@ def train_price_model(samples: list[TrainingSample], horizon_minutes: int, min_m
     x_te, y_te = xy(test, mean, std)
     p_te = clf.predict_proba(x_te)[:, 1]
     base_rate = float(y_fit.mean())
-    report = evaluate(y_te, p_te, np.array([r.adj_ret for r in test]), base_rate)
+    report = evaluate(y_te, p_te, np.array([r.adj_ret for r in test]), base_rate,
+                      raw_ret=np.array([r.ret for r in test]), days=[r.day for r in test])
+    moved = np.array([not r.small for r in test])
+    if moved.any():
+        report["accuracy_moved_only"] = round(100 * float(np.mean((p_te[moved] >= 0.5) == (y_te[moved] == 1))), 1)
     report.update({"best_c": best_c, "validation_logloss": {str(k): round(v, 5) for k, v in scores.items()},
                    "n_train": len(train), "n_valid": len(valid), "n_test": len(test),
                    "test_from": test[0].at.isoformat(), "test_to": test[-1].at.isoformat(),
@@ -224,42 +266,68 @@ def train_price_model(samples: list[TrainingSample], horizon_minutes: int, min_m
     if progress:
         progress(0.8, "fitting final model on all headlines")
 
-    # 3) final model on everything (most recent news included)
-    mean, std = norm_stats(samples)
-    x_all, y_all = xy(samples, mean, std)
+    # 3) final model on everything that clearly moved (most recent news included)
+    fit_all = [r for r in samples if not r.small]
+    mean, std = norm_stats(fit_all)
+    x_all, y_all = xy(fit_all, mean, std)
     final = _fit(x_all, y_all, best_c)
     coef = np.asarray(final.coef_).ravel()
     meta = {
         "version": MODEL_VERSION, "n_hash": N_HASH, "numeric": NUMERIC, "trained_at": datetime.now().astimezone().isoformat(),
         "horizon_minutes": horizon_minutes, "min_move_pct": min_move_pct, "sentiment_model": sentiment_model,
-        "n_samples": len(samples), "trained_from": trained_range[0], "trained_to": trained_range[1],
+        "n_samples": len(fit_all), "trained_from": trained_range[0], "trained_to": trained_range[1],
         "report": report, "passed": report["passed"],
     }
     return PriceModel(coef, float(np.asarray(final.intercept_).ravel()[0]), mean, std, meta), report
 
 
-def evaluate(y: np.ndarray, p: np.ndarray, adj_ret: np.ndarray, base_rate: float) -> dict:
-    """Test-set scores + what each confidence threshold would have done."""
+def evaluate(y: np.ndarray, p: np.ndarray, adj_ret: np.ndarray, base_rate: float,
+             raw_ret: np.ndarray | None = None, days: list[str] | None = None) -> dict:
+    """Test-set scores + what each confidence threshold would have done.
+
+    "passed" needs real evidence: across resampled trading days, the model must still beat chance at least 95%
+    of the time (lower AUC bound above 0.5), on at least MIN_TEST_DAYS days, and its probabilities must be no
+    worse than always guessing the average."""
+    raw_ret = adj_ret if raw_ret is None else raw_ret
+    days = days or ["d"] * len(y)
     pred_up = p >= 0.5
     acc = float(np.mean(pred_up == (y == 1)))
     majority = max(float(np.mean(y)), 1 - float(np.mean(y)))
     ll = _logloss(y, p)
     base_ll = _logloss(y, np.full_like(p, min(max(base_rate, 1e-3), 1 - 1e-3)))
     auc = _auc(y, p)
+    auc_lo, auc_hi = day_bootstrap_auc(y, p, days)
+    n_days = len(set(days))
     conf = np.round(100 * np.maximum(p, 1 - p))
     dir_ret = np.where(pred_up, adj_ret, -adj_ret)
     table = []
     for t in THRESHOLDS:
         sel = conf >= t
         n = int(sel.sum())
-        table.append({"threshold": t, "signals": n,
-                      "hit_rate": round(100 * float(np.mean(pred_up[sel] == (y[sel] == 1))), 1) if n else None,
-                      "avg_return": round(float(np.mean(dir_ret[sel])), 3) if n else None})
-    passed = len(y) >= 150 and auc is not None and auc >= 0.52 and ll <= base_ll
-    why = ("" if passed else
-           "too few test headlines" if len(y) < 150 else
-           "it couldn't tell winners from losers better than chance on unseen news" if auc is None or auc < 0.52 else
-           "its probabilities were worse than always guessing the average")
+        longs = sel & pred_up
+        n_long = int(longs.sum())
+        table.append({
+            "threshold": t, "signals": n,
+            "hit_rate": round(100 * float(np.mean(pred_up[sel] == (y[sel] == 1))), 1) if n else None,
+            "avg_return": round(float(np.mean(dir_ret[sel])), 3) if n else None,
+            # what the bot actually does by default: buy on bullish calls (no shorting), own return not vs market
+            "long_signals": n_long,
+            "long_win_rate": round(100 * float(np.mean(raw_ret[longs] > 0)), 1) if n_long else None,
+            "long_avg_return": round(float(np.mean(raw_ret[longs])), 3) if n_long else None,
+        })
+    passed = (n_days >= MIN_TEST_DAYS and auc_lo is not None and auc_lo > 0.5 and ll <= base_ll)
+    if passed:
+        why = ""
+    elif n_days < MIN_TEST_DAYS:
+        why = f"the test only covered {n_days} trading days (needs {MIN_TEST_DAYS}+) - use more history"
+    elif auc_lo is None or auc_lo <= 0.5:
+        why = ("on unseen news it didn't beat chance reliably (its edge could be luck) - with this much history, "
+               "headline wording didn't clearly predict the next move")
+    else:
+        why = "its probabilities were worse than always guessing the average"
     return {"accuracy": round(100 * acc, 1), "majority_accuracy": round(100 * majority, 1),
-            "auc": round(auc, 4) if auc is not None else None, "logloss": round(ll, 5),
-            "baseline_logloss": round(base_ll, 5), "thresholds": table, "passed": passed, "why_not": why}
+            "auc": round(auc, 4) if auc is not None else None,
+            "auc_low": round(auc_lo, 4) if auc_lo is not None else None,
+            "auc_high": round(auc_hi, 4) if auc_hi is not None else None, "test_days": n_days,
+            "logloss": round(ll, 5), "baseline_logloss": round(base_ll, 5), "thresholds": table,
+            "passed": passed, "why_not": why}

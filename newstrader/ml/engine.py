@@ -104,7 +104,8 @@ class LocalMLEngine:
         m = self.price_model if self._loaded_model_file else self.load_price_model()
         active = self.active_price_model() is not None
         info = {"sentiment": self.sentiment.describe(), "sentiment_model_id": self.sentiment.model_id,
-                "sentiment_error": self.sentiment.error, "price_model": None, "price_model_active": active}
+                "sentiment_error": self.sentiment.error, "price_model": None, "price_model_active": active,
+                "sentiment_cap": self.sentiment_cap_reason() if not active else ""}
         if m is not None:
             meta = m.meta
             why_inactive = ""
@@ -121,6 +122,19 @@ class LocalMLEngine:
                 "sentiment_model", "passed", "report")}
             info["price_model"]["why_inactive"] = why_inactive
         return info
+
+    def sentiment_cap_reason(self) -> str:
+        """Why sentiment-only signals may not auto-buy right now ("" = they may)."""
+        mode = self.ctx.config.settings.ml.sentiment_only_trading
+        if mode == "always":
+            return ""
+        if mode == "review":
+            return "sentiment-only signals are set to manual review"
+        m = self.price_model if self._loaded_model_file else self.load_price_model()
+        if (m is not None and not m.meta.get("passed")
+                and m.meta.get("sentiment_model") == self.sentiment.model_id):
+            return "the trained price model found headline wording didn't reliably predict moves"
+        return ""
 
     def label(self) -> str:
         s = "FinBERT" if getattr(self.sentiment.model, "name", "") == "finbert" else "word list"
@@ -164,9 +178,12 @@ class LocalMLEngine:
         scores = self.sentiment.predict([t.snippet for _, t in targets])
         at = item.published_at if item.kind != "transcript" else now
         feats = [build_features(item, c, t, s, table, at or now) for (c, t), s in zip(targets, scores, strict=True)]
-        pm = self.active_price_model()
+        # The price model learned from written news articles; speech from live TV is scored on sentiment only.
+        pm = self.active_price_model() if item.kind != "transcript" else None
         p_up = pm.predict_up(feats) if pm is not None else None
         horizon = int(pm.meta.get("horizon_minutes", 60)) if pm is not None else 60
+        cap_reason = self.sentiment_cap_reason() if pm is None else ""
+        buy = self.ctx.config.settings.trading.buy_threshold
 
         signals, details = [], []
         for i, ((cand, target), s, f) in enumerate(zip(targets, scores, feats, strict=True)):
@@ -187,6 +204,9 @@ class LocalMLEngine:
                 if conf < MIN_SENTIMENT_CONFIDENCE:
                     direction = "neutral"
             conf = int(min(MAX_CONFIDENCE, max(0, conf)))
+            capped = bool(cap_reason) and direction != "neutral" and conf >= buy
+            if capped:
+                conf = max(0, buy - 1)  # stays a manual-review signal
             details.append({"ticker": cand.symbol, "matched": cand.why, "snippet": target.snippet[:300],
                             "sentiment": s.as_dict(), "relevance": rel, "p_up": None if p is None else round(p, 4),
                             "direction": direction, "confidence": conf})
@@ -196,7 +216,8 @@ class LocalMLEngine:
                 "ticker": cand.symbol, "company": name, "speaker": item.speaker or "",
                 "bull_case": _bull(s, p, horizon), "bear_case": _bear(s, p, horizon),
                 "direction": direction, "confidence": conf, "time_sensitivity": "hours",
-                "reasoning": _reasoning(short, s, p, horizon, target),
+                "reasoning": (_reasoning(short, s, p, horizon, target)
+                              + (f" Sent for review: {cap_reason}." if capped else ""))[:400],
             })
         signals.sort(key=lambda x: x["confidence"], reverse=True)
         return {"signals": signals[:max_signals], "details": details}
@@ -223,7 +244,7 @@ def _reasoning(short: str, s: SentimentScores, p: float | None, horizon: int, t:
     if p is not None:
         text += f" Price model: {_pct(p)}% chance it beats the S&P 500 over the next {horizon} min."
     else:
-        text += " Sentiment only - not yet checked against price history."
+        text += " Sentiment only (no price model in use)."
     return text[:400]
 
 

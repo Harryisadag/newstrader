@@ -11,11 +11,12 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from .. import paths
 from ..context import AppContext
 from ..db import iso
+from ..state import MARKET_TZ
 from .dataset import Cancelled, Throttle, build_dataset, forget_cached_days, load_samples
 from .model import delete_model, train_price_model
 
@@ -32,9 +33,14 @@ class TrainParams:
     redownload: bool = False
 
 
+def market_today() -> date:
+    """Today's date in New York (the market's calendar), wherever this computer is."""
+    return datetime.now(MARKET_TZ).date()
+
+
 def default_range(days: int, today: date | None = None) -> tuple[date, date]:
-    """`days` calendar days ending yesterday (today's session isn't finished, so it isn't used)."""
-    end = (today or date.today()) - timedelta(days=1)
+    """`days` calendar days ending yesterday in New York (today's session isn't finished, so it isn't used)."""
+    end = (today or market_today()) - timedelta(days=1)
     return end - timedelta(days=days - 1), end
 
 
@@ -114,33 +120,42 @@ class ModelTrainer:
 
         self._progress(run_id, 0.01, "loading the sentiment model...")
         await engine.ensure_ready()
+        # Keep this exact model for the whole run, even if the live engine switches models meanwhile.
+        model = engine.sentiment.model
+        if model is None:
+            raise RuntimeError("The sentiment model didn't load - see Logs.")
+
+        def predict(texts):
+            return engine.sentiment.predict_with(model, texts)
+
         if params.redownload:
             forget_cached_days(ctx.db, params.horizon_minutes)
         stats = await asyncio.to_thread(build_dataset, ctx.db, broker, pipeline.tickers, params.start, params.end,
                                         params.horizon_minutes, params.max_articles, stage(0.02, 0.6), cancelled,
                                         self.throttle_factory())
-        samples, counts = await asyncio.to_thread(load_samples, ctx.db, pipeline.tickers, engine.sentiment,
+        samples, counts = await asyncio.to_thread(load_samples, ctx.db, pipeline.tickers, model,
                                                   params.horizon_minutes, params.start, params.end,
-                                                  params.min_move_pct, stage(0.6, 0.8), cancelled)
+                                                  params.min_move_pct, stage(0.6, 0.8), cancelled, predict)
         if cancelled():
             raise Cancelled()
         self._progress(run_id, 0.8, f"training on {len(samples):,} headlines...")
-        model, report = await asyncio.to_thread(
-            train_price_model, samples, params.horizon_minutes, params.min_move_pct, engine.sentiment.model_id,
+        price_model, report = await asyncio.to_thread(
+            train_price_model, samples, params.horizon_minutes, params.min_move_pct, model.model_id,
             (params.start.isoformat(), params.end.isoformat()), stage(0.8, 0.97))
         if cancelled():
             raise Cancelled()
         report.update({"download": stats, "counts": counts})
-        model.meta["report"] = report
-        await asyncio.to_thread(model.save, engine.model_dir)
-        engine.set_price_model(model)
+        price_model.meta["report"] = report
+        await asyncio.to_thread(price_model.save, engine.model_dir)
+        engine.set_price_model(price_model)
         pipeline.update_ml_status()
         if report["passed"]:
-            msg = (f"done: tested on {report['n_test']:,} unseen headlines - picked the right direction "
-                   f"{report['accuracy']}% of the time. The live engine now uses it.")
+            msg = (f"done: tested on {report['n_test']:,} unseen headlines over {report['test_days']} days - picked "
+                   f"the right direction {report['accuracy']}% of the time. The live engine now uses it.")
         else:
-            msg = (f"done, but the model isn't used: {report['why_not']}. "
-                   "Try more days of history; sentiment-only scoring continues meanwhile.")
+            msg = (f"done, but the model isn't used: {report['why_not']}. Try more history. Meanwhile the "
+                   "engine scores sentiment only, and (unless you changed it in Settings) those signals go to "
+                   "manual review instead of auto-buying.")
         self._progress(run_id, 1, msg, status="done", report=json.dumps(report, default=str))
         ctx.bus.publish("toast", {"kind": "success" if report["passed"] else "warn",
                                   "title": "Local ML model trained", "message": msg})

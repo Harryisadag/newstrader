@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Body, Depends
 
 from ...context import AppContext
-from ...ml.trainer import TrainParams, default_range
+from ...ml.trainer import TrainParams, default_range, market_today
 from ..deps import bad_request, get_ctx
 
 router = APIRouter(tags=["ml"])
@@ -58,7 +58,7 @@ def _train_params(body: dict, ctx: AppContext) -> TrainParams:
             end = date.fromisoformat(str(body["end"]))
     except ValueError as exc:
         raise bad_request("Dates must look like 2026-01-31.") from exc
-    if end >= date.today():
+    if end >= market_today():
         raise bad_request("The end date must be before today (today's trading isn't finished).")
     if end < start:
         raise bad_request("End date is before the start date.")
@@ -100,7 +100,10 @@ async def ml_delete_model(ctx: AppContext = Depends(get_ctx)):
 async def ml_reload(ctx: AppContext = Depends(get_ctx)):
     """Retry loading FinBERT (e.g. after the first download failed) and re-read the trained model."""
     p = _pipeline(ctx)
-    p.local.sentiment.model = None  # force a fresh attempt
-    await p.warm_local_engine()
-    await asyncio.sleep(0)
+    t = ctx.service("ml_trainer")
+    if t is not None and t.running:
+        raise bad_request("Training is running - wait for it to finish (or cancel it) first.", 409)
+    await asyncio.to_thread(p.local.sentiment.load, ctx.config.settings.ml.sentiment_model, True)
+    await asyncio.to_thread(p.local.load_price_model)
+    p.update_ml_status()
     return p.local.model_status()

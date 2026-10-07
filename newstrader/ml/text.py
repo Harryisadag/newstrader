@@ -106,11 +106,14 @@ def target_text(title: str, body: str, kind: str, cand: Candidate, table: Ticker
     in_headline = mentions(title, m)
     body_sents = [s for s in split_sentences(body) if s != title]
     hits = [s for s in body_sents if mentions(s, m)][:max_sentences]
-    parts = [title] if title else []
-    if hits:
-        parts += hits
-    elif not in_headline and body_sents:
-        parts.append(body_sents[0])  # tagged by the source but never named: read the lead sentence
+    if in_headline or not hits:
+        # headline about this company - or tagged by the source but never named, so read the headline + lead
+        parts = [title] if title else []
+        parts += hits if hits else body_sents[:1] if not in_headline else []
+    else:
+        # named only in the article: score just its own sentences, so a headline about ANOTHER company
+        # ("Nvidia wins contract" when this is the losing bidder) can't set its direction
+        parts = hits
     return Target(snippet=_clip(" ".join(parts)), in_headline=in_headline, in_body=bool(hits), tagged=tagged)
 
 

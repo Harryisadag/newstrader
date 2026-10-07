@@ -559,26 +559,38 @@
             <template x-if="report">
               <div class="kpi"><div class="kpi-label">Right direction on unseen news</div>
                 <div class="kpi-value" :class="report.passed ? 'pos' : 'neg'" x-text="report.accuracy + '%'"></div>
-                <div class="small muted" x-text="`always-guess-the-same scores ${report.majority_accuracy}% · AUC ${report.auc ?? '—'}`"></div></div>
+                <div class="small muted" x-text="`${(report.n_test || 0).toLocaleString()} headlines over ${report.test_days ?? '?'} days · always-guess-the-same: ${report.majority_accuracy}%`"></div></div>
+            </template>
+            <template x-if="report">
+              <div class="kpi"><div class="kpi-label">Edge over chance (AUC, 0.5 = coin flip)</div>
+                <div class="kpi-value" :class="report.passed ? 'pos' : 'neg'" x-text="report.auc ?? '—'"></div>
+                <div class="small muted" x-text="report.auc_low !== null && report.auc_low !== undefined ? `likely range ${report.auc_low} – ${report.auc_high}` : ''"></div></div>
             </template>
           </div>
           <p class="note" x-show="st.price_model && !st.price_model_active && st.price_model.why_inactive" x-text="'Not used: ' + (st.price_model ? st.price_model.why_inactive : '')"></p>
+          <p class="note warn-text" x-show="st.sentiment_cap" x-text="'Sentiment-only signals go to manual review instead of auto-buying: ' + st.sentiment_cap + ' (Settings → AI engine to change).'"></p>
           <p class="note warn-text" x-show="st.sentiment_error" x-text="'FinBERT couldn\'t load (' + st.sentiment_error + ') - using the built-in word list for now.'"></p>
           <template x-if="report && report.thresholds">
             <div>
               <h3 class="small">What each confidence threshold would have done on the test headlines</h3>
               <table class="table compact">
-                <thead><tr><th class="num">Confidence ≥</th><th class="num">Signals</th><th class="num">Right direction</th><th class="num">Avg move vs market</th></tr></thead>
+                <thead><tr><th class="num">Confidence ≥</th><th class="num">Signals</th><th class="num">Right direction</th><th class="num">Avg move vs market</th>
+                  <th class="num">Bullish calls</th><th class="num">…stock went up</th><th class="num">…avg stock move</th></tr></thead>
                 <tbody>
                   <template x-for="t in report.thresholds" :key="t.threshold">
                     <tr><td class="num" x-text="t.threshold"></td><td class="num" x-text="t.signals"></td>
                       <td class="num" x-text="t.hit_rate === null ? '—' : t.hit_rate + '%'"></td>
-                      <td class="num" :class="fmt.plClass(t.avg_return)" x-text="t.avg_return === null ? '—' : fmt.pct(t.avg_return)"></td></tr>
+                      <td class="num" :class="fmt.plClass(t.avg_return)" x-text="t.avg_return === null ? '—' : fmt.pct(t.avg_return)"></td>
+                      <td class="num" x-text="t.long_signals ?? '—'"></td>
+                      <td class="num" x-text="t.long_win_rate === null || t.long_win_rate === undefined ? '—' : t.long_win_rate + '%'"></td>
+                      <td class="num" :class="fmt.plClass(t.long_avg_return)" x-text="t.long_avg_return === null || t.long_avg_return === undefined ? '—' : fmt.pct(t.long_avg_return)"></td></tr>
                   </template>
                 </tbody>
               </table>
-              <p class="small muted">With the price model on, confidence is a tested probability, so it is usually lower than
-                sentiment-only scores. Use this table to pick your buy / review thresholds in Settings → Trading.</p>
+              <p class="small muted">Measured on every test headline, including ones after which the stock barely moved.
+                "Bullish calls" is what the bot does by default (buy, no shorting), counted by the stock's own move over the
+                horizon. With the price model on, confidence is a tested probability, so it is usually lower than
+                sentiment-only scores - use this table to pick your buy / review thresholds in Settings → Trading.</p>
             </div>
           </template>
           <div class="row gap wrap" style="margin-top:10px">
@@ -656,6 +668,7 @@
     <template x-if="detail && detail.run">
       <div class="card">
         <div class="card-head"><h2 x-text="'Backtest #' + detail.run.id"></h2><span class="small muted" x-text="detail.run.message"></span></div>
+        <p class="note warn-text" x-show="detail.run.summary && detail.run.summary.warning" x-text="detail.run.summary ? (detail.run.summary.warning || '') : ''"></p>
         <template x-if="detail.run.summary">
           <div>
             <div class="kpis">

@@ -17,10 +17,12 @@ LOCAL_WARNING = ("The local engine is free. If you trained its price model, only
                  "training range give an honest result.")
 
 
-def _warning(ctx: AppContext, p: BacktestParams) -> str:
+async def _warning(ctx: AppContext, p: BacktestParams) -> str:
     if p.engine != "local":
         return LOOKAHEAD_WARNING
     pipeline = ctx.service("pipeline")
+    if pipeline is not None:
+        await pipeline.local.ensure_ready()  # the run loads it too - judge with the model it will really use
     pm = pipeline.local.active_price_model() if pipeline else None
     if pm is None:
         return "The local engine is free. No trained price model is in use, so this tests sentiment scoring only."
@@ -70,7 +72,7 @@ def _runner(ctx: AppContext):
 @router.post("/backtest/estimate")
 async def bt_estimate(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
     p = _params(body, ctx.config.settings.ai.engine)
-    return {**estimate(p, ctx.config.settings.ai.model, p.engine), "warning": _warning(ctx, p)}
+    return {**estimate(p, ctx.config.settings.ai.model, p.engine), "warning": await _warning(ctx, p)}
 
 
 @router.post("/backtest/run")

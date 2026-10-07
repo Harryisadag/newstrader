@@ -10,7 +10,8 @@ import pytest
 
 from newstrader.ai.pipeline import Pipeline
 from newstrader.ai.prefilter import Candidate, prefilter
-from newstrader.ml.dataset import Throttle, build_dataset, compute_label, load_samples
+from newstrader.ml import dataset as ds
+from newstrader.ml.dataset import Throttle, build_dataset, compute_label, load_samples, sample_windows
 from newstrader.ml.engine import LocalMLEngine, time_of_day
 from newstrader.ml.model import PriceModel, SampleFeatures, TrainingSample, time_split, train_price_model
 from newstrader.ml.sentiment import FinbertOnnx, LexiconSentiment, SentimentScores, SentimentService
@@ -23,6 +24,12 @@ from newstrader.trading.trader import Trader
 from .helpers import make_tickers
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny_finbert"
+
+
+@pytest.fixture(autouse=True)
+def whole_hour_windows(monkeypatch):
+    """The synthetic history has a few articles per hour; read whole hours so every one is fetched."""
+    monkeypatch.setattr(ds, "SAMPLE_WINDOW", ds.SLICE)
 
 
 class FakeSentiment:
@@ -336,13 +343,14 @@ def _samples_from(ctx, days, tmp_path):
 
 
 def test_train_save_load_roundtrip(ctx, tmp_path):
-    days = weekdays(date(2026, 1, 5), 45)
+    days = weekdays(date(2026, 1, 5), 60)
     samples, counts = _samples_from(ctx, days, tmp_path)
-    assert counts["used"] == 900 and counts["small_moves"] == 0
+    assert counts["used"] == 1200 and counts["small_moves"] == 0
     model, report = train_price_model(samples, 60, 0.3, "fake-finbert", (days[0].isoformat(), days[-1].isoformat()))
     assert report["passed"], report
-    assert report["auc"] > 0.75 and report["accuracy"] > 75
-    assert report["n_test"] >= 150 and report["thresholds"][0]["threshold"] == 55
+    assert report["auc"] > 0.75 and report["accuracy"] > 75 and report["auc_low"] > 0.6
+    assert report["test_days"] >= 10 and report["thresholds"][0]["threshold"] == 55
+    assert report["thresholds"][0]["long_signals"] > 0 and report["thresholds"][0]["long_win_rate"] > 60
     model.save(tmp_path / "pm")
     loaded = PriceModel.load(tmp_path / "pm")
     probe = [s.feats for s in samples[:20]]
@@ -360,7 +368,7 @@ def test_too_little_history_is_refused(ctx, tmp_path):
 
 async def test_trainer_end_to_end_and_engine_uses_model(local_env, tmp_path):
     ctx, pipeline, fake, broker = local_env
-    days = weekdays(date(2026, 1, 5), 45)
+    days = weekdays(date(2026, 1, 5), 60)
     synth = synthetic_broker(days)
     ctx.services["trader"].broker = synth
     trainer = ModelTrainer(ctx, throttle_factory=lambda: Throttle(0))
@@ -411,6 +419,8 @@ def test_ml_api(client, ctx):
     assert r.status_code == 400
     start, end = default_range(180, today)
     assert end == today - timedelta(days=1) and (end - start).days == 179
+    r = client.post("/api/ml/reload")
+    assert r.status_code == 200 and r.json()["sentiment_model_id"]
 
 
 def test_settings_engine_and_ml_section(client):
@@ -440,3 +450,154 @@ def test_prefilter_keyword_only_flag():
     t = TickerTable(_DB())
     assert prefilter("Fed delivers a surprise rate cut", t, [], True).hit
     assert not prefilter("Fed delivers a surprise rate cut", t, [], False).hit
+
+
+# ---------------------------------------------------------------- review regressions
+def test_other_companys_headline_doesnt_set_direction(ctx):
+    table = make_tickers(ctx.db)
+    t = target_text("Nvidia wins $10 billion Pentagon cloud contract",
+                    "Tesla, which had also bid, lost out and said it would appeal the decision.", "text",
+                    Candidate("TSLA", "Tesla", "tesla"), table)
+    assert "Nvidia wins" not in t.snippet and "lost out" in t.snippet
+    tagged_only = target_text("Chip stocks rally", "Shares rose across the sector today.", "text",
+                              Candidate("NVDA", "NVIDIA", "tagged by source"), table)
+    assert tagged_only.snippet.startswith("Chip stocks rally") and "sector" in tagged_only.snippet
+
+
+def test_lexicon_counts_failures_as_negative():
+    lex = LexiconSentiment()
+    for text in ("Moderna phase 3 trial failed", "Boeing 737 fails FAA inspection"):
+        assert lex.predict([text])[0].label == "negative", text
+
+
+def test_sample_windows_cover_different_minutes(monkeypatch):
+    monkeypatch.setattr(ds, "SAMPLE_WINDOW", timedelta(minutes=10))
+    o = datetime(2026, 3, 2, 13, 30, tzinfo=UTC)
+    last = o + timedelta(hours=5, minutes=28)
+    offsets = set()
+    for d in range(30):
+        wins = sample_windows(o, last, f"2026-03-{d:02d}")
+        assert len(wins) == 6 and all(w1 - w0 <= timedelta(minutes=10) for w0, w1 in wins)
+        assert all(o <= w0 and w1 <= last for w0, w1 in wins)
+        offsets.add(int((wins[0][0] - o).total_seconds() // 60))
+    assert len(offsets) > 10  # not always the first minutes after the open
+
+
+def test_dataset_skips_unfinished_session_and_keeps_delisted_stocks(ctx):
+    table = make_tickers(ctx.db)
+    days = weekdays(date(2026, 3, 2), 2)
+    fb = synthetic_broker(days)
+    t = datetime(days[0].year, days[0].month, days[0].day, 14, 0, tzinfo=UTC)
+    fb.news_items.append({"id": 999, "headline": "Gone Corp agrees to be acquired at a 40% premium", "summary": "",
+                          "symbols": ["GONE"], "created_at": t, "url": "", "source": "benzinga"})
+    fb.bar_data["GONE"] = bars_around(t, [(m, 10.0 if m <= 30 else 14.0) for m in range(0, 71)])
+    fb.news_items.sort(key=lambda x: x["created_at"])
+    still_open = datetime(days[1].year, days[1].month, days[1].day, 19, 0, tzinfo=UTC)  # before day 2's close
+    stats = build_dataset(ctx.db, fb, table, days[0], days[1], 60, 1000, lambda f, m: None, lambda: False,
+                          throttle=Throttle(0), now=still_open)
+    assert stats["days"] == 1  # the unfinished session is neither downloaded nor cached
+    gone = ctx.db.query_one("SELECT * FROM ml_samples WHERE symbol = 'GONE'")
+    assert gone and gone["label_status"] == "ok" and gone["ret_pct"] > 30  # not in today's ticker list, kept
+
+
+def test_edited_article_is_timed_from_its_last_edit(ctx):
+    table = make_tickers(ctx.db)
+    days = weekdays(date(2026, 3, 2), 1)
+    fb = synthetic_broker(days)
+    first = fb.news_items[0]
+    first["updated_at"] = first["created_at"] + timedelta(minutes=40)
+    build_dataset(ctx.db, fb, table, days[0], days[0], 60, 1000, lambda f, m: None, lambda: False, Throttle(0))
+    row = ctx.db.query_one("SELECT published_at FROM ml_samples WHERE news_id = ?", (str(first["id"]),))
+    assert row["published_at"].startswith(iso_min(first["updated_at"]))
+
+
+def iso_min(t):
+    return t.strftime("%Y-%m-%dT%H:%M")
+
+
+def test_test_set_is_not_filtered_on_the_outcome(ctx, tmp_path):
+    days = weekdays(date(2026, 1, 5), 60)
+    samples, _ = _samples_from(ctx, days, tmp_path)
+    # make every 3rd headline a "small move": excluded from fitting, but the test must still include them
+    for i, smp in enumerate(samples):
+        if i % 3 == 0:
+            smp.small = True
+    _, report = train_price_model(samples, 60, 0.3, "fake-finbert", ("a", "b"))
+    _, _, test = time_split(samples, 62)
+    assert report["n_test"] == len(test) and any(x.small for x in test)
+    assert "accuracy_moved_only" in report
+
+
+def test_pure_noise_rarely_passes():
+    import random
+
+    rng = random.Random(3)
+    t0 = datetime(2026, 1, 5, 15, tzinfo=UTC)
+    words = ["alpha", "beta", "gamma", "delta", "omega", "sigma"]
+    passed = 0
+    for trial in range(8):
+        samples = []
+        for i in range(1500):
+            s_ = SentimentScores(rng.random(), rng.random(), rng.random())
+            f = SampleFeatures(" ".join(rng.choice(words) for _ in range(6)), s_, 1.0, True, True, 1, rng.random())
+            day = t0 + timedelta(days=i // 25, minutes=i % 25 * 10)
+            samples.append(TrainingSample(f, rng.randint(0, 1), day, rng.uniform(-1, 1), f"n{trial}-{i}"))
+        _, report = train_price_model(samples, 60, 0.3, "x", ("a", "b"))
+        passed += report["passed"]
+    assert passed <= 1
+
+
+async def test_failed_price_model_sends_sentiment_signals_to_review(local_env, tmp_path):
+    ctx, pipeline, fake, broker = local_env
+    await pipeline.local.ensure_ready()
+    days = weekdays(date(2026, 1, 5), 45)
+    samples, _ = _samples_from(ctx, days, tmp_path)
+    model, _ = train_price_model(samples, 60, 0.3, "fake-finbert", ("2026-01-05", "2026-03-06"))
+    model.meta["passed"] = False
+    pipeline.local.set_price_model(model)
+    out = await run(pipeline, news("Nvidia wins record contract"))
+    s = out["signals"][0]
+    assert s["confidence"] == 79 and s["action"] == "review" and "Sent for review" in s["reasoning"]
+    ctx.config.update({"ml": {"sentiment_only_trading": "always"}})
+    out = await run(pipeline, news("Tesla beats delivery estimates as demand surges in China"))
+    assert out["signals"][0]["confidence"] == 95
+
+
+async def test_transcripts_use_sentiment_only(local_env, tmp_path):
+    ctx, pipeline, fake, broker = local_env
+    days = weekdays(date(2026, 1, 5), 60)
+    samples, _ = _samples_from(ctx, days, tmp_path)
+    model, _ = train_price_model(samples, 60, 0.3, "fake-finbert", ("2026-01-05", "2026-03-27"))
+    pipeline.local.set_price_model(model)
+    await pipeline.local.ensure_ready()
+    item = NewsItem(source_id="tv", source_type="stream", source_name="TV", external_id="x", title="",
+                    body="New:\n[10:00:00] Nvidia just won a record contract.", kind="transcript",
+                    published_at=datetime.now(UTC))
+    pre = prefilter(item.text, pipeline.tickers, [], False)
+    res = await pipeline.local.analyze(item, pre, True, datetime.now(UTC))
+    import json as _json
+
+    assert all(d["p_up"] is None for d in _json.loads(res.text)["details"])
+
+
+async def test_training_keeps_its_sentiment_model_if_settings_change(local_env, tmp_path):
+    ctx, pipeline, fake, broker = local_env
+    days = weekdays(date(2026, 1, 5), 60)
+    ctx.services["trader"].broker = synthetic_broker(days)
+    trainer = ModelTrainer(ctx, throttle_factory=lambda: Throttle(0))
+    ctx.services["ml_trainer"] = trainer
+    real_predict = fake.predict
+    calls = {"n": 0}
+
+    def predict_and_switch(texts):
+        calls["n"] += 1
+        if calls["n"] == 2:  # the user switches to the word list in the middle of training
+            pipeline.local.sentiment.load("lexicon")
+        return real_predict(texts)
+
+    fake.predict = predict_and_switch
+    run_id = ctx.db.insert("ml_runs", {"created_at": "x", "params": "{}", "status": "running"})
+    await trainer.run(run_id, TrainParams(start=days[0], end=days[-1], max_articles=5000))
+    assert pipeline.local.price_model.meta["sentiment_model"] == "fake-finbert"
+    cached = {r["model_id"] for r in ctx.db.query("SELECT DISTINCT model_id FROM ml_sentiment_cache")}
+    assert cached == {"fake-finbert"}

@@ -149,6 +149,11 @@ class MLSettings(_Model):
     # Use the model trained on price history (Backtest tab -> Local ML model) when it has passed its test:
     # "auto" = only if it passed, "always" = even if it didn't, "never" = sentiment only
     use_trained_model: Literal["auto", "always", "never"] = "auto"
+    # May signals scored by sentiment alone (no price model in use) auto-buy? FinBERT judges wording, not
+    # whether prices will move. "auto" = yes, unless a trained price model failed its test (that's evidence
+    # wording didn't predict moves in your history) - then they go to manual review instead.
+    # "always" = yes; "review" = never auto-buy, only manual-review alerts.
+    sentiment_only_trading: Literal["auto", "always", "review"] = "auto"
     # Training: how much history to learn from, how far ahead to measure the move, and the smallest move
     # (vs the S&P 500) that counts as a reaction
     train_days: int = Field(180, ge=30, le=730)

@@ -271,6 +271,10 @@ MIGRATIONS: list[str] = [
         report TEXT
     );
     """,
+    # 5 - training text built like the live feed (headline + summary + article body)
+    """
+    ALTER TABLE ml_samples ADD COLUMN text_version INTEGER;
+    """,
 ]
 
 

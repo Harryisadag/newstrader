@@ -209,6 +209,13 @@ class BacktestRunner:
                            cost_usd=round(cost, 4))
 
         summary = self._summary(results, len(articles), analysed, cost)
+        summary["engine"] = engine
+        if engine == "local":
+            pm = analyzer.active_price_model()
+            lo, hi = (str(pm.meta.get("trained_from", "")), str(pm.meta.get("trained_to", ""))) if pm else ("", "")
+            if pm and lo and hi and params.start.isoformat() <= hi and params.end.isoformat() >= lo:
+                summary["warning"] = (f"These dates overlap the price model's training range ({lo} to {hi}): it has "
+                                      "already seen this news, so the result is optimistic.")
         status = "cancelled" if self._cancel else "done"
         self._progress(run_id, 1, f"{status}: {summary['trades']} trades, P/L ${summary['total_pnl']:,.2f}",
                        status=status, summary=json.dumps(summary), cost_usd=round(cost, 4))

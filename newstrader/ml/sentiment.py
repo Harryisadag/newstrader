@@ -78,7 +78,7 @@ NEGATIVE_WORDS = {
     "tariffs", "sanction", "sanctions", "negative", "worst", "disappointing", "disappoints", "plummet",
     "plummets", "plummeted", "shutdown", "closure", "closes", "withdraw", "withdraws", "terminated", "terminate",
 }
-NEGATORS = {"not", "no", "never", "without", "fails", "failed", "isn't", "wasn't", "won't", "didn't", "doesn't"}
+NEGATORS = {"not", "no", "never", "without", "isn't", "wasn't", "won't", "didn't", "doesn't"}
 _WORD = re.compile(r"[a-z']+")
 
 
@@ -233,10 +233,13 @@ class SentimentService:
             return "built-in word list (FinBERT unavailable)"
         return "built-in word list"
 
-    def load(self, which: str) -> None:
-        """Blocking. Loads `which` ("finbert" or "lexicon"); falls back to the word list if FinBERT fails."""
+    def load(self, which: str, force: bool = False) -> None:
+        """Blocking. Loads `which` ("finbert" or "lexicon"); falls back to the word list if FinBERT fails.
+        The new model is swapped in only once it is ready, so analysis in progress never sees a gap.
+        force=True retries FinBERT even if an earlier attempt failed."""
         with self._lock:
-            if self.model is not None and self.wanted == which and (which == "lexicon" or self.error is None):
+            if (not force and self.model is not None and self.wanted == which
+                    and (which == "lexicon" or self.error is None)):
                 return
             self.wanted = which
             self.loading = True
@@ -257,7 +260,8 @@ class SentimentService:
                 except Exception as exc:
                     self.error = _short(exc)
                     log.warning("FinBERT unavailable (%s) - using the built-in word list instead", self.error)
-                    self.model = LexiconSentiment()
+                    if self.model is None or getattr(self.model, "name", "") != "lexicon":
+                        self.model = LexiconSentiment()
             finally:
                 self.loading = False
 
@@ -265,6 +269,10 @@ class SentimentService:
         model = self.model
         if model is None:
             raise RuntimeError("sentiment model not loaded")
+        return self.predict_with(model, texts)
+
+    def predict_with(self, model, texts: list[str]) -> list[SentimentScores]:
+        """Score with a specific model object (training keeps the one it started with)."""
         with self._predict_lock:
             return model.predict(texts)
 
