@@ -103,15 +103,28 @@ async def test_test_alert_ignores_toggles(setup):
     assert res["discord"] is True and desk
 
 
+async def _wait_for(cond, timeout: float = 5.0) -> bool:
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while loop.time() < end:
+        if cond():
+            return True
+        await asyncio.sleep(0.02)
+    return cond()
+
+
 async def test_logged_errors_become_alerts(setup):
     ctx, mgr, rec, _ = setup
+
+    def count():
+        return sum("Alpaca exploded" in r["embeds"][0]["description"] for r in rec.requests)
+
     logging.getLogger("newstrader.something").error("Alpaca exploded")
-    await asyncio.sleep(0.05)
-    assert any("Alpaca exploded" in r["embeds"][0]["description"] for r in rec.requests)
+    assert await _wait_for(lambda: count() == 1)
     # throttled: the same error again doesn't re-alert
     logging.getLogger("newstrader.something").error("Alpaca exploded")
-    await asyncio.sleep(0.05)
-    assert sum("Alpaca exploded" in r["embeds"][0]["description"] for r in rec.requests) == 1
+    await asyncio.sleep(0.3)
+    assert count() == 1
 
 
 async def test_trader_uses_alert_manager(setup):
