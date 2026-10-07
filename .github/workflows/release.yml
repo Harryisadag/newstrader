@@ -1,0 +1,197 @@
+name: release
+
+# Builds the ready-made apps and publishes them on the repo's Releases page.
+#
+#   Actions tab -> "release" -> Run workflow
+#
+# The version comes from newstrader/__init__.py and must have a "## vX.Y.Z" entry in RELEASES.md.
+# Steps: create a DRAFT release -> build + smoke-test each app on its own machine and attach the zip ->
+# publish the release once the Windows and Apple Silicon apps are attached (Intel Mac is best-effort).
+# Each build uploads straight to the release, so the large zips never use the repo's Actions storage.
+on:
+  workflow_dispatch:
+    inputs:
+      intel_mac:
+        description: "Also build for Intel Macs"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: v
+        run: |
+          V=$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import release_notes as r; print(r.code_version())")
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::Bad version '$V'"; exit 1; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing NewsTrader $V"
+
+      - name: Release notes from RELEASES.md
+        run: python3 scripts/release_notes.py "${{ steps.v.outputs.version }}" > notes.md
+
+      - name: Create (or reuse) the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::$TAG is already published. Raise __version__ in newstrader/__init__.py and add a RELEASES.md entry, then run this again."
+              exit 1
+            fi
+            echo "Re-using the existing draft $TAG"
+            gh release edit "$TAG" --title "NewsTrader $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "NewsTrader $VERSION" --notes-file notes.md
+          fi
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: mac-apple-silicon
+            os: macos-15
+          - name: mac-intel
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      ASSET: NewsTrader-${{ needs.prepare.outputs.version }}-${{ matrix.name }}.zip
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Skip the Intel Mac build?
+        id: skip
+        shell: bash
+        run: |
+          if [ "${{ matrix.name }}" = "mac-intel" ] && [ "${{ inputs.intel_mac }}" != "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.skip.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            pip install -r requirements.txt pyinstaller pillow
+            if [ "$(python -c 'import platform; print(platform.machine())')" = "arm64" ]; then
+              # Apple-GPU speech engine (mlx-whisper never uses the PyTorch it lists, so skip that download)
+              pip install -r requirements-mac-gpu.txt
+              pip install --no-deps "mlx-whisper==0.4.3"
+            fi
+          else
+            pip install -r requirements.txt pyinstaller
+          fi
+
+      - name: Build
+        if: steps.skip.outputs.skip != 'true'
+        run: pyinstaller --noconfirm --clean newstrader.spec
+
+      - name: Start the built app and check it works (tools + FinBERT)
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            python scripts/smoke_test.py dist/NewsTrader.app/Contents/MacOS/NewsTrader --tools --ml
+          else
+            python scripts/smoke_test.py dist/NewsTrader/NewsTrader.exe --tools --ml
+          fi
+
+      - name: Zip (Windows)
+        if: steps.skip.outputs.skip != 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist/NewsTrader/data -ErrorAction SilentlyContinue
+          7z a -tzip -mx=5 "$env:ASSET" ./dist/NewsTrader
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Zip (Mac)
+        if: steps.skip.outputs.skip != 'true' && runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict dist/NewsTrader.app && echo "ad-hoc signature OK"
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" dist/NewsTrader.app/Contents/Info.plist
+          ditto -c -k --keepParent dist/NewsTrader.app "$ASSET"
+
+      - name: Checksum, size check and attach to the release
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import hashlib, os, pathlib
+          p = pathlib.Path(os.environ["ASSET"])
+          size = p.stat().st_size
+          print(f"{p.name}: {size / 1e6:.0f} MB")
+          if size >= 2_000_000_000:
+              raise SystemExit("GitHub release files must be under 2 GB")
+          h = hashlib.sha256()
+          with p.open("rb") as f:
+              for chunk in iter(lambda: f.read(1 << 20), b""):
+                  h.update(chunk)
+          pathlib.Path(p.name + ".sha256").write_text(f"{h.hexdigest()}  {p.name}\n")
+          print(h.hexdigest())
+          EOF
+          gh release upload "$TAG" "$ASSET" "$ASSET.sha256" --clobber
+
+  publish:
+    needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Publish once the required apps are attached
+        run: |
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          echo "$assets"
+          missing=0
+          for name in windows-x64 mac-apple-silicon; do
+            if ! grep -qx "NewsTrader-$VERSION-$name.zip" <<< "$assets"; then
+              echo "::error::NewsTrader-$VERSION-$name.zip wasn't built - the release stays a draft. See the build logs."
+              missing=1
+            fi
+          done
+          if ! grep -qx "NewsTrader-$VERSION-mac-intel.zip" <<< "$assets"; then
+            echo "::warning::No Intel Mac build in this release."
+          fi
+          [ "$missing" = "0" ] || exit 1
+          gh release edit "$TAG" --draft=false --latest
+          echo "Published: $(gh release view "$TAG" --json url --jq .url)"

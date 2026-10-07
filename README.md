@@ -24,6 +24,17 @@ NewsTrader is a desktop app for **Windows and Mac** that:
 
 ---
 
+## Download the ready-made app (easiest)
+
+You don't need Python to use a release:
+1. Download the zip for your computer from the **[Releases page](https://github.com/Harryisadag/newstrader/releases)**.
+   - Windows: `windows-x64`
+   - Mac with an M-series chip: `mac-apple-silicon`
+   - Intel Mac: `mac-intel`
+2. Unzip it and open NewsTrader.
+
+[RELEASES.md](RELEASES.md) is the catalogue of every version. It covers what changed, which file to pick, and the one-time "Run anyway" / "Open Anyway" steps for apps that aren't from a store. To run the latest code instead, or on an older Mac, follow the setup below.
+
 ## Contents
 1. [Setup on Windows (one time, ~20 minutes)](#setup-on-windows-one-time-20-minutes)
 2. [Setup on a Mac (one time, ~20 minutes)](#setup-on-a-mac-one-time-20-minutes)
@@ -449,6 +460,11 @@ On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache
   - `--headless` runs the server only
   - `NEWSTRADER_FAKE_BROKER=1` uses an offline fake Alpaca account for UI work (never places real orders)
 - **App builds in CI:** Actions → **build-exe** (Windows) or **build-app-mac** (Apple Silicon) → Run workflow. Each one builds the app, then smoke-tests it: it starts, finds ffmpeg/yt-dlp/deno, and loads FinBERT.
+- **Making a release:**
+  1. Raise `__version__` in `newstrader/__init__.py` and add a `## vX.Y.Z` entry to `RELEASES.md`.
+  2. Run Actions → **release** → Run workflow.
+
+  The workflow builds Windows, Apple Silicon and Intel Mac apps and smoke-tests each one. It attaches the zips and SHA-256 checksums to a draft release, then publishes it. The release notes come from `RELEASES.md` (`scripts/release_notes.py`).
 
 **Layout**
 

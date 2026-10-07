@@ -122,8 +122,9 @@ if MAC:
         info_plist={
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
-            # the packages were downloaded for the Mac doing the build, so that's the oldest macOS it supports
-            "LSMinimumSystemVersion": ".".join((platform.mac_ver()[0] or "13.0").split(".")[:2]),
+            # pip picked packages for the Mac doing the build (e.g. MLX ships separate macOS 14/15/26 builds), so
+            # the oldest macOS the app supports is that Mac's major version. Release builds run on macOS 15.
+            "LSMinimumSystemVersion": os.environ.get("NT_MACOS_MIN") or f"{(platform.mac_ver()[0] or '13').split('.')[0]}.0",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",
             "NSRequiresAquaSystemAppearance": False,
