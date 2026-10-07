@@ -156,6 +156,11 @@ class MLSettings(_Model):
     train_min_move_pct: float = Field(0.3, ge=0.0, le=5.0)
     train_max_articles: int = Field(20000, ge=500, le=100000)
 
+    @field_validator("train_horizon_minutes", mode="before")
+    @classmethod
+    def _horizon(cls, v: Any) -> Any:
+        return int(v) if isinstance(v, str) and v.strip().isdigit() else v
+
 
 class TradingSettings(_Model):
     auto_trade: bool = True
