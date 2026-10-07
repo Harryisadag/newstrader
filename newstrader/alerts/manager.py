@@ -48,7 +48,8 @@ class _ErrorLogForwarder(logging.Handler):
             msg = record.getMessage()
             key = f"{record.name}:{msg[:60]}"
             now = time.monotonic()
-            if now - self._last.get(key, 0) < ERROR_THROTTLE_SECONDS:
+            last = self._last.get(key)
+            if last is not None and now - last < ERROR_THROTTLE_SECONDS:
                 return
             self._last[key] = now
             loop = self.manager.ctx.loop
@@ -111,7 +112,8 @@ class AlertManager:
                 return result
             key = f"{kind}:{title}"
             now = time.monotonic()
-            if now - self._recent.get(key, 0) < DEDUPE_SECONDS:
+            last = self._recent.get(key)
+            if last is not None and now - last < DEDUPE_SECONDS:
                 result["skipped"] = "duplicate within 60s"
                 return result
             self._recent[key] = now

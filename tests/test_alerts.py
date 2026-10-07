@@ -150,3 +150,13 @@ def test_toast_text_cannot_inject_powershell():
     assert "$" not in out and "`" not in out and '"' not in out and "\n" not in out and "]]>" not in out
     assert "Start-Process calc" in out  # text is kept, just made harmless
     assert len(safe_toast_text("x" * 500, 120)) == 120
+
+
+async def test_first_alert_not_throttled_right_after_boot(setup, monkeypatch):
+    """time.monotonic() starts near 0 when the PC has just booted - the first alert must still go out."""
+    import newstrader.alerts.manager as m
+
+    ctx, mgr, rec, _ = setup
+    monkeypatch.setattr(m.time, "monotonic", lambda: 5.0)
+    res = await mgr.send("error", "Fresh boot error", "", "error")
+    assert res["discord"] is True
