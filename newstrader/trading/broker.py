@@ -10,7 +10,7 @@ import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from ..state import AppState
+from ..state import MARKET_TZ, AppState
 from .live_guard import AlpacaCredentials, assert_mode_allowed
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,46 @@ def position_to_dict(p: Any) -> dict:
     }
 
 
+SNAPSHOT_CHUNK = 100  # symbols per snapshot request
+
+
+def _bar(b: Any) -> dict | None:
+    if b is None:
+        return None
+    return {"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
+            "v": _f(b.volume)}
+
+
+def snapshot_to_dict(snap: Any) -> dict:
+    """One Alpaca snapshot as a plain dict, with the day change worked out.
+
+    Before the open (pre-market) the latest daily bar is still the previous session's, so the change is measured
+    against that bar's close; once today's daily bar exists it is measured against the previous day's close."""
+    trade = getattr(snap, "latest_trade", None)
+    minute, daily, prev = (_bar(getattr(snap, "minute_bar", None)), _bar(getattr(snap, "daily_bar", None)),
+                           _bar(getattr(snap, "previous_daily_bar", None)))
+    price = _f(getattr(trade, "price", None)) if trade is not None else None
+    trade_time = getattr(trade, "timestamp", None) if trade is not None else None
+    if price is None:
+        price = (minute or {}).get("c") or (daily or {}).get("c")
+    daily_day = getattr(getattr(snap, "daily_bar", None), "timestamp", None)
+    new_session = (trade_time is not None and daily_day is not None
+                   and _market_date(trade_time) > _market_date(daily_day))
+    if new_session:
+        prev_close, day_volume = (daily or {}).get("c"), None
+    else:
+        prev_close, day_volume = (prev or {}).get("c"), (daily or {}).get("v")
+    change = (price - prev_close) / prev_close * 100 if price and prev_close else None
+    return {"price": price, "prev_close": prev_close, "change_pct": change, "day_volume": day_volume,
+            "time": _iso(trade_time), "minute_bar": minute, "daily_bar": daily, "prev_daily_bar": prev}
+
+
+def _market_date(value: datetime) -> date:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(MARKET_TZ).date()
+
+
 class Broker:
     """Real Alpaca connection (paper by default; live only through live_guard)."""
 
@@ -106,6 +146,7 @@ class Broker:
         self.data = StockHistoricalDataClient(creds.api_key, creds.secret_key)
         _patient(self.data)
         self._news = None
+        self._screener = None
 
     @property
     def mode(self) -> str:
@@ -236,7 +277,8 @@ class Broker:
 
     def bars_multi(self, symbols: list[str], start: datetime, end: datetime, timeframe: str = "1Min",
                    feed: str | None = None) -> dict[str, list[dict]]:
-        """Bars for several symbols in one request (the SDK follows the pages). Used to label training data.
+        """Bars for several symbols in one request (the SDK follows the pages). Used to label training data and
+        by the market monitor.
 
         feed="sip" asks for the full consolidated tape, which free accounts may use for history that ended more
         than 15 minutes ago (denser than IEX for smaller stocks)."""
@@ -244,13 +286,63 @@ class Broker:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
-        tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute)}[timeframe]
+        tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute),
+              "1Hour": TimeFrame(1, TimeFrameUnit.Hour), "1Day": TimeFrame(1, TimeFrameUnit.Day)}[timeframe]
         chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
         res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=list(symbols), start=start, end=end,
                                                         timeframe=tf, feed=chosen))
         data = res.data if hasattr(res, "data") else {}
         return {sym: [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
                        "v": _f(b.volume)} for b in rows] for sym, rows in data.items()}
+
+    def snapshots(self, symbols: list[str], feed: str | None = None) -> dict[str, dict]:
+        """Latest price and today's / the previous day's bars for many symbols (one request per 100 symbols).
+
+        Returns {symbol: {"price", "prev_close", "change_pct", "day_volume", "time", "minute_bar", "daily_bar",
+        "prev_daily_bar"}}. Symbols Alpaca has no data for are left out."""
+        from alpaca.data.enums import DataFeed
+        from alpaca.data.requests import StockSnapshotRequest
+
+        chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
+        wanted = list(dict.fromkeys(s.upper() for s in symbols if s))
+        out: dict[str, dict] = {}
+        for i in range(0, len(wanted), SNAPSHOT_CHUNK):
+            res = self.data.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=wanted[i:i + SNAPSHOT_CHUNK],
+                                                                    feed=chosen))
+            if isinstance(res, dict):
+                out.update({sym: snapshot_to_dict(snap) for sym, snap in res.items() if snap is not None})
+        return out
+
+    def _screener_client(self):
+        from alpaca.data.historical.screener import ScreenerClient
+
+        if self._screener is None:
+            self._screener = ScreenerClient(self.creds.api_key, self.creds.secret_key)
+            _patient(self._screener)
+        return self._screener
+
+    def movers(self, top: int = 20) -> dict:
+        """Today's biggest gainers and losers (Alpaca screener; may be unavailable on some accounts - raises)."""
+        from alpaca.data.requests import MarketMoversRequest
+
+        res = self._screener_client().get_market_movers(MarketMoversRequest(top=top))
+
+        def row(m: Any) -> dict:
+            return {"symbol": m.symbol, "price": _f(m.price), "change": _f(m.change),
+                    "change_pct": _f(m.percent_change)}
+
+        return {"gainers": [row(m) for m in res.gainers or []], "losers": [row(m) for m in res.losers or []],
+                "updated": _iso(res.last_updated)}
+
+    def most_actives(self, top: int = 20, by: str = "volume") -> dict:
+        """Today's most traded stocks, by share volume or by number of trades (Alpaca screener; may raise)."""
+        from alpaca.data.enums import MostActivesBy
+        from alpaca.data.requests import MostActivesRequest
+
+        res = self._screener_client().get_most_actives(MostActivesRequest(top=top, by=MostActivesBy(by)))
+        return {"items": [{"symbol": a.symbol, "volume": _f(a.volume), "trade_count": _f(a.trade_count)}
+                          for a in res.most_actives or []],
+                "updated": _iso(res.last_updated)}
 
     def _news_client(self):
         from alpaca.data.historical.news import NewsClient
@@ -261,12 +353,13 @@ class Broker:
         return self._news
 
     def news(self, start: datetime, end: datetime, symbols: list[str] | None = None, limit: int = 200,
-             include_content: bool = True) -> list[dict]:
-        """Historical Benzinga news (oldest first), used by backtests and model training."""
+             include_content: bool = True, newest_first: bool = False) -> list[dict]:
+        """Historical Benzinga news (oldest first, or newest first), used by backtests, model training and to find
+        the story behind a price spike."""
         from alpaca.data.requests import NewsRequest
 
         req = NewsRequest(start=start, end=end, symbols=",".join(symbols) if symbols else None, limit=limit,
-                          sort="asc", include_content=include_content)
+                          sort="desc" if newest_first else "asc", include_content=include_content)
         res = self._news_client().get_news(req)
         return [n.model_dump() for n in res.data.get("news", [])]
 

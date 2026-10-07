@@ -42,6 +42,9 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     trader = ctx.service("trader")
     if trader is not None and hasattr(trader, "summary"):
         out.update(trader.summary())
+    monitor = ctx.service("market")  # "market" in this dict is the market clock (from the trader)
+    if monitor is not None and hasattr(monitor, "summary"):
+        out["monitor"] = monitor.summary()
     if not light:
         out["data_dir"] = str(paths.data_dir())
         out["env_file"] = str(paths.env_file())
