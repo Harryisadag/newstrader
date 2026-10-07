@@ -50,7 +50,7 @@ class FfmpegCapture:
     def start(self) -> None:
         ffmpeg = find_ffmpeg()
         if not ffmpeg:
-            raise RuntimeError("ffmpeg not found (run update.bat, or: winget install Gyan.FFmpeg)")
+            raise RuntimeError("ffmpeg not found (run update.command / update.bat, or install ffmpeg)")
         cmd = ffmpeg_command(ffmpeg, self.media_url, self.headers, self.realtime)
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
                                      creationflags=CREATE_NO_WINDOW, bufsize=0)

@@ -1,4 +1,5 @@
-"""Keeps a live "GPU" status card in Logs -> System status (name, load, memory), refreshed every 30 seconds."""
+"""Keeps a live "GPU" status card in Logs -> System status (name, load, memory - or the Apple chip on a Mac),
+refreshed every 30 seconds."""
 
 from __future__ import annotations
 
@@ -13,6 +14,15 @@ log = logging.getLogger(__name__)
 
 
 def describe_gpu(info: dict) -> tuple[str, str]:
+    mac = info.get("mac")
+    if mac:
+        chip = mac.get("chip") or ("Apple Silicon" if mac.get("apple_silicon") else "Intel Mac")
+        if mac.get("apple_silicon") and mac.get("mlx"):
+            return "ok", f"{chip} - speech-to-text runs on the Apple GPU (MLX)"
+        if mac.get("apple_silicon"):
+            return "warn", (f"{chip} - the Apple-GPU speech engine isn't installed, so speech-to-text uses the CPU "
+                            "(slower). Run run.command again to install it.")
+        return "warn", f"{chip} - Intel Macs transcribe on the CPU; use a small Whisper model (Settings)"
     if info.get("cuda_devices"):
         parts = [info.get("name") or "NVIDIA GPU"]
         if info.get("utilization_pct") is not None:

@@ -1,0 +1,10 @@
+# Apple-GPU speech-to-text for Macs with an M-series chip and macOS 14+ (run.command installs this for you).
+# mlx-whisper itself is installed with "pip install --no-deps mlx-whisper==0.4.3": it lists PyTorch as a
+# dependency but never uses it at runtime, so skipping it saves a ~130 MB download.
+mlx>=0.20 ; sys_platform == "darwin" and platform_machine == "arm64"
+numba ; sys_platform == "darwin" and platform_machine == "arm64"
+scipy
+tiktoken
+more-itertools
+tqdm
+huggingface_hub

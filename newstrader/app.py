@@ -57,6 +57,36 @@ def _show_error(message: str) -> None:
             ctypes.windll.user32.MessageBoxW(None, message, APP_NAME, 0x10)
         except Exception:
             pass
+    elif sys.platform == "darwin":
+        try:
+            import subprocess
+
+            # text goes in as an argument, never as script source
+            subprocess.run(["/usr/bin/osascript", "-e", "on run argv",
+                            "-e", "display alert (item 2 of argv) message (item 3 of argv) as critical",
+                            "-e", "end run", "newstrader", APP_NAME, message], timeout=120, check=False,
+                           capture_output=True)
+        except Exception:
+            pass
+
+
+def _platform_fixes() -> None:
+    """Mac: python.org Python doesn't use the system certificate store, so point TLS at certifi's bundle
+    (Alpaca's live websockets need it). Intel Macs: the speech engine and scikit-learn each ship an OpenMP
+    library; allow both to load instead of aborting."""
+    if sys.platform != "darwin":
+        return
+    if not os.environ.get("SSL_CERT_FILE"):
+        try:
+            import certifi
+
+            os.environ["SSL_CERT_FILE"] = certifi.where()
+        except Exception:
+            pass
+    import platform
+
+    if platform.machine() == "x86_64":
+        os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 
 def _free_port() -> int:
@@ -75,6 +105,7 @@ def _ensure_std_streams() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_std_streams()
+    _platform_fixes()
     parser = argparse.ArgumentParser(prog="newstrader", description=f"{APP_NAME} {__version__}")
     parser.add_argument("--browser", action="store_true", help="open the dashboard in your web browser")
     parser.add_argument("--headless", action="store_true", help="run the server only and print the URL")
@@ -115,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     while not server.started and thread.is_alive() and time.time() < deadline:
         time.sleep(0.05)
     if not server.started:
-        _show_error(f"{APP_NAME} couldn't start its local server. Check data\\logs\\newstrader.log.")
+        _show_error(f"{APP_NAME} couldn't start its local server. Check {paths.logs_dir() / 'newstrader.log'}.")
         return 1
 
     url = f"http://127.0.0.1:{port}/?token={ctx.token}"

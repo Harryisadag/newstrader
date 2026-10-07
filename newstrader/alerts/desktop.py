@@ -1,8 +1,12 @@
-"""Windows desktop pop-up notifications (via winotify). Does nothing on other systems."""
+"""Desktop pop-up notifications: Windows (via winotify) and Mac (via the built-in osascript).
+Does nothing on other systems.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import sys
 
 from .. import APP_NAME, paths
@@ -19,7 +23,24 @@ def safe_toast_text(text: str, limit: int) -> str:
     return text[:limit]
 
 
+OSASCRIPT = "/usr/bin/osascript"
+# The text is passed as command-line arguments to a fixed script, so news text is never parsed as AppleScript.
+# The first argument is a fixed word so osascript never mistakes untrusted text for one of its own options.
+_MAC_SCRIPT = ["-e", "on run argv", "-e", "display notification (item 3 of argv) with title (item 2 of argv)",
+               "-e", "end run"]
+
+
+def mac_notification_args(title: str, message: str) -> list[str]:
+    def clean(text: str, limit: int) -> str:
+        text = (text or "").replace("\r", " ").replace("\n", " ")
+        return "".join(ch for ch in text if ch.isprintable())[:limit] or " "
+
+    return [OSASCRIPT, *_MAC_SCRIPT, "newstrader", clean(title, 120), clean(message, 250)]
+
+
 def desktop_supported() -> bool:
+    if sys.platform == "darwin":
+        return os.path.exists(OSASCRIPT)
     if sys.platform != "win32":
         return False
     try:
@@ -30,9 +51,17 @@ def desktop_supported() -> bool:
 
 
 def show_desktop(title: str, message: str, level: str = "info") -> bool:
-    """Blocking (spawns a hidden PowerShell); call from a worker thread. Returns True if shown."""
+    """Blocking (spawns a helper process); call from a worker thread. Returns True if shown."""
     if not desktop_supported():
         return False
+    if sys.platform == "darwin":
+        try:
+            done = subprocess.run(mac_notification_args(title, message), capture_output=True, timeout=10,
+                                  check=False)
+            return done.returncode == 0
+        except Exception as exc:
+            log.debug("mac notification failed: %s", exc)
+            return False
     try:
         from winotify import Notification, audio
 

@@ -1,19 +1,27 @@
-"""Speech-to-text with faster-whisper on the GPU.
+"""Speech-to-text, on whatever fast hardware this computer has.
+
+    Windows / Linux + NVIDIA GPU  -> faster-whisper on CUDA
+    Mac with Apple Silicon        -> mlx-whisper on the Apple GPU (if installed - run.command does that)
+    anything else                 -> faster-whisper on the CPU (slower; a smaller model is used)
 
 One model is loaded once and shared by every stream (a single worker thread processes audio chunks in
-order). Voice activity detection (VAD) skips silence and music so only speech is transcribed.
-If CUDA can't be used, it falls back to the CPU with a smaller model and says so in the Logs tab.
+order - MLX also requires all its work to stay on one thread). Voice activity detection (VAD) skips silence
+and music so only speech is transcribed. If the preferred device can't be used, it falls back to the CPU and
+says so in the Logs tab.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import platform
 import queue
+import sys
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -30,6 +38,74 @@ HALLUCINATIONS = {
 }
 
 CPU_FALLBACK_MODEL = "small"
+
+# Whisper model name -> the MLX conversion of it on Hugging Face (Apple Silicon only)
+MLX_REPOS = {
+    "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+    "distil-large-v3": "mlx-community/distil-whisper-large-v3",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "base": "mlx-community/whisper-base-mlx",
+    "tiny": "mlx-community/whisper-tiny",
+}
+
+
+def is_apple_silicon() -> bool:
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def mlx_available() -> bool:
+    if not is_apple_silicon():
+        return False
+    try:
+        import mlx_whisper  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+class MlxWhisper:
+    """mlx-whisper with the same Silero VAD faster-whisper uses. Call only from the transcriber's thread."""
+
+    def __init__(self, model_name: str):
+        try:
+            import mlx_whisper  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError("the Apple-GPU speech engine (mlx-whisper) isn't installed - run run.command "
+                               f"again to install it ({type(exc).__name__})") from exc
+
+        self.repo = MLX_REPOS.get(model_name, model_name if "/" in model_name else MLX_REPOS["large-v3-turbo"])
+        self._warm = False
+
+    def warm_up(self) -> None:
+        """Downloads (first time) and loads the model by transcribing a short silent clip."""
+        import mlx_whisper
+
+        mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=self.repo, verbose=None,
+                               language="en")
+        self._warm = True
+
+    def transcribe(self, audio: np.ndarray, language: str | None, initial_prompt: str | None,
+                   min_silence_ms: int) -> list:
+        import mlx_whisper
+        from faster_whisper.vad import SpeechTimestampsMap, VadOptions, collect_chunks, get_speech_timestamps
+
+        audio = np.ascontiguousarray(audio, dtype=np.float32)
+        speech = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=min_silence_ms))
+        if not speech:  # an empty clip list would make mlx-whisper transcribe everything
+            return []
+        chunks, _ = collect_chunks(audio, speech)
+        result = mlx_whisper.transcribe(np.concatenate(chunks), path_or_hf_repo=self.repo, language=language,
+                                        initial_prompt=initial_prompt, condition_on_previous_text=False,
+                                        verbose=None)  # beam search isn't supported by mlx-whisper
+        ts = SpeechTimestampsMap(speech, 16000)
+        return [SimpleNamespace(start=ts.get_original_time(seg["start"]),
+                                end=ts.get_original_time(seg["end"], is_end=True), text=seg.get("text", ""),
+                                no_speech_prob=seg.get("no_speech_prob", 0.0),
+                                avg_logprob=seg.get("avg_logprob", 0.0),
+                                compression_ratio=seg.get("compression_ratio", 0.0))
+                for seg in result.get("segments", [])]
 
 
 @dataclass
@@ -74,7 +150,7 @@ class Transcriber:
         self.q: queue.Queue[Job | None] = queue.Queue()
         self.model = None
         self.model_desc = ""
-        self.device = ""
+        self.device = ""  # cuda | cpu | mlx | test
         self._thread: threading.Thread | None = None
         self._loaded_key: tuple | None = None
         self._callbacks: dict[str, Callable[[Job, list[Segment]], None]] = {}
@@ -133,22 +209,35 @@ class Transcriber:
 
         setup_cuda_dll_paths()
         os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-        from faster_whisper import WhisperModel
 
         attempts = []
-        if s.device in ("cuda", "auto"):
+        mac = sys.platform == "darwin"
+        if s.device == "mlx" or (s.device in ("auto", "cuda") and mac):
+            if is_apple_silicon():
+                attempts.append((s.model, "mlx", "float16"))
+        elif s.device in ("cuda", "auto"):
             attempts.append((s.model, "cuda", s.compute_type))
             if s.compute_type != "float16":
                 attempts.append((s.model, "cuda", "float16"))
         attempts.append((s.model if s.device == "cpu" else CPU_FALLBACK_MODEL, "cpu", "int8"))
         last_exc: Exception | None = None
+        if attempts[0][1] == "cpu" and s.device != "cpu":
+            last_exc = RuntimeError("an Intel Mac has no GPU this app can use" if mac else "no supported GPU")
         for model_name, device, compute in attempts:
             try:
-                self.set_status("starting", f"loading {model_name} on {device.upper()} ({compute}) - the first time "
+                where = "Apple GPU (MLX)" if device == "mlx" else device.upper()
+                self.set_status("starting", f"loading {model_name} on {where} ({compute}) - the first time "
                                             "downloads the model, which can take a few minutes...")
-                self.model = WhisperModel(model_name, device=device, compute_type=compute,
-                                          download_root=str(paths.models_dir()))
-                self.model_desc, self.device = f"{model_name} on {device.upper()} ({compute})", device
+                if device == "mlx":
+                    model = MlxWhisper(model_name)
+                    model.warm_up()
+                    self.model = model
+                else:
+                    from faster_whisper import WhisperModel
+
+                    self.model = WhisperModel(model_name, device=device, compute_type=compute,
+                                              download_root=str(paths.models_dir()))
+                self.model_desc, self.device = f"{model_name} on {where} ({compute})", device
                 self._loaded_key = key
                 if device == "cpu" and s.device != "cpu":
                     self.set_status("warn", f"GPU unavailable ({last_exc}); using CPU with '{model_name}' - slower and "
@@ -168,6 +257,10 @@ class Transcriber:
         s = self.get_settings()
         if rms(job.audio) < 0.002:  # near silence - skip the GPU entirely
             return []
+        if self.device == "mlx":
+            raw = self.model.transcribe(job.audio, None if s.language in ("", "auto") else s.language,
+                                        job.prompt[-200:] or None, s.vad_min_silence_ms)
+            return clean_segments(raw, job.started_at)
         segments, _info = self.model.transcribe(
             job.audio,
             language=None if s.language in ("", "auto") else s.language,

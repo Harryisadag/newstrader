@@ -54,10 +54,33 @@ def run_quiet(args: list[str], timeout: float = 10) -> subprocess.CompletedProce
                           creationflags=CREATE_NO_WINDOW, check=False)
 
 
+def mac_info() -> dict:
+    """Apple chip name and whether the Apple-GPU speech engine (MLX) is installed. Never raises."""
+    import platform
+
+    info = {"chip": None, "apple_silicon": platform.machine() == "arm64", "mlx": False, "macos": platform.mac_ver()[0]}
+    try:
+        out = run_quiet(["/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"], timeout=5)
+        info["chip"] = out.stdout.strip() or None
+    except Exception:
+        pass
+    if info["apple_silicon"]:
+        try:
+            import importlib.util
+
+            info["mlx"] = importlib.util.find_spec("mlx_whisper") is not None
+        except Exception:
+            pass
+    return info
+
+
 def gpu_info() -> dict:
-    """Best-effort GPU description using nvidia-smi and CTranslate2. Never raises."""
+    """Best-effort GPU description using nvidia-smi and CTranslate2 (or the Apple chip on a Mac). Never raises."""
     info: dict = {"cuda_devices": 0, "name": None, "driver": None, "memory_total_mb": None,
                   "memory_used_mb": None, "utilization_pct": None, "error": None}
+    if sys.platform == "darwin":
+        info["mac"] = mac_info()
+        return info
     try:
         import ctranslate2
 

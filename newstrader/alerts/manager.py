@@ -90,7 +90,7 @@ class AlertManager:
 
     def _update_status(self) -> None:
         k = self.ctx.keys.keys
-        detail = ["desktop pop-ups ready" if desktop_supported() else "desktop pop-ups: Windows only",
+        detail = ["desktop pop-ups ready" if desktop_supported() else "desktop pop-ups: Windows/Mac only",
                   "Discord ready" if k.has_discord else "Discord: no webhook URL"]
         self.ctx.state.set_status("alerts", "ok" if k.has_discord or desktop_supported() else "warn", " · ".join(detail))
 

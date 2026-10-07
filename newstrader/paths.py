@@ -3,9 +3,11 @@
 Dev mode (run.bat / python -m newstrader):
     data      -> <repo>/data/
     .env      -> <repo>/.env
-Exe mode (PyInstaller build):
-    data      -> %LOCALAPPDATA%\\NewsTrader\\
-    .env      -> next to NewsTrader.exe if one exists there, otherwise in the data folder
+Built app (PyInstaller):
+    data      -> Windows: %LOCALAPPDATA%\\NewsTrader\\
+                 Mac:     ~/Library/Application Support/NewsTrader/
+    .env      -> Windows: next to NewsTrader.exe if one exists there, otherwise in the data folder
+                 Mac:     in the data folder (files can't be kept inside a signed .app)
 
 Both can be overridden with the NEWSTRADER_DATA_DIR / NEWSTRADER_ENV_FILE environment variables
 (the tests use this).
@@ -21,8 +23,25 @@ from . import APP_NAME
 
 
 def is_frozen() -> bool:
-    """True when running from the PyInstaller-built .exe."""
+    """True when running from the PyInstaller-built .exe / .app."""
     return bool(getattr(sys, "frozen", False))
+
+
+def is_mac() -> bool:
+    return sys.platform == "darwin"
+
+
+def is_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def user_data_base() -> Path:
+    """The per-user folder where installed apps keep their data on this system."""
+    if is_windows():
+        return Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
+    if is_mac():
+        return Path.home() / "Library" / "Application Support"
+    return Path(os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share"))
 
 
 def package_dir() -> Path:
@@ -45,8 +64,7 @@ def data_dir() -> Path:
     if override:
         path = Path(override)
     elif is_frozen():
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        path = Path(base) / APP_NAME
+        path = user_data_base() / APP_NAME
     else:
         path = project_root() / "data"
     path.mkdir(parents=True, exist_ok=True)
@@ -58,9 +76,10 @@ def env_file() -> Path:
     if override:
         return Path(override)
     if is_frozen():
-        beside_exe = Path(sys.executable).parent / ".env"
-        if beside_exe.exists():
-            return beside_exe
+        if is_windows():
+            beside_exe = Path(sys.executable).parent / ".env"
+            if beside_exe.exists():
+                return beside_exe
         return data_dir() / ".env"
     return project_root() / ".env"
 
@@ -86,7 +105,7 @@ def exports_dir() -> Path:
 
 
 def models_dir() -> Path:
-    """Whisper models are downloaded here (~3 GB for large-v3)."""
+    """Whisper and sentiment models are downloaded here (~3 GB for large-v3)."""
     path = data_dir() / "models"
     path.mkdir(parents=True, exist_ok=True)
     return path
