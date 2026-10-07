@@ -11,12 +11,12 @@ under **Assets**.
 | Your computer | Download | Needs |
 |---|---|---|
 | Windows 10 / 11 (64-bit) | `NewsTrader-<version>-windows-x64.zip` | An NVIDIA GPU for fast transcription (it still runs without one, just slower) |
-| Mac with an M1, M2, M3 or M4 chip | `NewsTrader-<version>-mac-apple-silicon.zip` | macOS 15 Sequoia or newer |
+| Mac with an Apple M-series chip (M1 or newer) | `NewsTrader-<version>-mac-apple-silicon.zip` | macOS 15 Sequoia or newer |
 | Older Mac with an Intel chip | `NewsTrader-<version>-mac-intel.zip` | macOS 15 Sequoia or newer |
 
 To check which Mac you have: Apple menu → **About This Mac** → "Chip".
 
-On macOS 14 or older, run NewsTrader from the source code instead. See "Setup on a Mac" in the [README](README.md).
+On macOS 14 or older, run NewsTrader from the source code instead. See "Setup on a Mac" in the [README](https://github.com/Harryisadag/newstrader/blob/claude/zen-gauss-5ktkek/README.md#setup-on-a-mac-one-time-20-minutes).
 
 ## How to install a release
 

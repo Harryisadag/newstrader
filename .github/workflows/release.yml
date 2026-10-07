@@ -59,7 +59,10 @@ jobs:
               echo "::error::$TAG is already published. Raise __version__ in newstrader/__init__.py and add a RELEASES.md entry, then run this again."
               exit 1
             fi
-            echo "Re-using the existing draft $TAG"
+            echo "Re-using the existing draft $TAG - removing files from the earlier run"
+            for a in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
+              gh release delete-asset "$TAG" "$a" --yes
+            done
             gh release edit "$TAG" --title "NewsTrader $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
           else
             gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "NewsTrader $VERSION" --notes-file notes.md
@@ -144,7 +147,9 @@ jobs:
       - name: Zip (Mac)
         if: steps.skip.outputs.skip != 'true' && runner.os == 'macOS'
         run: |
-          codesign --verify --deep --strict dist/NewsTrader.app && echo "ad-hoc signature OK"
+          # a broken signature would make macOS call the downloaded app "damaged" - never publish that
+          codesign --verify --deep dist/NewsTrader.app || { echo "::error::NewsTrader.app signature is broken"; exit 1; }
+          codesign --verify --deep --strict dist/NewsTrader.app || echo "::warning::strict signature check failed (non-strict passed)"
           /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" dist/NewsTrader.app/Contents/Info.plist
           ditto -c -k --keepParent dist/NewsTrader.app "$ASSET"
 
@@ -170,7 +175,7 @@ jobs:
 
   publish:
     needs: [prepare, build]
-    if: always() && needs.prepare.result == 'success'
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -180,7 +185,8 @@ jobs:
     steps:
       - name: Publish once the required apps are attached
         run: |
-          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          # only files whose upload really finished count
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')
           echo "$assets"
           missing=0
           for name in windows-x64 mac-apple-silicon; do
@@ -189,9 +195,13 @@ jobs:
               missing=1
             fi
           done
+          [ "$missing" = "0" ] || exit 1
           if ! grep -qx "NewsTrader-$VERSION-mac-intel.zip" <<< "$assets"; then
             echo "::warning::No Intel Mac build in this release."
+            gh release view "$TAG" --json body --jq .body > body.md
+            printf '\n\n> **No Intel Mac download in this release.** On an Intel Mac, run NewsTrader from the source code - see "Setup on a Mac" in the [README](https://github.com/%s/blob/%s/README.md#setup-on-a-mac-one-time-20-minutes).\n' \
+              "$GH_REPO" "${{ github.event.repository.default_branch }}" >> body.md
+            gh release edit "$TAG" --notes-file body.md
           fi
-          [ "$missing" = "0" ] || exit 1
           gh release edit "$TAG" --draft=false --latest
           echo "Published: $(gh release view "$TAG" --json url --jq .url)"
