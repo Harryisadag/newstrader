@@ -181,7 +181,8 @@ def train_price_model(samples: list[TrainingSample], horizon_minutes: int, min_m
     """Fit, evaluate on the newest 20% (never seen while fitting), then refit on everything for live use."""
     if len(samples) < 200:
         raise ValueError(f"Only {len(samples)} usable headlines - need at least 200. Use a longer date range.")
-    train, valid, test = time_split(samples, embargo_minutes=horizon_minutes)
+    # each label ends 1 minute (latency) + horizon after the headline, so keep that much gap between the parts
+    train, valid, test = time_split(samples, embargo_minutes=horizon_minutes + 2)
     if len(train) < 100 or len(valid) < 30 or len(test) < 50:
         raise ValueError("Not enough headlines to split into train/validation/test - use a longer date range.")
 

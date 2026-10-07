@@ -9,7 +9,8 @@ from newstrader import paths
 from newstrader.config import AppSettings, ConfigStore
 
 
-def test_defaults_match_spec():
+def test_defaults_match_spec(monkeypatch):
+    monkeypatch.setattr("sys.platform", "win32")  # Windows defaults (Mac ones are checked in test_mac.py)
     s = AppSettings()
     assert s.trading.buy_threshold == 80
     assert s.trading.review_threshold == 60
@@ -18,6 +19,7 @@ def test_defaults_match_spec():
     assert s.transcription.max_concurrent_streams == 4
     assert s.transcription.model == "large-v3"
     assert s.ai.model == "claude-sonnet-5-5"
+    assert s.ai.engine == "local"
     ids = {src.id for src in s.sources}
     assert {"bloomberg-tv", "alpaca-news", "cnbc-top", "truth-social-trump"} <= ids
 

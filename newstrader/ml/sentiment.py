@@ -21,7 +21,8 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 FINBERT_REPO = "Xenova/finbert"
-FINBERT_REVISION = "main"
+# Pinned commit (checked by CI's scripts/check_models.py): a change upstream can't silently change trading.
+FINBERT_REVISION = "8f269abebfdd9009d7d9b5e96af7e5c6bfe50b20"
 FINBERT_ONNX = "onnx/model_quantized.onnx"
 FINBERT_FILES = ("config.json", "tokenizer.json", FINBERT_ONNX)
 DEFAULT_ID2LABEL = {0: "positive", 1: "negative", 2: "neutral"}
@@ -146,7 +147,7 @@ class FinbertOnnx:
         self.sess = ort.InferenceSession(str(d / onnx_file), sess_options=so, providers=["CPUExecutionProvider"])
         self.input_names = {i.name for i in self.sess.get_inputs()}
         self.output_name = self.sess.get_outputs()[0].name
-        self.model_id = f"finbert-{FINBERT_REPO.split('/')[0].lower()}-{Path(onnx_file).stem}"
+        self.model_id = f"finbert-{FINBERT_REVISION[:7]}-{Path(onnx_file).stem}"
 
     def predict(self, texts: list[str], batch_size: int = 16) -> list[SentimentScores]:
         import numpy as np
