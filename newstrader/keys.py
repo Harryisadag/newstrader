@@ -18,8 +18,8 @@ KEY_FIELDS: dict[str, str] = {
     "ALPACA_PAPER_SECRET_KEY": "Alpaca paper secret key",
     "ALPACA_LIVE_API_KEY": "Alpaca LIVE API key (real money - leave empty)",
     "ALPACA_LIVE_SECRET_KEY": "Alpaca LIVE secret key (real money - leave empty)",
-    "ANTHROPIC_API_KEY": "Anthropic (Claude) API key",
-    "DISCORD_WEBHOOK_URL": "Discord webhook URL",
+    "ANTHROPIC_API_KEY": "Anthropic (Claude) API key (optional - only for the Claude engine)",
+    "DISCORD_WEBHOOK_URL": "Discord webhook URL (optional)",
     "X_BEARER_TOKEN": "X (Twitter) API bearer token (optional, paid)",
 }
 
