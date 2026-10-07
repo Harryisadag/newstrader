@@ -11,6 +11,7 @@
   <script src="/static/js/app.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/logs.js"></script>
+  <script src="/static/js/portfolio.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -65,8 +66,44 @@
           x-text="problemCount + (problemCount === 1 ? ' problem' : ' problems')"></span>
   </div>
 
-  <div id="kill-slot"></div>
+  <div x-data="killSwitch">
+    <button class="kill-btn" x-show="!engaged" @click="open = true" title="Stop all trading and cancel open orders">KILL SWITCH</button>
+    <button class="kill-btn rearm" x-show="engaged" @click="rearm()" title="Kill switch is engaged">RE-ARM TRADING</button>
+
+    <template x-teleport="body">
+      <div class="modal-backdrop" x-show="open" x-transition.opacity @keydown.escape.window="open = false" @click.self="open = false">
+        <div class="modal danger">
+          <h2>Stop all trading?</h2>
+          <p>This immediately:</p>
+          <ul>
+            <li>stops NewsTrader from placing any new trades, and</li>
+            <li>cancels <b>every open order</b> on your Alpaca account.</li>
+          </ul>
+          <p class="warn-text">Cancelling orders also removes the stop-loss / take-profit protecting your open positions.</p>
+          <label class="row check"><input type="checkbox" x-model="closePositions">
+            <span>Also <b>sell / close every open position</b> at market now</span></label>
+          <p class="muted small">Trading stays stopped (even after a restart) until you click RE-ARM TRADING.</p>
+          <div class="row end gap">
+            <button class="btn ghost" @click="open = false">Cancel</button>
+            <button class="btn danger-solid" :disabled="busy" @click="engage()" x-text="busy ? 'Stopping...' : 'STOP EVERYTHING'"></button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
 </header>
+
+<!-- banners -->
+<div class="banner bad" x-show="s.kill_switch && s.kill_switch.engaged">
+  <b>Kill switch engaged.</b> No trades will be placed until you click RE-ARM TRADING (top right).
+</div>
+<div class="banner warn" x-show="s.halted_today && !(s.kill_switch && s.kill_switch.engaged)">
+  <b>Daily loss limit hit.</b> Trading is paused until the next trading day.
+  <button class="btn ghost small" @click="if (confirm('Resume trading today anyway?')) NT.api.post('/halt/clear').then(() => refresh())">Resume anyway</button>
+</div>
+<div class="banner live" x-show="s.mode === 'live'">
+  <b>LIVE TRADING - REAL MONEY.</b> Switch back in Settings -> Live trading, or restart the app.
+</div>
 
 <!-- ===================== TABS ===================== -->
 <nav class="tabs">
@@ -93,18 +130,129 @@
   </section>
 
   <!-- ===================== PORTFOLIO ===================== -->
-  <section x-show="store.tab === 'portfolio'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Portfolio</h2>
-      <p class="muted">Open positions, P/L and account value chart (phase 2).</p>
+  <section x-show="store.tab === 'portfolio'" class="tab-page" x-data="portfolioTab">
+    <template x-if="data && !data.connected">
+      <div class="card"><h2>Not connected to Alpaca</h2>
+        <p class="muted" x-text="data.error || 'Add your Alpaca paper keys in Settings -> API keys, then run Logs -> Diagnostics.'"></p></div>
+    </template>
+
+    <div class="kpis" x-show="data && data.account">
+      <div class="kpi"><div class="kpi-label">Equity</div><div class="kpi-value" x-text="fmt.money(data?.account?.equity)"></div></div>
+      <div class="kpi"><div class="kpi-label">Today</div>
+        <div class="kpi-value" :class="fmt.plClass(data?.account?.day_pl)"><span x-text="fmt.signedMoney(data?.account?.day_pl)"></span>
+          <span class="small" x-text="'(' + fmt.pct(data?.account?.day_pl_pct) + ')'"></span></div></div>
+      <div class="kpi"><div class="kpi-label">Unrealized P/L</div><div class="kpi-value" :class="fmt.plClass(totalUnrealized)" x-text="fmt.signedMoney(totalUnrealized)"></div></div>
+      <div class="kpi"><div class="kpi-label">Cash</div><div class="kpi-value" x-text="fmt.money(data?.account?.cash)"></div></div>
+      <div class="kpi"><div class="kpi-label">Buying power</div><div class="kpi-value" x-text="fmt.money(data?.account?.buying_power)"></div></div>
+      <div class="kpi"><div class="kpi-label">Open positions</div><div class="kpi-value" x-text="data?.positions?.length ?? 0"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Account value</h2>
+        <div class="seg">
+          <template x-for="p in ['1D','1W','1M','3M','1A']" :key="p">
+            <button :class="{ active: period === p }" @click="setPeriod(p)" x-text="p === '1A' ? '1Y' : p"></button>
+          </template>
+        </div>
+      </div>
+      <div class="chart-box"><canvas x-ref="equityChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Open positions</h2>
+        <button class="btn ghost small" @click="load()" :disabled="loading">Refresh</button></div>
+      <table class="table">
+        <thead><tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Avg entry</th><th class="num">Price</th>
+          <th class="num">Market value</th><th class="num">Unrealized P/L</th><th class="num">Today</th><th class="num">Stop</th><th class="num">Target</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="p in (data?.positions || [])" :key="p.symbol">
+            <tr>
+              <td><b x-text="p.symbol"></b></td>
+              <td><span class="pill small" :class="p.side === 'long' ? 'good' : 'bad'" x-text="p.side"></span></td>
+              <td class="num" x-text="fmt.num(p.qty, 4)"></td>
+              <td class="num" x-text="fmt.money(p.avg_entry_price)"></td>
+              <td class="num" x-text="fmt.money(p.current_price)"></td>
+              <td class="num" x-text="fmt.money(p.market_value)"></td>
+              <td class="num" :class="fmt.plClass(p.unrealized_pl)"><span x-text="fmt.signedMoney(p.unrealized_pl)"></span>
+                <span class="small" x-text="'(' + fmt.pct(p.unrealized_plpc) + ')'"></span></td>
+              <td class="num" :class="fmt.plClass(p.change_today)" x-text="fmt.pct(p.change_today)"></td>
+              <td class="num muted" x-text="p.stop_loss ? fmt.money(p.stop_loss) : '—'"></td>
+              <td class="num muted" x-text="p.take_profit ? fmt.money(p.take_profit) : '—'"></td>
+              <td class="right"><button class="btn ghost small danger" :disabled="busy[p.symbol]" @click="closePosition(p)">Close</button></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="data && !(data.positions || []).length" class="muted pad">No open positions.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Open orders</h2></div>
+      <table class="table">
+        <thead><tr><th>Submitted</th><th>Symbol</th><th>Kind</th><th>Side</th><th class="num">Qty</th><th>Type</th><th class="num">Price</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="o in openRows" :key="o.id">
+            <tr>
+              <td class="nowrap" x-text="fmt.dateTime(o.submitted_at)"></td>
+              <td><b x-text="o.symbol"></b></td>
+              <td><span class="tag" x-text="o.kind === 'entry' ? 'Entry' : (o.order_type === 'limit' ? 'Take-profit' : 'Stop-loss')"></span></td>
+              <td x-text="o.side"></td>
+              <td class="num" x-text="fmt.num(o.qty, 4)"></td>
+              <td x-text="o.order_type"></td>
+              <td class="num" x-text="o.limit_price ? fmt.money(o.limit_price) : (o.stop_price ? fmt.money(o.stop_price) : 'market')"></td>
+              <td><span class="pill small info" x-text="o.status"></span></td>
+              <td class="right"><button class="btn ghost small danger" @click="cancelOrder(o)">Cancel</button></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="data && !openRows.length" class="muted pad">No open orders.</div>
     </div>
   </section>
 
   <!-- ===================== TRADES ===================== -->
-  <section x-show="store.tab === 'trades'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Trade Log</h2>
-      <p class="muted">All trades with CSV export (phase 2).</p>
+  <section x-show="store.tab === 'trades'" class="tab-page" x-data="tradesTab">
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-label">Closed trades</div><div class="kpi-value" x-text="totals.closed"></div></div>
+      <div class="kpi"><div class="kpi-label">Realized P/L</div><div class="kpi-value" :class="fmt.plClass(totals.pl)" x-text="fmt.signedMoney(totals.pl)"></div></div>
+      <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" x-text="totals.winRate === null ? '—' : totals.winRate.toFixed(0) + '%'"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Trade log</h2>
+        <div class="row gap">
+          <input type="search" class="small" placeholder="Filter symbol" x-model="symbol" @keydown.enter="load()">
+          <label class="row small"><input type="checkbox" x-model="showLegs"> Show unfilled exit legs</label>
+          <button class="btn ghost small" @click="load()">Refresh</button>
+          <a class="btn ghost small" :href="downloadUrl()" download>Download CSV</a>
+          <button class="btn primary small" @click="exportCsv()">Export CSV to folder</button>
+        </div>
+      </div>
+      <table class="table">
+        <thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th class="num">Qty</th><th class="num">Fill price</th><th>Status</th>
+          <th class="num">Realized P/L</th><th class="num">Conf.</th><th>Why</th><th>Mode</th></tr></thead>
+        <tbody>
+          <template x-for="t in visible" :key="t.id">
+            <tr>
+              <td class="nowrap" x-text="fmt.dateTime(t.filled_at || t.submitted_at)"></td>
+              <td><b x-text="t.symbol"></b></td>
+              <td><span class="tag" x-text="intentLabel(t.intent)"></span> <span class="small muted" x-text="t.side"></span></td>
+              <td class="num" x-text="fmt.num(t.filled_qty || t.qty, 4)"></td>
+              <td class="num" x-text="t.filled_avg_price ? fmt.money(t.filled_avg_price) : (t.stop_price ? 'stop ' + fmt.money(t.stop_price) : (t.take_profit_price ? 'limit ' + fmt.money(t.take_profit_price) : '—'))"></td>
+              <td><span class="pill small" :class="statusClass(t.status)" x-text="t.status"></span></td>
+              <td class="num" :class="fmt.plClass(t.realized_pl)" x-text="t.realized_pl === null || t.realized_pl === undefined ? '' : fmt.signedMoney(t.realized_pl)"></td>
+              <td class="num" x-text="t.confidence ?? ''"></td>
+              <td class="why" @click="expanded = expanded === t.id ? null : t.id">
+                <div x-text="t.reason"></div>
+                <div class="small muted" x-show="expanded === t.id && t.signal_reasoning" x-text="'AI: ' + t.signal_reasoning"></div>
+              </td>
+              <td><span class="pill small" :class="t.mode === 'live' ? 'bad' : 'good'" x-text="t.mode"></span></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="!visible.length && !loading" class="muted pad">No trades yet.</div>
     </div>
   </section>
 
@@ -268,9 +416,30 @@
       </div>
 
       <!-- Live trading (danger zone) -->
-      <div x-show="section === 'live'" class="card danger-zone">
-        <h2>Live trading</h2>
-        <p>NewsTrader always starts in <b>PAPER</b> mode (fake money). Live trading controls arrive in phase 2.</p>
+      <div x-show="section === 'live'" class="card danger-zone" x-data="liveTrading">
+        <h2>Live trading (real money)</h2>
+        <p>NewsTrader always starts in <b>PAPER</b> mode (fake money) and goes back to paper every time it restarts.</p>
+        <p>Current mode: <span class="pill" :class="info.mode === 'live' ? 'bad' : 'good'" x-text="info.mode.toUpperCase()"></span></p>
+
+        <template x-if="info.mode === 'live'">
+          <div><button class="btn primary" @click="disarm()">Switch back to PAPER now</button></div>
+        </template>
+
+        <template x-if="info.mode !== 'live'">
+          <div class="live-form">
+            <template x-if="!info.has_live_keys">
+              <p class="warn-text">Live trading is locked: no live Alpaca keys are saved. You'd need to add ALPACA_LIVE_API_KEY and
+                ALPACA_LIVE_SECRET_KEY under API keys first. (We recommend staying on paper until Performance shows the AI is reliably right.)</p>
+            </template>
+            <label class="row check"><input type="checkbox" x-model="enable" :disabled="!info.has_live_keys">
+              <span>I want to trade with real money. I understand I can lose money and that NewsTrader is experimental.</span></label>
+            <div class="field">
+              <label>Type exactly: <code x-text="info.phrase"></code></label>
+              <input type="text" x-model="phrase" :disabled="!info.has_live_keys || !enable" autocomplete="off" spellcheck="false">
+            </div>
+            <button class="btn danger-solid" :disabled="!enable || phrase !== info.phrase || busy" @click="arm()">Switch to LIVE trading</button>
+          </div>
+        </template>
       </div>
 
       <!-- save bar -->

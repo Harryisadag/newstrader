@@ -218,6 +218,11 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_bt_results_run ON backtest_results(run_id);
     """,
+    # 2 - link bracket legs to their parent order
+    """
+    ALTER TABLE orders ADD COLUMN parent_alpaca_id TEXT;
+    CREATE INDEX idx_orders_parent ON orders(parent_alpaca_id);
+    """,
 ]
 
 

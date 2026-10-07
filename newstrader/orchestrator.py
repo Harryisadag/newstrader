@@ -65,7 +65,12 @@ class Orchestrator:
         log.info("NewsTrader engine stopped")
 
     def _build_services(self) -> None:
-        """Later phases register their services here (trading, news, streams, alerts...)."""
+        """Create every background service, in start order."""
+        if self.services:
+            return
+        from .trading.trader import Trader
+
+        self.add(Trader(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary

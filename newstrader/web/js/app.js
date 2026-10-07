@@ -80,7 +80,10 @@ document.addEventListener("alpine:init", () => {
       const s = this.s;
       if (s.kill_switch && s.kill_switch.engaged) return { label: "KILLED", cls: "bad", tip: "Kill switch engaged - no trading until you re-arm it." };
       if (s.halted_today) return { label: "HALTED", cls: "bad", tip: "Daily loss limit hit - trading resumes next trading day." };
-      if (!s.keys || !s.keys.alpaca_paper) return { label: "NO KEYS", cls: "warn", tip: "Add your Alpaca paper keys in Settings -> API Keys." };
+      if (!s.broker_connected) {
+        if (!s.keys || !s.keys.alpaca_paper) return { label: "NO KEYS", cls: "warn", tip: "Add your Alpaca paper keys in Settings -> API Keys." };
+        return { label: "OFFLINE", cls: "bad", tip: s.broker_error || "Not connected to Alpaca - see Logs." };
+      }
       if (!s.auto_trade) return { label: "MONITOR ONLY", cls: "warn", tip: "Auto-trade is off (Settings -> Trading)." };
       return { label: "ACTIVE", cls: "good", tip: "Auto-trading is on." };
     },

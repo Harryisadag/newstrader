@@ -139,6 +139,7 @@ main { flex: 1; overflow: auto; }
 .btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.good { background: var(--good); border-color: var(--good); color: #062a12; }
 .btn.small { padding: 4px 10px; font-size: 12px; }
+a.btn { text-decoration: none; display: inline-block; }
 
 input[type=text], input[type=number], input[type=password], input[type=search], input[type=date], select, textarea {
   font: inherit; color: var(--text); background: var(--bg-2);
@@ -262,3 +263,25 @@ pre.raw { white-space: pre-wrap; word-break: break-word; font-family: var(--mono
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 6px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- banners ---------- */
+.banner { padding: 8px 18px; font-size: 13px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+.banner.bad { background: var(--bad-bg); color: #ffb4b4; }
+.banner.warn { background: var(--warn-bg); color: #ffd58a; }
+.banner.live { background: var(--bad); color: #fff; font-weight: 600; }
+
+/* ---------- KPIs ---------- */
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.kpi-value { font-size: 20px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.chart-box { position: relative; height: 260px; }
+.chart-box.small { height: 200px; }
+td.why { cursor: pointer; max-width: 420px; font-size: 12px; color: var(--text-2); }
+.warn-text { color: var(--warn); }
+label.check { align-items: flex-start; gap: 10px; margin: 12px 0; cursor: pointer; }
+label.check input { margin-top: 3px; }
+.live-form { display: flex; flex-direction: column; gap: 12px; max-width: 640px; margin-top: 10px; }
+.live-form .field input { font-family: var(--mono); }
+.modal ul { margin: 6px 0 10px; padding-left: 20px; }
+.modal p { margin: 6px 0; }
