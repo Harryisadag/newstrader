@@ -196,7 +196,7 @@ Go to **Backtest → Local ML model → Train the price model**. It's free and r
 
 The price model is **only used if it passed that test**. Its edge over chance has to hold up when the test days are reshuffled (so it isn't luck), over at least 10 trading days. Honestly, predicting the next hour from headlines is hard, so don't be surprised if it doesn't pass. The usual fix is more history (Settings → AI engine → Training history).
 
-**If it doesn't pass:** the engine keeps scoring with FinBERT alone. Those signals then go to **manual review instead of auto-buying**, because your own history just showed the wording didn't reliably predict moves. You can change this with Settings → AI engine → *Sentiment-only signals can auto-buy*.
+**If it doesn't pass:** the engine keeps scoring with FinBERT alone. Those signals then go to **manual review instead of auto-buying**, because your own history just showed the wording didn't reliably predict moves. You can change this with Settings → AI engine → *Sentiment-only signals can auto-buy*. While LIVE (real-money) trading is on, sentiment-only signals always need your approval.
 
 > **Confidence with the price model is lower — that's normal.** It's an honest, tested probability, so 60–70 is already a strong call. Use the threshold table on the Backtest tab to pick your **buy** and **review** thresholds in Settings → Trading. With FinBERT alone, the default 80/60 thresholds make sense.
 
