@@ -20,6 +20,7 @@ htmlcov/
 # Build output
 build/
 dist/
+*.whl
 
 # OS / editors
 .DS_Store

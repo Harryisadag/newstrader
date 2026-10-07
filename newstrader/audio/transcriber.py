@@ -159,6 +159,16 @@ def clean_segments(raw: list, chunk_start: float) -> list[Segment]:
     return out
 
 
+def _cuda_devices() -> int | None:
+    """How many CUDA GPUs CTranslate2 can see; None if it can't tell (then CUDA is still tried)."""
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count()
+    except Exception:
+        return None
+
+
 class Transcriber:
     name = "transcriber"
 
@@ -236,14 +246,15 @@ class Transcriber:
         if s.device == "mlx" or (s.device in ("auto", "cuda") and mac):
             if is_apple_silicon():
                 attempts.append((s.model, "mlx", "float16"))
-        elif s.device in ("cuda", "auto"):
+        elif s.device in ("cuda", "auto") and _cuda_devices() != 0:
+            # (a failed CUDA attempt still downloads the big model first, so skip it when there's no NVIDIA GPU)
             attempts.append((s.model, "cuda", s.compute_type))
             if s.compute_type != "float16":
                 attempts.append((s.model, "cuda", "float16"))
         attempts.append((s.model if s.device == "cpu" else CPU_FALLBACK_MODEL, "cpu", "int8"))
         last_exc: Exception | None = None
         if attempts[0][1] == "cpu" and s.device != "cpu":
-            last_exc = RuntimeError("an Intel Mac has no GPU this app can use" if mac else "no supported GPU")
+            last_exc = RuntimeError("an Intel Mac has no GPU this app can use" if mac else "no NVIDIA GPU found")
         for model_name, device, compute in attempts:
             try:
                 where = "Apple GPU (MLX)" if device == "mlx" else device.upper()

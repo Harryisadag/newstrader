@@ -20,6 +20,13 @@ MAC = sys.platform == "darwin"
 UPDATE = "update.command" if MAC else "update.bat"
 
 
+def _update_hint() -> str:
+    """How to get newer bundled tools: the downloaded app can only be replaced by a newer release."""
+    if paths.is_frozen():
+        return "Download the newest NewsTrader release (see RELEASES.md on GitHub)"
+    return f"Run {UPDATE}"
+
+
 def _check(name: str, status: str, detail: str, fix: str = "") -> dict:
     # status: ok | warn | error
     return {"name": name, "status": status, "detail": detail, "fix": fix}
@@ -143,8 +150,14 @@ def _check_gpu(ctx: AppContext) -> dict:
         from .system_monitor import describe_gpu
 
         level, detail = describe_gpu(info)
-        fix = "" if level == "ok" else ("Run run.command again (it installs the Apple-GPU engine on macOS 14+)."
-                                        if mac.get("apple_silicon") else "Pick 'small' or 'base' in Settings -> Transcription.")
+        if level == "ok":
+            fix = ""
+        elif not mac.get("apple_silicon"):
+            fix = "Pick 'small' or 'base' in Settings -> Transcription."
+        elif paths.is_frozen():
+            fix = f"{_update_hint()}."
+        else:
+            fix = "Run run.command again (it installs the Apple-GPU engine on macOS 14+)."
         return _check("Speech-to-text hardware", level, f"{detail} · macOS {mac.get('macos') or '?'}", fix)
     want_cuda = ctx.config.settings.transcription.device in ("cuda", "auto")
     if info["cuda_devices"] and info["cuda_devices"] > 0:
@@ -156,8 +169,14 @@ def _check_gpu(ctx: AppContext) -> dict:
             detail += f", compute types: {', '.join(types)}"
         except Exception as exc:
             return _check("GPU (CUDA)", "error", f"{detail}; CUDA libraries failed to load: {exc}",
+                          "Update your NVIDIA driver. If it still fails, download the newest NewsTrader release."
+                          if paths.is_frozen() else
                           f"Run {UPDATE} to reinstall nvidia-cublas-cu12, and update your NVIDIA driver.")
         return _check("GPU (CUDA)", "ok", detail)
+    if not info.get("name"):  # no NVIDIA card at all - the CPU is the expected path, not a fault
+        return _check("GPU (CUDA)", "warn", info.get("error") or "No NVIDIA GPU found",
+                      "TV transcription runs on the CPU with the 'small' model (slower). Nothing to fix "
+                      "unless this PC has an NVIDIA card.")
     status = "error" if want_cuda else "warn"
     detail = info.get("error") or "No CUDA GPU detected"
     if info.get("name"):
@@ -170,7 +189,7 @@ def _check_ffmpeg() -> dict:
     exe = find_ffmpeg()
     if not exe:
         return _check("ffmpeg", "error", "not found",
-                      f"Run {UPDATE}, or install it with: " + ("brew install ffmpeg" if MAC else "winget install Gyan.FFmpeg"))
+                      f"{_update_hint()}, or install it with: " + ("brew install ffmpeg" if MAC else "winget install Gyan.FFmpeg"))
     try:
         out = run_quiet([exe, "-hide_banner", "-version"], timeout=10)
         first = (out.stdout or out.stderr).splitlines()[0] if (out.stdout or out.stderr) else "unknown version"
@@ -186,10 +205,10 @@ def _check_ytdlp() -> list[dict]:
 
         out.append(_check("yt-dlp", "ok", f"version {yt_dlp.version.__version__}"))
     except Exception as exc:
-        out.append(_check("yt-dlp", "error", str(exc), f"Run {UPDATE}."))
+        out.append(_check("yt-dlp", "error", str(exc), f"{_update_hint()}."))
     deno = find_deno()
     out.append(_check("Deno (YouTube JavaScript runtime)", "ok" if deno else "warn", deno or "not found",
-                      "" if deno else f"Run {UPDATE}. Without it some YouTube streams may fail."))
+                      "" if deno else f"{_update_hint()}. Without it some YouTube streams may fail."))
     return out
 
 

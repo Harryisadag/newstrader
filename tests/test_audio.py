@@ -151,6 +151,73 @@ def test_silent_chunks_skip_the_model():
     assert t._transcribe(Job("tv", 0.0, np.zeros(16000, dtype=np.float32))) == []
 
 
+class RecordingWhisper:
+    loaded: list = []
+
+    def __init__(self, name, device, compute_type, download_root):
+        if device == "cuda":
+            RecordingWhisper.loaded.append((name, device))
+            raise RuntimeError("CUDA failed")
+        RecordingWhisper.loaded.append((name, device))
+
+
+@pytest.fixture
+def pc_whisper(monkeypatch):
+    import faster_whisper
+
+    from newstrader.audio import transcriber as tr
+
+    monkeypatch.setattr(tr.sys, "platform", "win32")
+    monkeypatch.setattr(faster_whisper, "WhisperModel", RecordingWhisper)
+    RecordingWhisper.loaded = []
+    return tr
+
+
+def _gpu_settings():
+    return SimpleNamespace(model="large-v3", device="cuda", compute_type="float16", language="en", beam_size=1,
+                           vad_min_silence_ms=500)
+
+
+def test_no_nvidia_gpu_skips_the_big_cuda_model(pc_whisper, monkeypatch):
+    monkeypatch.setattr(pc_whisper, "_cuda_devices", lambda: 0)
+    statuses = []
+    t = Transcriber(_gpu_settings, lambda lvl, d: statuses.append((lvl, d)))
+    t._load()
+    # straight to the small CPU model - large-v3 (3 GB) is never downloaded for a GPU that isn't there
+    assert RecordingWhisper.loaded == [("small", "cpu")]
+    assert statuses[-1][0] == "warn" and "no NVIDIA GPU" in statuses[-1][1]
+
+
+@pytest.mark.parametrize("count", [1, None])  # a GPU, or CTranslate2 couldn't tell -> CUDA is still tried
+def test_cuda_is_tried_when_a_gpu_may_exist(pc_whisper, monkeypatch, count):
+    monkeypatch.setattr(pc_whisper, "_cuda_devices", lambda: count)
+    t = Transcriber(_gpu_settings, lambda *a: None)
+    t._load()
+    assert RecordingWhisper.loaded == [("large-v3", "cuda"), ("small", "cpu")]
+
+
+def test_diagnostics_gpu_check_without_nvidia(monkeypatch):
+    from newstrader import diagnostics
+
+    monkeypatch.setattr(diagnostics.sys, "platform", "win32")
+    ctx = SimpleNamespace(config=SimpleNamespace(settings=SimpleNamespace(
+        transcription=SimpleNamespace(device="cuda"))))
+    monkeypatch.setattr(diagnostics, "gpu_info", lambda: {"cuda_devices": 0, "name": None, "error": None})
+    assert diagnostics._check_gpu(ctx)["status"] == "warn"  # no NVIDIA card is normal, not a fault
+    monkeypatch.setattr(diagnostics, "gpu_info", lambda: {"cuda_devices": 0, "name": "NVIDIA RTX 3060 Ti",
+                                                          "error": None})
+    assert diagnostics._check_gpu(ctx)["status"] == "error"  # card present but unusable -> driver problem
+
+
+def test_diagnostics_update_hint_for_the_downloaded_app(monkeypatch):
+    from newstrader import diagnostics
+
+    monkeypatch.setattr(diagnostics.paths, "is_frozen", lambda: True)
+    assert "newest NewsTrader release" in diagnostics._update_hint()
+    monkeypatch.setattr(diagnostics.paths, "is_frozen", lambda: False)
+    assert diagnostics._update_hint() == f"Run {diagnostics.UPDATE}"
+
+
 # ---------------------------------------------------------------- rolling transcript -> AI
 def test_rolling_transcript_marks_lines_once():
     r = RollingTranscript()

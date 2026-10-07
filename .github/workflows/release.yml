@@ -124,6 +124,8 @@ jobs:
 
       - name: Build
         if: steps.skip.outputs.skip != 'true'
+        env:
+          PYINSTALLER_STRICT_BUNDLE_CODESIGN_ERROR: "1"  # Mac: a failed ad-hoc signing stops the build
         run: pyinstaller --noconfirm --clean newstrader.spec
 
       - name: Start the built app and check it works (tools + FinBERT)
@@ -148,10 +150,15 @@ jobs:
         if: steps.skip.outputs.skip != 'true' && runner.os == 'macOS'
         run: |
           # a broken signature would make macOS call the downloaded app "damaged" - never publish that
-          codesign --verify --deep dist/NewsTrader.app || { echo "::error::NewsTrader.app signature is broken"; exit 1; }
-          codesign --verify --deep --strict dist/NewsTrader.app || echo "::warning::strict signature check failed (non-strict passed)"
+          codesign --verify --deep --strict --verbose=2 dist/NewsTrader.app \
+            || { echo "::error::NewsTrader.app fails the strict signature check - macOS would call it damaged"; exit 1; }
           /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" dist/NewsTrader.app/Contents/Info.plist
           ditto -c -k --keepParent dist/NewsTrader.app "$ASSET"
+          # check the copy users actually get, after unzipping
+          rm -rf "$RUNNER_TEMP/zipcheck"
+          ditto -x -k "$ASSET" "$RUNNER_TEMP/zipcheck"
+          codesign --verify --deep --strict "$RUNNER_TEMP/zipcheck/NewsTrader.app" \
+            || { echo "::error::the app's signature broke inside the zip"; exit 1; }
 
       - name: Checksum, size check and attach to the release
         if: steps.skip.outputs.skip != 'true'

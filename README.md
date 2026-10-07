@@ -27,13 +27,13 @@ NewsTrader is a desktop app for **Windows and Mac** that:
 ## Download the ready-made app (easiest)
 
 You don't need Python to use a release:
-1. Download the zip for your computer from the **[Releases page](https://github.com/Harryisadag/newstrader/releases)**.
-   - Windows: `windows-x64`
-   - Mac with an M-series chip: `mac-apple-silicon`
-   - Intel Mac: `mac-intel`
+1. Sign in to GitHub (the repository is private), then download the zip for your computer from the **[Releases page](https://github.com/Harryisadag/newstrader/releases)**:
+   - Windows 10 / 11: `windows-x64`
+   - Mac with an M-series chip, macOS 15 Sequoia or newer: `mac-apple-silicon`
+   - Intel Mac, macOS 15 Sequoia or newer: `mac-intel`
 2. Unzip it and open NewsTrader.
 
-[RELEASES.md](RELEASES.md) is the catalogue of every version. It covers what changed, which file to pick, and the one-time "Run anyway" / "Open Anyway" steps for apps that aren't from a store. To run the latest code instead, or on an older Mac, follow the setup below.
+[RELEASES.md](RELEASES.md) is the catalogue of every version. It covers what changed, which file to pick, the "Run anyway" / "Open Anyway" steps for apps that aren't from a store, and how to update. To run the latest code instead, or on a Mac with macOS 14 or older, follow the setup below.
 
 ## Contents
 1. [Setup on Windows (one time, ~20 minutes)](#setup-on-windows-one-time-20-minutes)
@@ -366,7 +366,9 @@ The app keeps its settings, database and keys in `~/Library/Application Support/
 ---
 
 ## Updating
-Double-click **`update.bat`** (Windows) or **`update.command`** (Mac). It:
+Using a downloaded release? Download the newest one instead (see "Updating" in [RELEASES.md](RELEASES.md)).
+
+From the source code: double-click **`update.bat`** (Windows) or **`update.command`** (Mac). It:
 - pulls the latest code if you used GitHub Desktop / git (otherwise it tells you to re-download the ZIP), and
 - updates all packages, including **yt-dlp**, which needs updating whenever YouTube changes something.
 
@@ -386,9 +388,9 @@ If you use the built app, run `build_exe.bat` / `build_app.command` again after 
 | The price model "isn't used" | It didn't beat chance on unseen news. Train with more history (Settings → AI engine → Training history), or switch "Use the price-trained model" to Always at your own risk. |
 | Training fails with Alpaca errors | You hit Alpaca's free rate limit or a network blip. Days already downloaded are saved, so click Train again later. |
 | A TV stream says "offline - not live right now" | That channel isn't broadcasting. It re-checks every 5 minutes. Turn on another stream or add one. |
-| YouTube error "Sign in to confirm you're not a bot" | Settings → Transcription → **YouTube cookies from browser** → pick the browser where you're logged in to YouTube. Then run the update script. On a Mac, Chrome asks for Keychain access, and Safari needs Full Disk Access for NewsTrader/Terminal. |
-| Streams fail after working before | Run the **update** script (YouTube changed; yt-dlp needs updating). |
-| "GPU unavailable … using CPU" (Windows) | Update the NVIDIA driver, restart, then run Logs → Run diagnostics. If it still fails, run `update.bat`. |
+| YouTube error "Sign in to confirm you're not a bot" | Settings → Transcription → **YouTube cookies from browser** → pick the browser where you're logged in to YouTube. Then update (source version: run the update script; downloaded app: get the newest release). On a Mac, Chrome asks for Keychain access, and Safari needs Full Disk Access for NewsTrader/Terminal. |
+| Streams fail after working before | YouTube changed and yt-dlp needs updating. Source version: run the **update** script. Downloaded app: get the newest release from the Releases page. |
+| "GPU unavailable … using CPU" (Windows) | No NVIDIA card? That's expected: it uses the CPU. Otherwise update the NVIDIA driver, restart, then run Logs → Run diagnostics. If it still fails, run `update.bat` (or get the newest release). |
 | Mac: "Apple-GPU speech engine isn't installed" | Run `run.command` again (it needs macOS 14+ on an M-series Mac). |
 | "Transcription falling behind" | Turn off a stream, or switch to `large-v3-turbo` (or `small` on an Intel Mac). |
 | An RSS feed shows a red dot | That site blocked or changed its feed. Turn it off or remove it in Settings → News sources. |
@@ -396,7 +398,7 @@ If you use the built app, run `build_exe.bat` / `build_app.command` again after 
 | Nothing trades | Signals → look at the **Outcome** column. The reason (market closed, cooldown, max positions, confidence below threshold…) is there. |
 | Desktop pop-ups don't appear | Turn off "Do not disturb" / Focus. On a Mac, allow notifications for **Script Editor**. Use Settings → Alerts → Send a test alert. |
 
-For anything else, look at **Logs**. The log files are in the `data/logs` folder (Logs → Open log files).
+For anything else, look at **Logs**. Logs → Open log files shows the log folder (see [Where your files are](#where-your-files-are)).
 
 ---
 
@@ -463,6 +465,8 @@ On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache
 - **Making a release:**
   1. Raise `__version__` in `newstrader/__init__.py` and add a `## vX.Y.Z` entry to `RELEASES.md`.
   2. Run Actions → **release** → Run workflow.
+
+  A published version is never rebuilt, so to ship a fix (or a newer yt-dlp after a YouTube change), raise the version (e.g. 0.2.1 → 0.2.2) and add its entry.
 
   The workflow builds Windows, Apple Silicon and Intel Mac apps and smoke-tests each one. It attaches the zips and SHA-256 checksums to a draft release, then publishes it. The release notes come from `RELEASES.md` (`scripts/release_notes.py`).
 
