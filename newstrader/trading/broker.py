@@ -129,10 +129,18 @@ class Broker:
                 "timestamp": _iso(c.timestamp)}
 
     def calendar(self, start: date, end: date) -> list[dict]:
+        """Trading sessions. Alpaca gives open/close as New York wall-clock times without a timezone."""
+        from zoneinfo import ZoneInfo
+
         from alpaca.trading.requests import GetCalendarRequest
 
+        et = ZoneInfo("America/New_York")
+
+        def stamp(dt: datetime) -> str | None:
+            return _iso(dt if dt.tzinfo else dt.replace(tzinfo=et))
+
         days = self.trading.get_calendar(GetCalendarRequest(start=start, end=end))
-        return [{"date": d.date.isoformat(), "open": _iso(d.open), "close": _iso(d.close)} for d in days]
+        return [{"date": d.date.isoformat(), "open": stamp(d.open), "close": stamp(d.close)} for d in days]
 
     def positions(self) -> list[dict]:
         return [position_to_dict(p) for p in self.trading.get_all_positions()]
@@ -214,6 +222,17 @@ class Broker:
         rows = res.data.get(symbol, []) if hasattr(res, "data") else []
         return [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
                  "v": _f(b.volume)} for b in rows]
+
+    def news(self, start: datetime, end: datetime, symbols: list[str] | None = None, limit: int = 200) -> list[dict]:
+        """Historical Benzinga news (oldest first), used by backtests."""
+        from alpaca.data.historical.news import NewsClient
+        from alpaca.data.requests import NewsRequest
+
+        client = NewsClient(self.creds.api_key, self.creds.secret_key)
+        req = NewsRequest(start=start, end=end, symbols=",".join(symbols) if symbols else None, limit=limit,
+                          sort="asc", include_content=True)
+        res = client.get_news(req)
+        return [n.model_dump() for n in res.data.get("news", [])]
 
     # ---------------------------------------------------------------- orders
     def submit_bracket(self, symbol: str, side: str, qty: int, take_profit: float, stop_loss: float,

@@ -15,6 +15,7 @@
   <script src="/static/js/live.js"></script>
   <script src="/static/js/signals.js"></script>
   <script src="/static/js/streams.js"></script>
+  <script src="/static/js/performance.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -431,19 +432,181 @@
   </section>
 
   <!-- ===================== PERFORMANCE ===================== -->
-  <section x-show="store.tab === 'performance'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Performance</h2>
-      <p class="muted">Is the AI actually right? Win rate by confidence and source (phase 6).</p>
+  <section x-show="store.tab === 'performance'" class="tab-page" x-data="performanceTab">
+    <div class="card">
+      <div class="card-head">
+        <h2>Is the AI actually right?</h2>
+        <div class="row gap">
+          <span class="small muted">Measured after</span>
+          <div class="seg">
+            <template x-for="h in [['5m','5 min'],['1h','1 hour'],['1d','1 trading day']]" :key="h[0]">
+              <button :class="{ active: horizon === h[0] }" @click="horizon = h[0]; load()" x-text="h[1]"></button>
+            </template>
+          </div>
+          <select class="small" x-model.number="days" @change="load()">
+            <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="0">All time</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted small">For every bullish/bearish signal, NewsTrader records the price when it fired and again 5 minutes,
+        1 hour and 1 trading day later. A signal counts as <b>right</b> if the stock moved the way the AI said
+        (up for bullish, down for bearish) — whether or not it was traded.</p>
+      <div class="kpis" x-show="data">
+        <div class="kpi"><div class="kpi-label">Signals measured</div><div class="kpi-value" x-text="data?.overall.count ?? 0"></div></div>
+        <div class="kpi"><div class="kpi-label">Right</div><div class="kpi-value" :class="(data?.overall.win_rate ?? 0) >= 50 ? 'pos' : 'neg'" x-text="data?.overall.win_rate === null ? '—' : data?.overall.win_rate + '%'"></div></div>
+        <div class="kpi"><div class="kpi-label">Avg move in predicted direction</div><div class="kpi-value" :class="retClass(data?.overall.avg_return)" x-text="data?.overall.avg_return === null ? '—' : fmt.pct(data?.overall.avg_return)"></div></div>
+        <div class="kpi"><div class="kpi-label">Still waiting</div><div class="kpi-value" x-text="data?.pending ?? 0"></div></div>
+      </div>
+    </div>
+
+    <div class="perf-grid">
+      <div class="card">
+        <div class="card-head"><h2>Win rate by AI confidence</h2></div>
+        <div class="chart-box small"><canvas x-ref="bucketChart"></canvas></div>
+        <p class="note">Good sign: higher confidence → higher win rate. If the 80+ bars aren't clearly better than 60–79,
+          raise your buy threshold or try a different model.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>By source</h2></div>
+        <table class="table">
+          <thead><tr><th>Source</th><th class="num">Signals</th><th class="num">Right</th><th class="num">Avg move</th></tr></thead>
+          <tbody>
+            <template x-for="g in (data?.by_source || [])" :key="g.key">
+              <tr><td x-text="g.key"></td><td class="num" x-text="g.count"></td><td class="num" x-text="winText(g)"></td>
+                <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="muted pad" x-show="!(data?.by_source || []).length">No measured signals yet.</div>
+        <h3>By type</h3>
+        <table class="table">
+          <tbody>
+            <template x-for="g in [...(data?.by_source_type || []), ...(data?.by_traded || []), ...(data?.by_direction || [])]" :key="g.key">
+              <tr><td x-text="g.key"></td><td class="num" x-text="g.count + ' signals'"></td><td class="num" x-text="winText(g) + ' right'"></td>
+                <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Signal price tracking</h2></div>
+      <table class="table">
+        <thead><tr><th>Time</th><th>Ticker</th><th>Call</th><th class="num">Conf.</th><th>Source</th><th class="num">Price then</th>
+          <th class="num">+5 min</th><th class="num">+1 hour</th><th class="num">+1 day</th><th>Traded</th></tr></thead>
+        <tbody>
+          <template x-for="r in (data?.recent || [])" :key="r.id">
+            <tr>
+              <td class="nowrap" x-text="fmt.dateTime(r.created_at)"></td>
+              <td><b x-text="r.ticker"></b></td>
+              <td><span class="pill small" :class="r.direction === 'bullish' ? 'good' : 'bad'" x-text="r.direction"></span></td>
+              <td class="num" x-text="r.confidence"></td>
+              <td class="small" x-text="r.source_name"></td>
+              <td class="num" x-text="r.price_t0 ? fmt.money(r.price_t0) : '—'"></td>
+              <td class="num" :class="retClass(r.ret_5m)" x-text="ret(r.ret_5m)"></td>
+              <td class="num" :class="retClass(r.ret_1h)" x-text="ret(r.ret_1h)"></td>
+              <td class="num" :class="retClass(r.ret_1d)" x-text="ret(r.ret_1d)"></td>
+              <td x-text="r.traded ? 'yes' : ''"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <p class="note">Percentages are moves in the direction the AI predicted (positive = the AI was right). "…" = not measured yet.</p>
     </div>
   </section>
 
   <!-- ===================== BACKTEST ===================== -->
-  <section x-show="store.tab === 'backtest'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Backtest</h2>
-      <p class="muted">Run the AI over historical Alpaca news (phase 6).</p>
+  <section x-show="store.tab === 'backtest'" class="tab-page" x-data="backtestTab">
+    <div class="card">
+      <div class="card-head"><h2>New backtest</h2></div>
+      <p class="muted small">Replays historical Alpaca/Benzinga news through the same pre-filter, Claude prompt and validator,
+        then simulates your current stop-loss / take-profit and risk settings on minute-by-minute prices. Costs Claude credits.</p>
+      <div class="form-grid compact">
+        <div class="field"><label>From</label><input type="date" x-model="form.start" @change="estimate = null"></div>
+        <div class="field"><label>To</label><input type="date" x-model="form.end" @change="estimate = null"></div>
+        <div class="field"><label>Only these tickers (optional)</label><input type="text" x-model="form.symbols" placeholder="e.g. NVDA, TSLA" @change="estimate = null"></div>
+        <div class="field"><label>Max stories to analyse</label><input type="number" min="1" max="2000" x-model.number="form.max_articles" @change="estimate = null"></div>
+        <div class="field"><label>Budget (hard stop)</label><div class="input-wrap"><span class="affix">$</span><input type="number" min="0.5" step="0.5" x-model.number="form.budget_usd"></div></div>
+        <div class="field"><label>Hold each trade</label>
+          <select x-model="form.hold"><option value="eod">Until market close</option><option value="1">Up to 1 hour</option><option value="2">Up to 2 hours</option><option value="4">Up to 4 hours</option></select></div>
+        <div class="field"><label>Model</label>
+          <select x-model="form.model" @change="estimate = null"><option value="">Same as Settings</option><option value="claude-sonnet-5-5">Sonnet 5.5</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5 (cheaper)</option><option value="claude-opus-5-5">Opus 5.5</option></select></div>
+      </div>
+      <div class="row gap end">
+        <span class="small muted" x-show="estimate" x-text="estimate ? `~${fmt.money(estimate.per_article, 3)} per story · up to ${fmt.money(estimate.max_cost)} total` : ''"></span>
+        <button class="btn ghost" @click="getEstimate()">Estimate cost</button>
+        <button class="btn primary" :disabled="busy" @click="run()">Run backtest</button>
+      </div>
+      <p class="note warn-text" x-text="warning || 'Claude may already know what happened after older news - treat results on older dates as optimistic.'"></p>
     </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Runs</h2></div>
+      <table class="table">
+        <thead><tr><th>#</th><th>Started</th><th>Range</th><th>Status</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P/L</th><th class="num">Claude cost</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="r in runs" :key="r.id">
+            <tr class="clickable" :class="{ open: selected === r.id }" @click="open(r.id)">
+              <td x-text="r.id"></td>
+              <td class="nowrap" x-text="fmt.dateTime(r.created_at)"></td>
+              <td class="small" x-text="`${r.params.start} → ${r.params.end}` + (r.params.symbols && r.params.symbols.length ? ' · ' + r.params.symbols.join(',') : '')"></td>
+              <td><span class="pill small" :class="statusClass(r.status)" x-text="r.status"></span>
+                <div class="small muted" x-show="r.status === 'running'" x-text="Math.round((r.progress || 0) * 100) + '% · ' + (r.message || '')"></div></td>
+              <td class="num" x-text="r.summary ? r.summary.trades : ''"></td>
+              <td class="num" x-text="r.summary && r.summary.win_rate !== null ? r.summary.win_rate + '%' : ''"></td>
+              <td class="num" :class="r.summary ? fmt.plClass(r.summary.total_pnl) : ''" x-text="r.summary ? fmt.signedMoney(r.summary.total_pnl) : ''"></td>
+              <td class="num" x-text="fmt.money(r.cost_usd)"></td>
+              <td class="right" @click.stop>
+                <button class="btn ghost small" x-show="r.status === 'running'" @click="cancel(r)">Cancel</button>
+                <button class="btn ghost small danger" x-show="r.status !== 'running'" @click="remove(r)">Delete</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div class="muted pad" x-show="!runs.length">No backtests yet.</div>
+    </div>
+
+    <template x-if="detail && detail.run">
+      <div class="card">
+        <div class="card-head"><h2 x-text="'Backtest #' + detail.run.id"></h2><span class="small muted" x-text="detail.run.message"></span></div>
+        <template x-if="detail.run.summary">
+          <div>
+            <div class="kpis">
+              <div class="kpi"><div class="kpi-label">Stories analysed</div><div class="kpi-value" x-text="detail.run.summary.analysed"></div></div>
+              <div class="kpi"><div class="kpi-label">Signals</div><div class="kpi-value" x-text="detail.run.summary.signals"></div></div>
+              <div class="kpi"><div class="kpi-label">Trades</div><div class="kpi-value" x-text="detail.run.summary.trades"></div></div>
+              <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" x-text="detail.run.summary.win_rate === null ? '—' : detail.run.summary.win_rate + '%'"></div></div>
+              <div class="kpi"><div class="kpi-label">Total P/L</div><div class="kpi-value" :class="fmt.plClass(detail.run.summary.total_pnl)" x-text="fmt.signedMoney(detail.run.summary.total_pnl)"></div></div>
+              <div class="kpi"><div class="kpi-label">Max drawdown</div><div class="kpi-value neg" x-text="fmt.money(detail.run.summary.max_drawdown)"></div></div>
+              <div class="kpi"><div class="kpi-label">AI right after 1h</div><div class="kpi-value" x-text="detail.run.summary.accuracy_1h.overall.win_rate === null ? '—' : detail.run.summary.accuracy_1h.overall.win_rate + '%'"></div></div>
+            </div>
+            <div class="chart-box small" style="margin-top:14px"><canvas x-ref="btChart"></canvas></div>
+          </div>
+        </template>
+        <table class="table" style="margin-top:14px">
+          <thead><tr><th>News time</th><th>Ticker</th><th>Call</th><th class="num">Conf.</th><th>What it would do</th><th class="num">Entry</th><th class="num">Exit</th><th>Exit reason</th><th class="num">P/L</th><th class="num">1h move</th></tr></thead>
+          <tbody>
+            <template x-for="r in detail.results" :key="r.id">
+              <tr>
+                <td class="nowrap" x-text="fmt.dateTime(r.news_time)"></td>
+                <td><b x-text="r.ticker"></b></td>
+                <td><span class="pill small" :class="r.direction === 'bullish' ? 'good' : r.direction === 'bearish' ? 'bad' : ''" x-text="r.direction"></span></td>
+                <td class="num" x-text="r.confidence"></td>
+                <td class="small"><div x-text="r.action"></div><div class="muted" x-text="r.headline"></div></td>
+                <td class="num" x-text="r.entry_price ? fmt.money(r.entry_price) : ''"></td>
+                <td class="num" x-text="r.exit_price ? fmt.money(r.exit_price) : ''"></td>
+                <td class="small" x-text="r.exit_reason || ''"></td>
+                <td class="num" :class="fmt.plClass(r.pnl)" x-text="r.pnl === null ? '' : fmt.signedMoney(r.pnl)"></td>
+                <td class="num" :class="fmt.plClass(r.ret_1h)" x-text="r.ret_1h === null ? '' : fmt.pct(r.ret_1h)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </template>
   </section>
 
   <!-- ===================== SETTINGS ===================== -->

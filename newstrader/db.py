@@ -223,6 +223,12 @@ MIGRATIONS: list[str] = [
     ALTER TABLE orders ADD COLUMN parent_alpaca_id TEXT;
     CREATE INDEX idx_orders_parent ON orders(parent_alpaca_id);
     """,
+    # 3 - backtest accuracy columns
+    """
+    ALTER TABLE backtest_results ADD COLUMN ret_1h REAL;
+    ALTER TABLE backtest_results ADD COLUMN url TEXT;
+    ALTER TABLE backtest_results ADD COLUMN time_sensitivity TEXT;
+    """,
 ]
 
 

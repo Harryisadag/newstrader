@@ -341,3 +341,8 @@ textarea { width: 100%; resize: vertical; font: inherit; }
 .tx-line .chip { margin-left: 4px; }
 mark.kw { background: rgba(245,165,36,.22); color: inherit; border-radius: 3px; padding: 0 2px; }
 .alert-test { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+
+/* ---------- performance ---------- */
+.perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.table tr.clickable.open td { background: rgba(79,140,255,.06); }
+@media (max-width: 1100px) { .perf-grid, .live-grid { grid-template-columns: 1fr; } .source-list { position: static; max-height: none; } }

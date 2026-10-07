@@ -31,6 +31,8 @@ class FakeBroker:
         self.assets: dict[str, dict] = {}
         self.fail_next_submit: str | None = None
         self.calls: list[tuple] = []
+        self.news_items: list[dict] = []  # for backtests
+        self.bar_data: dict[str, list[dict]] = {}  # symbol -> 1-minute bars
 
     @classmethod
     def demo(cls) -> FakeBroker:
@@ -64,7 +66,7 @@ class FakeBroker:
         out, d = [], start
         while d <= end:
             if d.weekday() < 5:
-                out.append({"date": d.isoformat(), "open": f"{d}T13:30:00Z", "close": f"{d}T20:00:00Z"})
+                out.append({"date": d.isoformat(), "open": f"{d}T13:30:00Z", "close": f"{d}T20:00:00Z"})  # EDT hours
             d += timedelta(days=1)
         return out
 
@@ -112,15 +114,24 @@ class FakeBroker:
         return {"timestamp": ts, "equity": eq, "profit_loss": [e - eq[0] for e in eq], "base_value": eq[0],
                 "timeframe": "1D"}
 
-    # ---- prices ----
+    # ---- prices / data ----
     def latest_price(self, symbol: str) -> float | None:
         return self.prices.get(symbol)
 
     def bars(self, symbol, start, end, timeframe="1Min") -> list[dict]:
+        if symbol in self.bar_data:
+            from ..db import parse_iso
+
+            return [b for b in self.bar_data[symbol] if start <= parse_iso(b["t"]) <= end]
         p = self.prices.get(symbol)
         if p is None:
             return []
         return [{"t": start.isoformat(), "o": p, "h": p, "l": p, "c": p, "v": 100}]
+
+    def news(self, start, end, symbols=None, limit=200) -> list[dict]:
+        out = [n for n in self.news_items if start <= n["created_at"] <= end
+               and (not symbols or set(symbols) & set(n.get("symbols") or []))]
+        return out[:limit]
 
     # ---- orders ----
     def _fill(self, symbol: str, side: str, qty: float, price: float) -> None:

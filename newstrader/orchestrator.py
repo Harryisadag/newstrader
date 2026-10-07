@@ -71,6 +71,8 @@ class Orchestrator:
         from .ai.pipeline import Pipeline
         from .alerts.manager import AlertManager
         from .audio.stream_manager import StreamManager
+        from .backtest.runner import BacktestRunner
+        from .performance.tracker import PerformanceTracker
         from .sources.manager import SourceManager
         from .trading.trader import Trader
 
@@ -79,6 +81,8 @@ class Orchestrator:
         self.add(Pipeline(self.ctx))
         self.add(SourceManager(self.ctx))
         self.add(StreamManager(self.ctx))
+        self.add(PerformanceTracker(self.ctx))
+        self.add(BacktestRunner(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary
