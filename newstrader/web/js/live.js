@@ -1,4 +1,4 @@
-// Live tab: headlines from text sources (and, from phase 4, live transcripts per stream).
+// Live tab: headline feed from the text sources (live TV transcript panes are in streams.js).
 document.addEventListener("alpine:init", () => {
   Alpine.data("liveTab", () => ({
     fmt: NT.fmt,
