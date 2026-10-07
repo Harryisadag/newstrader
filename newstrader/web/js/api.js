@@ -108,6 +108,10 @@
       if (s < 86400) return Math.floor(s / 3600) + "h ago";
       return Math.floor(s / 86400) + "d ago";
     },
+    // Only http(s) links may be clicked - news feeds are untrusted.
+    url(u) {
+      return typeof u === "string" && /^https?:\/\//i.test(u.trim()) ? u.trim() : null;
+    },
     plClass(v) {
       if (v === null || v === undefined || isNaN(v) || Number(v) === 0) return "";
       return Number(v) > 0 ? "pos" : "neg";

@@ -22,6 +22,12 @@ def strip_html(text: str | None, limit: int = 6000) -> str:
     return text[:limit]
 
 
+def safe_url(url: str | None) -> str:
+    """Only plain web links are kept (a feed could otherwise send javascript: or file: links)."""
+    url = (url or "").strip()
+    return url if url.lower().startswith(("http://", "https://")) else ""
+
+
 def stable_id(*parts: str) -> str:
     return hashlib.sha1("|".join(p or "" for p in parts).encode("utf-8", "ignore")).hexdigest()[:20]
 

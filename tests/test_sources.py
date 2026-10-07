@@ -80,3 +80,11 @@ def test_alpaca_news_conversion():
     assert item.external_id == "123" and item.symbols == ["TSLA"]
     assert "Full story" in item.body and item.title.startswith("Tesla")
     assert item.source_name.endswith("(benzinga)")
+
+
+def test_only_web_links_are_kept():
+    from newstrader.sources.base import safe_url
+
+    assert safe_url(" https://ok.com/a ") == "https://ok.com/a"
+    for bad in ("javascript:alert(1)", "JAVASCRIPT:x", "file:///C:/x", "data:text/html,x", "", None):
+        assert safe_url(bad) == ""

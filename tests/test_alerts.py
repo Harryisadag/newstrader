@@ -127,3 +127,13 @@ async def test_trader_uses_alert_manager(setup):
     await t.kill()
     assert any("KILL SWITCH" in r["embeds"][0]["title"] for r in rec.requests)
     await t.stop()
+
+
+def test_toast_text_cannot_inject_powershell():
+    from newstrader.alerts.desktop import safe_toast_text
+
+    evil = 'Buy $(Start-Process calc) `whoami` "@\n"@ ]]><x>'
+    out = safe_toast_text(evil, 250)
+    assert "$" not in out and "`" not in out and '"' not in out and "\n" not in out and "]]>" not in out
+    assert "Start-Process calc" in out  # text is kept, just made harmless
+    assert len(safe_toast_text("x" * 500, 120)) == 120

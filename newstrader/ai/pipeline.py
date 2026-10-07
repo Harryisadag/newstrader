@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from ..context import AppContext
 from ..db import iso, utcnow
-from ..sources.base import NewsItem
+from ..sources.base import NewsItem, safe_url
 from ..state import trading_day
 from .claude_client import ClaudeAnalyzer
 from .costs import spend_today
@@ -52,6 +52,13 @@ class Pipeline:
             log.info("Loaded %d tickers from cache", n)
         self._tasks.append(asyncio.create_task(self._ticker_refresh_loop(), name="ticker-refresh"))
         self._restart_workers()
+        loop = asyncio.get_running_loop()
+
+        def on_settings(settings) -> None:  # called from whichever thread saved the settings
+            if settings.ai.max_concurrent_calls != len(self._workers) and not loop.is_closed():
+                loop.call_soon_threadsafe(self._restart_workers)
+
+        self.ctx.config.on_change(on_settings)
 
     async def stop(self) -> None:
         for t in self._tasks + self._workers:
@@ -103,6 +110,7 @@ class Pipeline:
     async def submit(self, item: NewsItem) -> dict:
         """Called by every source. Returns what happened to the item (for tests and the UI)."""
         self.stats["received"] += 1
+        item.url = safe_url(item.url)
         now = utcnow()
         db = self.ctx.db
         row = {

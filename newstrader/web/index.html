@@ -153,7 +153,7 @@
               <label class="switch small"><input type="checkbox" :checked="s.enabled" @change="toggle(s)"><span class="slider"></span></label>
               <span class="dot" :class="s.enabled ? (s.health ? s.health.level : 'starting') : 'off'"></span>
               <b x-text="s.name"></b>
-              <a class="small muted ext" :href="s.url" target="_blank" rel="noopener" title="Open stream">↗</a>
+              <a class="small muted ext" :href="fmt.url(s.url)" target="_blank" rel="noopener" title="Open stream">↗</a>
             </div>
             <div class="stream-status small muted" x-text="s.enabled ? (s.health ? s.health.detail : 'starting...') : 'off'"></div>
             <div class="transcript" :id="'tx-' + s.id" x-show="s.enabled">
@@ -200,7 +200,7 @@
               <span class="ts" x-text="fmt.time(n.received_at)"></span>
               <span class="tag" :class="'t-' + n.source_type" x-text="n.source_name"></span>
               <div class="feed-main">
-                <a class="title" :href="n.url || null" target="_blank" rel="noopener" x-text="n.title"></a>
+                <a class="title" :href="fmt.url(n.url)" target="_blank" rel="noopener" x-text="n.title"></a>
                 <div class="chips">
                   <template x-for="c in (n.candidates || [])" :key="c"><span class="chip" x-text="c"></span></template>
                   <template x-for="k in (n.keywords || []).slice(0, 3)" :key="k"><span class="chip kw" x-text="k"></span></template>
@@ -277,7 +277,7 @@
                   </div>
                   <div class="small"><b>Outcome:</b> <span x-text="s.action_reason"></span></div>
                   <div class="small"><b>Speaker:</b> <span x-text="s.speaker"></span> · <b>Time-sensitivity:</b> <span x-text="s.time_sensitivity"></span></div>
-                  <div class="small"><b>Headline:</b> <a :href="s.url || null" target="_blank" rel="noopener" x-text="s.headline"></a></div>
+                  <div class="small"><b>Headline:</b> <a :href="fmt.url(s.url)" target="_blank" rel="noopener" x-text="s.headline"></a></div>
                   <div class="small" x-show="(s.sources_seen || []).length > 1"><b>Also reported by:</b> <span x-text="(s.sources_seen || []).join(', ')"></span></div>
                   <template x-if="detail[s.id] && detail[s.id].analysis">
                     <div class="small muted" x-text="`Claude ${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
