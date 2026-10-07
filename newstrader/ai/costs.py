@@ -43,5 +43,6 @@ def spend_today(db: Database, include_backtests: bool = False) -> float:
 
 
 def calls_today(db: Database) -> int:
-    return int(db.scalar("SELECT COUNT(*) FROM analyses WHERE trading_day = ? AND is_backtest = 0",
-                         (trading_day(),)) or 0)
+    """Claude calls today (the free local engine's analyses aren't counted)."""
+    return int(db.scalar("SELECT COUNT(*) FROM analyses WHERE trading_day = ? AND is_backtest = 0 "
+                         "AND COALESCE(engine, 'claude') = 'claude'", (trading_day(),)) or 0)

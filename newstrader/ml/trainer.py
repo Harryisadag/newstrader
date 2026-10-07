@@ -164,6 +164,9 @@ class ModelTrainer:
     def delete_model(self) -> None:
         if self.running:
             raise RuntimeError("Training is running - cancel it first.")
+        bt = self.ctx.service("backtest")
+        if bt is not None and getattr(bt, "running", False):
+            raise RuntimeError("A backtest is running - wait for it to finish first.")
         pipeline = self.ctx.service("pipeline")
         folder = pipeline.local.model_dir if pipeline else paths.models_dir() / "price_model"
         delete_model(folder)

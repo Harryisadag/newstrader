@@ -58,6 +58,9 @@ class Pipeline:
         self._tasks.append(asyncio.create_task(self._ticker_refresh_loop(), name="ticker-refresh"))
         self._restart_workers()
         self._tasks.append(asyncio.create_task(self.warm_local_engine(), name="ml-warmup"))
+        if getattr(self.ctx.config, "engine_was_defaulted", False) and self.engine_name == "local":
+            self.ctx.config.engine_was_defaulted = False
+            self._tasks.append(asyncio.create_task(self._engine_changed_notice(), name="engine-notice"))
         loop = asyncio.get_running_loop()
         seen = {"engine": self.ctx.config.settings.ai.engine, "sentiment": self.ctx.config.settings.ml.sentiment_model,
                 "use": self.ctx.config.settings.ml.use_trained_model}
@@ -102,6 +105,15 @@ class Pipeline:
 
     def engine(self, name: str | None = None):
         return self.local if (name or self.engine_name) == "local" else self.analyzer
+
+    async def _engine_changed_notice(self) -> None:
+        msg = ("This update switched the AI engine to the free local machine-learning engine (FinBERT). Claude is "
+               "no longer called. To go back, pick Claude in Settings -> AI engine.")
+        log.warning(msg)
+        await asyncio.sleep(3)  # let the window connect so the toast shows too
+        alerts = self.ctx.service("alerts")
+        if alerts is not None:
+            await alerts.send("info", "AI engine changed to local machine learning", msg, "warn")
 
     async def warm_local_engine(self) -> None:
         """Load FinBERT (downloading it the first time) and the trained price model in the background."""

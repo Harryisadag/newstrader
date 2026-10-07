@@ -59,6 +59,16 @@ def estimate(params: BacktestParams, default_model: str, default_engine: str = "
             "max_cost": round(per * params.max_articles, 2), "articles": params.max_articles}
 
 
+def lookahead_note(pm, start: date) -> str:
+    """A price model trained on news up to `trained_to` has learned from the future of any earlier date."""
+    hi = str(pm.meta.get("trained_to", "")) if pm is not None else ""
+    if hi and start.isoformat() <= hi:
+        return (f"Warning: the price model learned from news up to {hi}, so for these dates it already knows what "
+                f"happened next - results will look much better than reality. Backtest dates after {hi} for an "
+                f"honest test.")
+    return ""
+
+
 def _session_for(t: datetime, sessions: list[dict]) -> tuple[dict | None, bool]:
     """(session on or after t, whether t is inside that session's hours)."""
     for s in sessions:
@@ -211,11 +221,9 @@ class BacktestRunner:
         summary = self._summary(results, len(articles), analysed, cost)
         summary["engine"] = engine
         if engine == "local":
-            pm = analyzer.active_price_model()
-            lo, hi = (str(pm.meta.get("trained_from", "")), str(pm.meta.get("trained_to", ""))) if pm else ("", "")
-            if pm and lo and hi and params.start.isoformat() <= hi and params.end.isoformat() >= lo:
-                summary["warning"] = (f"These dates overlap the price model's training range ({lo} to {hi}): it has "
-                                      "already seen this news, so the result is optimistic.")
+            note = lookahead_note(analyzer.active_price_model(), params.start)
+            if note:
+                summary["warning"] = note
         status = "cancelled" if self._cancel else "done"
         self._progress(run_id, 1, f"{status}: {summary['trades']} trades, P/L ${summary['total_pnl']:,.2f}",
                        status=status, summary=json.dumps(summary), cost_usd=round(cost, 4))

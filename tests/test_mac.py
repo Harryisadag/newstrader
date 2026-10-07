@@ -140,3 +140,25 @@ def test_mlx_model_names():
     assert tr.MLX_REPOS["large-v3-turbo"] == "mlx-community/whisper-large-v3-turbo"
     for name in ("large-v3", "medium", "small", "base", "tiny"):
         assert tr.MLX_REPOS[name].startswith("mlx-community/")
+
+
+def test_mac_gpu_status_rosetta_and_old_macos():
+    lvl, text = describe_gpu({"mac": {"chip": "Apple M2", "apple_silicon": True, "rosetta": True, "mlx": False}})
+    assert lvl == "warn" and "Rosetta" in text and ".venv" in text
+    lvl, text = describe_gpu({"mac": {"chip": "Apple M1", "apple_silicon": True, "mlx": False, "macos": "13.6.1"}})
+    assert lvl == "warn" and "macOS 14" in text
+
+
+def test_run_command_scripts_are_valid_bash():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash")
+    root = Path(__file__).resolve().parent.parent
+    for name in ("run.command", "update.command", "build_app.command"):
+        script = root / name
+        assert script.read_bytes().count(b"\r\n") == 0, f"{name} must use LF line endings"
+        assert subprocess.run([bash, "-n", str(script)], capture_output=True).returncode == 0, name

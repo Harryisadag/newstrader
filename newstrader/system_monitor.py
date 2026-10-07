@@ -17,8 +17,15 @@ def describe_gpu(info: dict) -> tuple[str, str]:
     mac = info.get("mac")
     if mac:
         chip = mac.get("chip") or ("Apple Silicon" if mac.get("apple_silicon") else "Intel Mac")
+        if mac.get("rosetta"):
+            return "warn", (f"{chip} - but Python runs in Intel (Rosetta) mode, so speech-to-text can't use the Apple "
+                            "GPU. Install the python.org 'universal2' Python, delete the .venv folder, then run "
+                            "run.command again.")
         if mac.get("apple_silicon") and mac.get("mlx"):
             return "ok", f"{chip} - speech-to-text runs on the Apple GPU (MLX)"
+        major = str(mac.get("macos") or "").split(".")[0]
+        if mac.get("apple_silicon") and major.isdigit() and int(major) < 14:
+            return "warn", f"{chip} - the Apple-GPU speech engine needs macOS 14 or newer, so speech-to-text uses the CPU"
         if mac.get("apple_silicon"):
             return "warn", (f"{chip} - the Apple-GPU speech engine isn't installed, so speech-to-text uses the CPU "
                             "(slower). Run run.command again to install it.")

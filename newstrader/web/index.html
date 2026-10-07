@@ -631,8 +631,8 @@
       </div>
       <div class="row gap end">
         <span class="small muted" x-show="estimate" x-text="estimate ? (estimate.engine === 'local' ? 'Free (local engine)' : `~${fmt.money(estimate.per_article, 3)} per story · up to ${fmt.money(estimate.max_cost)} total`) : ''"></span>
-        <button class="btn ghost" @click="getEstimate()">Estimate cost</button>
-        <button class="btn primary" :disabled="busy" @click="run()">Run backtest</button>
+        <button class="btn ghost" :disabled="estimating" @click="getEstimate()" x-text="estimating ? 'Estimating...' : 'Estimate cost'"></button>
+        <button class="btn primary" :disabled="busy || estimating" @click="run()">Run backtest</button>
       </div>
       <p class="note warn-text" x-text="(estimate && estimate.warning) || warning"></p>
     </div>

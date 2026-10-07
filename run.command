@@ -15,28 +15,56 @@ pause_and_exit() {
 }
 
 VENV_PY=".venv/bin/python"
+ARM_MAC=0
+[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] && ARM_MAC=1
+
+py_arch() { "$1" -c 'import platform; print(platform.machine())' 2>/dev/null; }
+
+# Find Python 3.12 (or 3.13 / 3.11; 3.14 only on Apple Silicon). On an M-series Mac prefer one that runs
+# natively: an Intel (Rosetta) Python can't use the Apple GPU. Homebrew in /usr/local is usually Intel.
+find_python() {
+  PY=""
+  local fallback="" versions="3.12 3.13 3.11" v c
+  [ "$ARM_MAC" = "1" ] && versions="3.12 3.13 3.14 3.11"
+  for v in $versions; do
+    for c in "/opt/homebrew/bin/python$v" "/Library/Frameworks/Python.framework/Versions/$v/bin/python$v" \
+             "/usr/local/bin/python$v" "python$v"; do
+      command -v "$c" >/dev/null 2>&1 || continue
+      if [ "$ARM_MAC" = "1" ] && [ "$(py_arch "$c")" != "arm64" ]; then
+        [ -z "$fallback" ] && fallback="$c"
+        continue
+      fi
+      PY="$c"
+      return 0
+    done
+  done
+  PY="$fallback"
+  [ -n "$PY" ]
+}
+
+# An environment made earlier with an Intel-only Python on an M-series Mac: rebuild it with a native one.
+if [ -x "$VENV_PY" ] && [ "$ARM_MAC" = "1" ] && [ "$(py_arch "$VENV_PY")" != "arm64" ]; then
+  if find_python && [ "$(py_arch "$PY")" = "arm64" ]; then
+    echo "  Rebuilding the Python environment to run natively on Apple Silicon..."
+    rm -rf .venv
+  else
+    echo "  [!] Python runs in Intel (Rosetta) mode on this Apple Silicon Mac, so speech-to-text can't use the"
+    echo "      Apple GPU. Install Python 3.12 from python.org (the 'universal2' installer) to fix that."
+  fi
+fi
 
 if [ ! -x "$VENV_PY" ]; then
   echo
   echo "  Setting up NewsTrader for the first time..."
   echo
-  # ---- find Python 3.12 (or 3.13 / 3.11): Homebrew, python.org, then PATH ----
-  PY=""
-  for v in 3.12 3.13 3.11; do
-    for c in "/opt/homebrew/bin/python$v" "/usr/local/bin/python$v" \
-             "/Library/Frameworks/Python.framework/Versions/$v/bin/python$v" "python$v"; do
-      if command -v "$c" >/dev/null 2>&1; then PY="$c"; break 2; fi
-    done
-  done
-  if [ -z "$PY" ]; then
+  if ! find_python; then
     echo "  [X] Python 3.12 was not found."
-    echo "      Install it from https://www.python.org/downloads/macos/ (the 'macOS 64-bit universal2 installer'),"
-    echo "      then double-click run.command again."
+    echo "      Install it from https://www.python.org/downloads/macos/ - look for Python 3.12 and its"
+    echo "      'macOS 64-bit universal2 installer' - then double-click run.command again."
     pause_and_exit 1
   fi
   echo "  Using: $PY ($("$PY" --version 2>&1))"
-  if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] && \
-     [ "$("$PY" -c 'import platform; print(platform.machine())')" != "arm64" ]; then
+  if [ "$ARM_MAC" = "1" ] && [ "$(py_arch "$PY")" != "arm64" ]; then
     echo "  [!] This Python runs in Intel (Rosetta) mode on an Apple Silicon Mac - speech-to-text can't use"
     echo "      the Apple GPU. Install the python.org 'universal2' Python to fix that. Continuing anyway."
   fi
@@ -64,6 +92,7 @@ if [ "$WANT_HASH" != "$HAVE_HASH" ]; then
     echo "      If it keeps failing, copy the error text above and ask for help."
     pause_and_exit 1
   fi
+  INSTALLED_OK=1
   if [ "$APPLE_GPU" = "1" ]; then
     echo
     echo "  Installing the Apple-GPU speech engine (mlx-whisper)..."
@@ -72,10 +101,13 @@ if [ "$WANT_HASH" != "$HAVE_HASH" ]; then
        "$VENV_PY" -m pip install --no-deps "mlx-whisper==0.4.3"; then
       echo "  Apple-GPU speech engine installed."
     else
-      echo "  [!] Couldn't install it - speech-to-text will use the CPU instead (slower). Everything else works."
+      INSTALLED_OK=0
+      echo "  [!] Couldn't install it - speech-to-text will use the CPU for now (slower). Everything else works."
+      echo "      It will try again the next time you start run.command."
     fi
   fi
-  echo "$WANT_HASH" > .venv/requirements.sha256
+  # only remember the install as complete when every part worked, so a failed part is retried next time
+  [ "$INSTALLED_OK" = "1" ] && echo "$WANT_HASH" > .venv/requirements.sha256
 fi
 
 # ---- create .env from the template if it's missing ----

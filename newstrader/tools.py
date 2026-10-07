@@ -58,13 +58,17 @@ def mac_info() -> dict:
     """Apple chip name and whether the Apple-GPU speech engine (MLX) is installed. Never raises."""
     import platform
 
-    info = {"chip": None, "apple_silicon": platform.machine() == "arm64", "mlx": False, "macos": platform.mac_ver()[0]}
+    native = platform.machine() == "arm64"
+    info = {"chip": None, "apple_silicon": native, "rosetta": False, "mlx": False, "macos": platform.mac_ver()[0]}
     try:
         out = run_quiet(["/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"], timeout=5)
         info["chip"] = out.stdout.strip() or None
+        arm = run_quiet(["/usr/sbin/sysctl", "-n", "hw.optional.arm64"], timeout=5).stdout.strip() == "1"
+        info["apple_silicon"] = native or arm
+        info["rosetta"] = arm and not native  # an Intel-only Python on an M-series Mac
     except Exception:
         pass
-    if info["apple_silicon"]:
+    if native:
         try:
             import importlib.util
 

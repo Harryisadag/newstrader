@@ -103,6 +103,9 @@ async def ml_reload(ctx: AppContext = Depends(get_ctx)):
     t = ctx.service("ml_trainer")
     if t is not None and t.running:
         raise bad_request("Training is running - wait for it to finish (or cancel it) first.", 409)
+    bt = ctx.service("backtest")
+    if bt is not None and getattr(bt, "running", False):
+        raise bad_request("A backtest is running - wait for it to finish first.", 409)
     await asyncio.to_thread(p.local.sentiment.load, ctx.config.settings.ml.sentiment_model, True)
     await asyncio.to_thread(p.local.load_price_model)
     p.update_ml_status()

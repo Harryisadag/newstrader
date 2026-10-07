@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Body, Depends
 
-from ...backtest.runner import BacktestParams, estimate
+from ...backtest.runner import BacktestParams, estimate, lookahead_note
 from ...context import AppContext
 from ..deps import bad_request, get_ctx
 
@@ -21,17 +21,10 @@ async def _warning(ctx: AppContext, p: BacktestParams) -> str:
     if p.engine != "local":
         return LOOKAHEAD_WARNING
     pipeline = ctx.service("pipeline")
-    if pipeline is not None:
-        await pipeline.local.ensure_ready()  # the run loads it too - judge with the model it will really use
-    pm = pipeline.local.active_price_model() if pipeline else None
+    pm = pipeline.local.price_model_for_run() if pipeline else None
     if pm is None:
         return "The local engine is free. No trained price model is in use, so this tests sentiment scoring only."
-    lo, hi = str(pm.meta.get("trained_from", "")), str(pm.meta.get("trained_to", ""))
-    if lo and hi and p.start.isoformat() <= hi and p.end.isoformat() >= lo:
-        return (f"Warning: the price model was trained on news from {lo} to {hi}, which overlaps these dates - "
-                f"it has already seen the answers, so results will look much better than reality. "
-                f"Backtest dates after {hi} for an honest test.")
-    return LOCAL_WARNING
+    return lookahead_note(pm, p.start) or LOCAL_WARNING
 
 
 def _params(body: dict, default_engine: str) -> BacktestParams:

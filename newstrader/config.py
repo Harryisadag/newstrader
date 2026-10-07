@@ -261,9 +261,12 @@ class ConfigStore:
 
     def __init__(self, path: Path):
         self.path = path
+        self.engine_was_defaulted = False
         self._lock = threading.RLock()
         self._listeners: list = []
         self._settings = self._load()
+        if self.engine_was_defaulted:
+            self._save()  # write the new ai.engine now, so the "engine changed" notice is shown only once
 
     # ---- reading ----
     @property
@@ -367,6 +370,8 @@ class ConfigStore:
                     {**settings.model_dump(mode="json"),
                      "sources": [s.model_dump(mode="json") for s in settings.sources + added]})
             self._removed_presets = sorted(removed)
+            # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
+            self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]
             return settings
         except Exception as exc:
             backup = self.path.with_name(f"config.broken-{int(time.time())}.json")

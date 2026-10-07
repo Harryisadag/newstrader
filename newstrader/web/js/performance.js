@@ -62,6 +62,7 @@ document.addEventListener("alpine:init", () => {
     form: { start: "", end: "", symbols: "", max_articles: 50, budget_usd: 3, hold: "eod", model: "", engine: "" },
     engine: "local",
     estimate: null,
+    estimating: false,
     runs: [],
     warning: "",
     selected: null,
@@ -93,8 +94,10 @@ document.addEventListener("alpine:init", () => {
     },
 
     async getEstimate() {
+      this.estimating = true;
       try { this.estimate = await NT.api.post("/backtest/estimate", this.form); }
       catch (e) { Alpine.store("nt").error(e, "Check the backtest settings"); }
+      finally { this.estimating = false; }
     },
 
     async run() {

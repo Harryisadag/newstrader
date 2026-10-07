@@ -55,6 +55,25 @@ def is_apple_silicon() -> bool:
     return sys.platform == "darwin" and platform.machine() == "arm64"
 
 
+def release_mlx() -> None:
+    """mlx-whisper keeps its last model in a class-level cache; drop it (and MLX's buffer cache) so switching
+    to another device doesn't keep ~2-3 GB of unified memory busy. Call on the transcriber thread."""
+    try:
+        import importlib
+
+        holder = getattr(importlib.import_module("mlx_whisper.transcribe"), "ModelHolder", None)
+        if holder is not None:
+            holder.model = None
+            holder.model_path = None
+        import mlx.core as mx
+
+        clear = getattr(mx, "clear_cache", None) or getattr(getattr(mx, "metal", None), "clear_cache", None)
+        if clear:
+            clear()
+    except Exception:
+        pass
+
+
 def mlx_available() -> bool:
     if not is_apple_silicon():
         return False
@@ -197,6 +216,8 @@ class Transcriber:
         key = (s.model, s.device, s.compute_type)
         if self.model is not None and self._loaded_key == key:
             return
+        if self.device == "mlx":
+            release_mlx()
         self.model = None
         if self._factory is not None:
             self.model = self._factory(s)
@@ -230,7 +251,11 @@ class Transcriber:
                                             "downloads the model, which can take a few minutes...")
                 if device == "mlx":
                     model = MlxWhisper(model_name)
-                    model.warm_up()
+                    try:
+                        model.warm_up()
+                    except Exception:
+                        release_mlx()
+                        raise
                     self.model = model
                 else:
                     from faster_whisper import WhisperModel

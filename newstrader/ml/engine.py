@@ -126,6 +126,8 @@ class LocalMLEngine:
     def sentiment_cap_reason(self) -> str:
         """Why sentiment-only signals may not auto-buy right now ("" = they may)."""
         mode = self.ctx.config.settings.ml.sentiment_only_trading
+        if self.ctx.state.mode == "live":
+            return "LIVE trading is on, and sentiment-only scores aren't a tested price prediction"
         if mode == "always":
             return ""
         if mode == "review":
@@ -135,6 +137,20 @@ class LocalMLEngine:
                 and m.meta.get("sentiment_model") == self.sentiment.model_id):
             return "the trained price model found headline wording didn't reliably predict moves"
         return ""
+
+    def price_model_for_run(self) -> PriceModel | None:
+        """The trained model a run would use once its sentiment model is loaded - without loading or
+        downloading anything (so it is quick to ask from a web request)."""
+        if self.sentiment.ready and self.sentiment.wanted == self.ctx.config.settings.ml.sentiment_model:
+            return self.active_price_model()
+        m = self.price_model if self._loaded_model_file else self.load_price_model()
+        ml = self.ctx.config.settings.ml
+        if m is None or ml.use_trained_model == "never":
+            return None
+        if ml.use_trained_model == "auto" and not m.meta.get("passed"):
+            return None
+        expected = "lexicon-v1" if ml.sentiment_model == "lexicon" else "finbert-"
+        return m if str(m.meta.get("sentiment_model", "")).startswith(expected) else None
 
     def label(self) -> str:
         s = "FinBERT" if getattr(self.sentiment.model, "name", "") == "finbert" else "word list"

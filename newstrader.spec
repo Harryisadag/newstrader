@@ -122,7 +122,8 @@ if MAC:
         info_plist={
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
-            "LSMinimumSystemVersion": "14.0" if platform.machine() == "arm64" else "13.0",
+            # the packages were downloaded for the Mac doing the build, so that's the oldest macOS it supports
+            "LSMinimumSystemVersion": ".".join((platform.mac_ver()[0] or "13.0").split(".")[:2]),
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",
             "NSRequiresAquaSystemAppearance": False,

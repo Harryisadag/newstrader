@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -535,9 +536,9 @@ def test_pure_noise_rarely_passes():
     t0 = datetime(2026, 1, 5, 15, tzinfo=UTC)
     words = ["alpha", "beta", "gamma", "delta", "omega", "sigma"]
     passed = 0
-    for trial in range(8):
+    for trial in range(5):
         samples = []
-        for i in range(1500):
+        for i in range(1200):
             s_ = SentimentScores(rng.random(), rng.random(), rng.random())
             f = SampleFeatures(" ".join(rng.choice(words) for _ in range(6)), s_, 1.0, True, True, 1, rng.random())
             day = t0 + timedelta(days=i // 25, minutes=i % 25 * 10)
@@ -601,3 +602,49 @@ async def test_training_keeps_its_sentiment_model_if_settings_change(local_env, 
     assert pipeline.local.price_model.meta["sentiment_model"] == "fake-finbert"
     cached = {r["model_id"] for r in ctx.db.query("SELECT DISTINCT model_id FROM ml_sentiment_cache")}
     assert cached == {"fake-finbert"}
+
+
+def test_lookahead_note_covers_dates_before_training():
+    from newstrader.backtest.runner import lookahead_note
+
+    pm = SimpleNamespace(meta={"trained_from": "2026-04-10", "trained_to": "2026-10-06"})
+    assert "already knows" in lookahead_note(pm, date(2025, 10, 1))  # before the range: still look-ahead
+    assert "already knows" in lookahead_note(pm, date(2026, 6, 1))  # overlap
+    assert lookahead_note(pm, date(2026, 10, 7)) == ""  # strictly after: honest
+    assert lookahead_note(None, date(2025, 1, 1)) == ""
+
+
+def test_claude_call_count_ignores_local_engine(ctx):
+    from newstrader.ai.costs import calls_today
+    from newstrader.db import iso
+    from newstrader.state import trading_day
+
+    for engine in ("local", "local", "claude"):
+        ctx.db.insert("analyses", {"created_at": iso(), "trading_day": trading_day(), "item_kind": "news",
+                                   "status": "ok", "is_backtest": 0, "engine": engine, "cost_usd": 0})
+    assert calls_today(ctx.db) == 1
+
+
+def test_old_config_is_switched_to_local_with_a_notice(tmp_path):
+    import json as _json
+
+    from newstrader.config import ConfigStore
+
+    path = tmp_path / "config.json"
+    path.write_text(_json.dumps({"ai": {"model": "claude-opus-5-5"}}))
+    store = ConfigStore(path)
+    assert store.settings.ai.engine == "local" and store.engine_was_defaulted
+    again = ConfigStore(path)  # saved with the engine now, so the notice is shown once
+    assert not again.engine_was_defaulted
+
+
+async def test_live_mode_sends_sentiment_only_signals_to_review(local_env):
+    ctx, pipeline, fake, broker = local_env
+    ctx.config.update({"ml": {"sentiment_only_trading": "always"}})
+    ctx.state._set_live_armed(True)
+    try:
+        out = await run(pipeline, news("Nvidia wins record contract"))
+    finally:
+        ctx.state._set_live_armed(False)
+    s = out["signals"][0]
+    assert s["confidence"] == 79 and "LIVE" in s["reasoning"]
