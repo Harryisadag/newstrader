@@ -3,6 +3,7 @@
 `check_entry` decides whether a new position (buy, or short if enabled) may be opened and how big.
 `check_exit` decides whether an existing long position may be closed on a bearish signal.
 Each returns a RiskDecision with a plain-English reason when something is blocked.
+`chase_check` sends a signal to manual review when the price already moved a lot before we could act.
 """
 
 from __future__ import annotations
@@ -196,6 +197,21 @@ def check_entry(symbol: str, side: str, price: float | None, ctx: RiskContext, m
                         stop_price=stop, take_profit_price=tp,
                         reason=f"{side.upper()} {qty} {symbol} @ ~${price:,.2f} (${qty * price:,.2f}); "
                                f"stop ${stop:,.2f}, target ${tp:,.2f}")
+
+
+def chase_check(direction: str, pre_move_pct: float | None, limit_pct: float) -> str:
+    """Don't chase: why a signal should go to manual review instead of being auto-traded, or "" if it's fine.
+
+    pre_move_pct is how far the price already moved IN the signal's direction since the news came out (up for
+    bullish, down for bearish - see performance.prices.directional_return). A move the other way never counts,
+    a limit of 0 turns the check off, and missing prices never block anything."""
+    if not limit_pct or pre_move_pct is None or direction not in ("bullish", "bearish"):
+        return ""
+    if pre_move_pct < limit_pct:
+        return ""
+    raw = pre_move_pct if direction == "bullish" else -pre_move_pct
+    return (f"Price already moved {raw:+.1f}% toward the signal since the news (limit {limit_pct:g}%) - "
+            "sent for manual review instead of chasing it.")
 
 
 def check_exit(symbol: str, ctx: RiskContext, manual: bool = False) -> RiskDecision:

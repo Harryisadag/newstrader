@@ -7,11 +7,50 @@ from __future__ import annotations
 
 import itertools
 import math
+import random
 from datetime import UTC, date, datetime, timedelta
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _stamp(dt: datetime) -> str:
+    return dt.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+# Demo mode: (price now, day change %) for the market gauges, world-market ETFs and a few stocks.
+DEMO_MARKET = {
+    "SPY": (664.2, -1.2), "QQQ": (598.4, -1.6), "IWM": (244.1, -0.4), "DIA": (463.5, -0.9),
+    "EWJ": (77.6, -2.3), "FXI": (40.3, 1.4), "EWG": (41.2, -0.6), "EWU": (41.4, -0.3),
+    "INDA": (53.1, 0.5), "EWZ": (29.2, 1.1), "EZU": (59.8, -0.7), "EWY": (74.9, 0.8),
+    "AAPL": (233.1, 0.8), "NVDA": (176.9, -1.7), "TSLA": (262.5, 7.0), "MSFT": (510.0, 0.3),
+    "AMD": (164.8, 3.2), "PLTR": (179.6, -4.1), "AMZN": (221.3, 0.6), "META": (709.4, -0.2),
+}
+DEMO_SPIKE = "TSLA"  # jumps ~5% in the last few minutes on heavy volume
+
+
+def demo_bars(end: datetime, minutes: int = 60, seed: int = 7) -> tuple[dict[str, list[dict]], dict[str, float]]:
+    """A short, repeatable random walk of 1-minute bars per demo symbol, ending at the last full minute before
+    `end` and scaled to finish at the demo price. Returns (bars by symbol, previous close by symbol)."""
+    rng = random.Random(seed)
+    last = end.replace(second=0, microsecond=0) - timedelta(minutes=1)
+    bars: dict[str, list[dict]] = {}
+    prev_close: dict[str, float] = {}
+    for sym, (price, day_pct) in DEMO_MARKET.items():
+        p, rows = 100.0, []
+        base_vol = rng.uniform(2_000, 20_000)
+        for i in range(minutes):
+            spike = sym == DEMO_SPIKE and i >= minutes - 4
+            o = p
+            p = p * (1 + (0.014 if spike else rng.gauss(0, 0.0008)))
+            v = base_vol * (8 if spike else rng.uniform(0.6, 1.4))
+            rows.append({"t": _stamp(last - timedelta(minutes=minutes - 1 - i)), "o": o, "h": max(o, p) * 1.0004,
+                         "l": min(o, p) * 0.9996, "c": p, "v": round(v)})
+        scale = price / rows[-1]["c"]
+        bars[sym] = [{**r, **{k: round(r[k] * scale, 4) for k in ("o", "h", "l", "c")}} for r in rows]
+        prev_close[sym] = round(price / (1 + day_pct / 100), 2)
+    return bars, prev_close
 
 
 class FakeBroker:
@@ -33,14 +72,18 @@ class FakeBroker:
         self.calls: list[tuple] = []
         self.news_items: list[dict] = []  # for backtests
         self.bar_data: dict[str, list[dict]] = {}  # symbol -> 1-minute bars
+        self.prev_close: dict[str, float] = {}  # symbol -> yesterday's close (snapshots / movers)
+        self.screener_error: str | None = None  # set to make movers() / most_actives() fail
 
     @classmethod
     def demo(cls) -> FakeBroker:
-        """A fake account with a couple of positions, for trying the UI without Alpaca keys."""
+        """A fake account with a couple of positions and an hour of made-up price history (including one sudden
+        spike), for trying the UI without Alpaca keys."""
         fb = cls()
         fb.submit_bracket("AAPL", "buy", 4, 239.2, 225.4, "demo-1")
         fb.submit_bracket("NVDA", "buy", 5, 187.2, 176.4, "demo-2")
-        fb.prices.update({"AAPL": 233.1, "NVDA": 176.9})
+        fb.bar_data, fb.prev_close = demo_bars(datetime.now(UTC))
+        fb.prices.update({sym: rows[-1]["c"] for sym, rows in fb.bar_data.items()})
         return fb
 
     # ---- account ----
@@ -140,9 +183,63 @@ class FakeBroker:
                     out[sym] = rows
         return out
 
-    def news(self, start, end, symbols=None, limit=200, include_content=True) -> list[dict]:
+    def _snapshot(self, sym: str) -> dict | None:
+        rows = self.bar_data.get(sym) or []
+        price = self.prices.get(sym, rows[-1]["c"] if rows else None)
+        if price is None:
+            return None
+        prev = self.prev_close.get(sym) or (rows[0]["o"] if rows else price)
+        day = {"t": rows[0]["t"] if rows else _now(), "o": rows[0]["o"] if rows else price,
+               "h": max([r["h"] for r in rows] + [price]), "l": min([r["l"] for r in rows] + [price]), "c": price,
+               "v": sum(r["v"] for r in rows)}
+        return {"price": price, "prev_close": prev, "change_pct": (price - prev) / prev * 100 if prev else None,
+                "day_volume": day["v"], "time": rows[-1]["t"] if rows else _now(),
+                "minute_bar": dict(rows[-1]) if rows else None, "daily_bar": day,
+                "prev_daily_bar": {"t": None, "o": prev, "h": prev, "l": prev, "c": prev, "v": None}}
+
+    def snapshots(self, symbols, feed=None) -> dict[str, dict]:
+        self.calls.append(("snapshots", tuple(symbols), feed))
+        out = {}
+        for sym in symbols:
+            snap = self._snapshot(sym)
+            if snap is not None:
+                out[sym] = snap
+        return out
+
+    def _all_snapshots(self) -> dict[str, dict]:
+        out = {}
+        for sym in dict.fromkeys([*self.prices, *self.bar_data]):
+            snap = self._snapshot(sym)
+            if snap is not None:
+                out[sym] = snap
+        return out
+
+    def movers(self, top: int = 20) -> dict:
+        self.calls.append(("movers", top))
+        if self.screener_error:
+            raise RuntimeError(self.screener_error)
+        rows = [{"symbol": s, "price": d["price"], "change": round(d["price"] - d["prev_close"], 4),
+                 "change_pct": round(d["change_pct"], 4)}
+                for s, d in self._all_snapshots().items() if d["change_pct"]]
+        return {"gainers": sorted([r for r in rows if r["change_pct"] > 0], key=lambda r: -r["change_pct"])[:top],
+                "losers": sorted([r for r in rows if r["change_pct"] < 0], key=lambda r: r["change_pct"])[:top],
+                "updated": _now()}
+
+    def most_actives(self, top: int = 20, by: str = "volume") -> dict:
+        self.calls.append(("most_actives", top, by))
+        if self.screener_error:
+            raise RuntimeError(self.screener_error)
+        rows = [{"symbol": s, "volume": float(d["day_volume"] or 0),
+                 "trade_count": float(len(self.bar_data.get(s) or []) * 25)}
+                for s, d in self._all_snapshots().items() if d["day_volume"]]
+        key = "trade_count" if by == "trades" else "volume"
+        return {"items": sorted(rows, key=lambda r: -r[key])[:top], "updated": _now()}
+
+    def news(self, start, end, symbols=None, limit=200, include_content=True, newest_first=False) -> list[dict]:
         out = [n for n in self.news_items if start <= n["created_at"] <= end
                and (not symbols or set(symbols) & set(n.get("symbols") or []))]
+        if newest_first:
+            out.reverse()
         return out[:limit]
 
     # ---- orders ----

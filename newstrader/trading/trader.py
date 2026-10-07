@@ -16,15 +16,17 @@ from typing import Any
 
 from ..context import AppContext
 from ..db import iso, parse_iso
+from ..performance.prices import directional_return, price_at
 from . import live_guard
 from .fake_broker import FakeBroker
 from .pnl import realized_pnl
-from .risk import AccountSnapshot, AssetInfo, PositionInfo, RiskContext, check_entry, check_exit
+from .risk import AccountSnapshot, AssetInfo, PositionInfo, RiskContext, chase_check, check_entry, check_exit
 
 log = logging.getLogger(__name__)
 
 OPEN_STATUSES = {"new", "accepted", "pending_new", "held", "partially_filled", "accepted_for_bidding",
                  "pending_replace", "replaced", "calculated"}
+CHASE_LOOKBACK = timedelta(minutes=60)  # "since the news" looks back at most this far
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -367,6 +369,8 @@ class Trader:
     async def _open(self, symbol: str, side: str, signal: dict, manual: bool, why: str) -> dict:
         rctx = await self._risk_context(symbol)
         price = await asyncio.to_thread(self.broker.latest_price, symbol)
+        direction = "bullish" if side == "buy" else "bearish"
+        pre_move = None if manual else await self._pre_move(symbol, direction, signal, price)
         decision = check_entry(symbol, side, price, rctx, manual=manual)
         if decision.halt_for_day and not self.ctx.state.halted_today:
             self.ctx.state.halt_for_today(decision.reason)
@@ -374,6 +378,11 @@ class Trader:
         if not decision.allowed:
             log.info("Blocked %s %s: %s", side, symbol, decision.reason)
             return self._result("blocked", decision.reason)
+        # Don't chase: approving it by hand skips this check.
+        chase = "" if manual else chase_check(direction, pre_move, self.ctx.config.settings.trading.max_chase_pct)
+        if chase:
+            log.info("Sent %s %s to manual review: %s", side, symbol, chase)
+            return self._result("review", chase)
         coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
         try:
             order = await asyncio.to_thread(self.broker.submit_bracket, symbol, "buy" if side == "buy" else "sell",
@@ -397,6 +406,45 @@ class Trader:
         await self.refresh(force=True)
         return self._result("bought" if side == "buy" else "shorted", decision.reason, traded=True,
                             order_db_id=db_id, alpaca_order_id=order["id"])
+
+    def _news_time(self, signal: dict) -> datetime | None:
+        """When the story behind a signal came out (when it arrived, for live-stream transcripts)."""
+        row = None
+        if signal.get("analysis_id"):
+            row = self.ctx.db.query_one(
+                "SELECT a.item_kind, n.published_at, n.received_at FROM analyses a "
+                "JOIN news_items n ON n.id = a.item_id WHERE a.id = ?", (signal["analysis_id"],))
+        if row is not None:
+            if row["item_kind"] != "transcript" and row["published_at"]:
+                return parse_iso(row["published_at"])
+            if row["received_at"]:
+                return parse_iso(row["received_at"])
+        return parse_iso(signal.get("created_at"))
+
+    async def _pre_move(self, symbol: str, direction: str, signal: dict, price: float | None) -> float | None:
+        """How far (%) the price already moved in the signal's direction since the news came out (looking back at
+        most an hour). Saved on the signal. None when a price is missing - then the chase check doesn't apply."""
+        if not price:
+            return None
+        now = datetime.now(UTC)
+        try:
+            news_at = await asyncio.to_thread(self._news_time, signal)
+            if news_at is None:
+                return None
+            ref = min(max(news_at, now - CHASE_LOOKBACK), now)
+            monitor = self.ctx.service("market")
+            then = monitor.price_near(symbol, ref, now) if hasattr(monitor, "price_near") else None
+            if then is None:
+                # bars from a bit earlier too: quiet stocks may not trade every minute on the free IEX feed
+                bars = await asyncio.to_thread(self.broker.bars, symbol, ref - timedelta(minutes=15), now)
+                then = price_at(bars, ref)
+        except Exception as exc:
+            log.debug("Couldn't check how far %s already moved: %s", symbol, exc)
+            return None
+        move = directional_return(direction, then, price)
+        if move is not None and signal.get("id"):
+            self.ctx.db.update("signals", signal["id"], {"pre_move_pct": round(move, 2)})
+        return move
 
     async def _close_long(self, symbol: str, signal: dict, manual: bool, why: str) -> dict:
         rctx = await self._risk_context(symbol)

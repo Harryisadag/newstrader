@@ -16,6 +16,7 @@
   <script src="/static/js/signals.js"></script>
   <script src="/static/js/streams.js"></script>
   <script src="/static/js/performance.js"></script>
+  <script src="/static/js/market.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -319,6 +320,143 @@
           <div x-show="testResult.model" class="small muted" x-text="'Engine: ' + testResult.model"></div>
         </div>
       </template>
+    </div>
+  </section>
+
+  <!-- ===================== MARKET ===================== -->
+  <section x-show="store.tab === 'market'" class="tab-page" x-data="marketTab">
+    <template x-if="data && !data.connected">
+      <div class="card"><h2>Not connected to Alpaca</h2>
+        <p class="muted">The Market tab uses market data from your Alpaca account. Add your Alpaca paper keys in
+          Settings -> API keys, then run Logs -> Diagnostics.</p></div>
+    </template>
+    <template x-if="data && data.connected && !data.enabled">
+      <div class="card"><h2>The market monitor is off</h2>
+        <p class="muted">Turn it on to be told when a stock you follow suddenly jumps or drops, or the whole market
+          makes a big move.</p>
+        <button class="btn primary small" @click="goto('settings', 'market')">Open Settings -> Market monitor</button></div>
+    </template>
+
+    <div class="kpis">
+      <div class="kpi" title="The US stock market's regular hours are 9:30am-4pm New York time on weekdays">
+        <div class="kpi-label">US stock market</div>
+        <div class="kpi-value"><span class="dot" :class="isOpen ? 'ok' : 'off'"></span> <span x-text="marketLabel"></span></div>
+        <div class="kpi-sub" x-text="marketSub"></div>
+      </div>
+      <template x-for="t in indices" :key="t.symbol">
+        <div class="kpi" :title="t.name ? t.symbol + ' is a fund that tracks the ' + t.name : t.symbol">
+          <div class="kpi-label" x-text="tileName(t)"></div>
+          <div class="kpi-value" :class="fmt.plClass(t.change_pct)" x-text="fmt.pct(t.change_pct)"></div>
+          <div class="kpi-sub"><span x-text="t.symbol + ' · ' + fmt.money(t.price)"></span>
+            <span x-show="t.move_15m !== null && t.move_15m !== undefined" :class="fmt.plClass(t.move_15m)"
+                  x-text="' · ' + fmt.pct(t.move_15m, 1) + ' in 15 min'"></span></div>
+        </div>
+      </template>
+      <div class="kpi"><div class="kpi-label">Spikes &amp; moves today</div>
+        <div class="kpi-value" x-text="data?.counts?.events_today ?? 0"></div>
+        <div class="kpi-sub" x-text="lastCheck"></div></div>
+    </div>
+
+    <div class="card" x-show="world.length">
+      <div class="card-head"><h2>World markets</h2>
+        <span class="small muted">US-listed funds that hold each country's stocks - change today</span></div>
+      <div class="world-grid">
+        <template x-for="t in world" :key="t.symbol">
+          <div class="world-tile">
+            <div class="row"><b x-text="tileName(t)"></b><span class="tiny muted" x-text="t.symbol"></span></div>
+            <div class="world-val" :class="fmt.plClass(t.change_pct)" x-text="fmt.pct(t.change_pct)"></div>
+            <div class="tiny muted" x-text="fmt.money(t.price)"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="market-grid">
+      <div class="card">
+        <div class="card-head"><h2>Spikes &amp; alerts</h2>
+          <div class="row gap"><span class="small muted" x-text="lastCheck"></span>
+            <button class="btn ghost small" :disabled="scanning || !data || !data.running || !data.enabled" @click="scanNow()"
+                    x-text="scanning ? 'Checking...' : 'Check now'"></button></div></div>
+        <div class="event-list">
+          <template x-for="ev in events" :key="ev.id">
+            <div class="event-row" :class="'lvl-' + (ev.level || 'info')">
+              <span class="ts" x-text="fmt.time(ev.ts)" :title="fmt.dateTime(ev.ts)"></span>
+              <span class="chip" x-text="ev.symbol"></span>
+              <span class="pill small" :class="kind(ev).cls" x-text="kind(ev).label"></span>
+              <div class="event-main">
+                <div class="row gap wrap">
+                  <b x-text="title(ev)"></b>
+                  <span class="small" :class="fmt.plClass(ev.change_pct)" x-text="moveText(ev)"></span>
+                  <span class="small muted" x-show="ev.volume_ratio" x-text="fmt.num(ev.volume_ratio, 1) + 'x usual volume'"></span>
+                  <span class="pill small warn" x-show="ev.alerted" title="An alert was sent for this">alerted</span>
+                </div>
+                <div class="small" x-show="ev.headline"><span class="muted">News:</span>
+                  <a :href="fmt.url(ev.url)" target="_blank" rel="noopener" x-text="ev.headline"></a></div>
+                <div class="small muted" x-show="!ev.headline && ev.scope === 'stock'">No news found for it - it could be a
+                  rumour, a big order, or news we haven't seen.</div>
+                <div class="small muted" x-show="ev.scope !== 'stock'" x-text="ev.detail && ev.detail.message"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div x-show="data && !events.length" class="muted pad">No spikes or big market moves yet. They show up here as
+          they happen - checked about once a minute while the market is open.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Top movers</h2>
+          <div class="seg">
+            <button :class="{ active: moversView === 'gainers' }" @click="moversView = 'gainers'">Gainers</button>
+            <button :class="{ active: moversView === 'losers' }" @click="moversView = 'losers'">Losers</button>
+            <button :class="{ active: moversView === 'active' }" @click="moversView = 'active'">Most active</button>
+          </div></div>
+        <table class="table compact" x-show="moversRows.length">
+          <thead><tr><th>Symbol</th><th>Name</th>
+            <th class="num" x-text="moversView === 'active' ? 'Shares' : 'Price'"></th>
+            <th class="num" x-text="moversView === 'active' ? 'Trades' : 'Today'"></th></tr></thead>
+          <tbody>
+            <template x-for="m in moversRows" :key="m.symbol">
+              <tr>
+                <td><b x-text="m.symbol"></b></td>
+                <td class="small muted mover-name" x-text="m.name" :title="m.name"></td>
+                <td class="num" x-text="moversView === 'active' ? fmt.compact(m.volume) : fmt.money(m.price)"></td>
+                <td class="num" :class="moversView === 'active' ? '' : fmt.plClass(m.change_pct)"
+                    x-text="moversView === 'active' ? fmt.compact(m.trade_count) : fmt.pct(m.change_pct)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div x-show="data && !moversRows.length" class="muted pad" x-text="moversEmpty"></div>
+        <p class="note">From Alpaca's screener, refreshed every few minutes. Stocks under your minimum price, warrants and
+          over-the-counter stocks are left out.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Watching</h2><span class="small muted" x-text="watchingNote"></span></div>
+      <table class="table" x-show="watching.length">
+        <thead><tr><th>Ticker</th><th>Why</th><th class="num">Price</th><th class="num">Today</th>
+          <th class="num" x-text="'Last ' + windowMin + ' min'"></th><th class="num">Volume vs usual</th></tr></thead>
+        <tbody>
+          <template x-for="w in watching" :key="w.symbol">
+            <tr :class="{ dim: w.stale }" :title="w.stale ? 'No trades in the last few minutes on this data feed' : ''">
+              <td class="nowrap"><b x-text="w.symbol"></b> <span class="small muted" x-text="w.name"></span></td>
+              <td class="reasons"><template x-for="r in w.reasons" :key="r"><span class="tag" x-text="reasonText(r)"></span></template></td>
+              <td class="num" x-text="fmt.money(w.price)"></td>
+              <td class="num" :class="fmt.plClass(w.change_pct)" x-text="fmt.pct(w.change_pct)"></td>
+              <td class="num" :class="fmt.plClass(w.move_pct)" x-text="fmt.pct(w.move_pct)"></td>
+              <td class="num" x-text="w.volume_ratio === null || w.volume_ratio === undefined ? '—' : fmt.num(w.volume_ratio, 1) + 'x'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="data && !watching.length" class="muted pad">Nothing to watch yet. Stocks you hold, stocks with recent
+        signals, your watchlist and today's top movers appear here (Settings -> Market monitor).</div>
+      <p class="note" x-show="thresholdText" x-text="thresholdText"></p>
+      <p class="note" x-show="data && data.feed === 'IEX'">Prices and volume come from Alpaca's free IEX feed, which only sees
+        part of all US trading (a few percent of the shares traded). So "volume vs usual" is a rough guide, and quiet stocks
+        can go minutes without a trade. Spikes are only checked while the market is open (and before/after hours if you
+        turn that on).</p>
     </div>
   </section>
 
@@ -771,6 +909,11 @@
                 you don't see them, check that "Do not disturb" / Focus is off. On a Mac they come from "Script Editor" -
                 allow it in System Settings → Notifications. Discord alerts need a webhook URL in API keys.</p>
             </div>
+          </template>
+          <template x-if="section === 'market'">
+            <p class="note">See the Market tab for what is being watched and every spike found. Alerts use the "Sudden
+              price spikes" and "Big market-wide moves" switches in Alerts. Volume on the free IEX feed is only part of all
+              trading, so a stock with too little history needs a 1.5x bigger move to count as a spike.</p>
           </template>
           <template x-if="section === 'ai' && get('ai.engine') === 'claude'">
             <p class="note">Cost estimate: each analysed story costs roughly $0.002–$0.02 with Sonnet 5.5 at low effort.

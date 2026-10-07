@@ -90,6 +90,16 @@
       if (v === null || v === undefined || isNaN(v)) return "—";
       return Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
     },
+    // 1234567 -> "1.2M" (share volumes, trade counts)
+    compact(v) {
+      if (v === null || v === undefined || isNaN(v)) return "—";
+      const n = Number(v);
+      const a = Math.abs(n);
+      for (const [size, unit] of [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]]) {
+        if (a >= size) return (n / size).toFixed(1).replace(/\.0$/, "") + unit;
+      }
+      return String(Math.round(n));
+    },
     time(iso) {
       if (!iso) return "—";
       const d = new Date(iso);

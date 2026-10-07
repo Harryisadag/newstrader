@@ -3,6 +3,7 @@ document.addEventListener("alpine:init", () => {
   const TABS = [
     { id: "live", label: "Live" },
     { id: "signals", label: "Signals" },
+    { id: "market", label: "Market" },
     { id: "portfolio", label: "Portfolio" },
     { id: "trades", label: "Trade Log" },
     { id: "performance", label: "Performance" },
