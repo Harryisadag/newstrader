@@ -69,12 +69,14 @@ class Orchestrator:
         if self.services:
             return
         from .ai.pipeline import Pipeline
+        from .audio.stream_manager import StreamManager
         from .sources.manager import SourceManager
         from .trading.trader import Trader
 
         self.add(Trader(self.ctx))
         self.add(Pipeline(self.ctx))
         self.add(SourceManager(self.ctx))
+        self.add(StreamManager(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary

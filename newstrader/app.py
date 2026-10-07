@@ -87,8 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn
 
     from .api.server import create_app
+    from .audio.cuda_setup import setup_cuda_dll_paths
     from .context import build_context
 
+    setup_cuda_dll_paths()  # must happen before anything loads the GPU libraries
     ctx = build_context(token=args.token)
     attach_db_logging(ctx.db, ctx.bus)
     log.info("%s %s starting (data folder: %s)", APP_NAME, __version__, paths.data_dir())

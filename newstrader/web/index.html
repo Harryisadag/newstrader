@@ -14,6 +14,7 @@
   <script src="/static/js/portfolio.js"></script>
   <script src="/static/js/live.js"></script>
   <script src="/static/js/signals.js"></script>
+  <script src="/static/js/streams.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -117,7 +118,46 @@
 <main>
   <!-- ===================== LIVE ===================== -->
   <section x-show="store.tab === 'live'" class="tab-page" x-data="liveTab">
-    <div id="streams-slot"></div>
+    <div class="card" x-data="streamsPanel">
+      <div class="card-head">
+        <h2>Live TV streams</h2>
+        <div class="row gap">
+          <span class="small muted" x-show="info && info.transcriber">
+            <span class="dot" :class="info?.transcriber?.level"></span>
+            <span x-text="'Speech-to-text: ' + (info?.transcriber?.detail || '')"></span>
+          </span>
+          <span class="small muted" x-show="info" x-text="info ? `max ${info.max_streams} at once` : ''"></span>
+          <label class="row small" x-show="offCount"><input type="checkbox" x-model="showOff"> Show <span x-text="offCount"></span> turned-off streams</label>
+        </div>
+      </div>
+      <template x-if="info && !info.transcription_enabled">
+        <p class="warn-text">Transcription is turned off (Settings → Transcription).</p>
+      </template>
+      <div class="stream-grid">
+        <template x-for="s in visibleStreams" :key="s.id">
+          <div class="stream-pane" :class="{ off: !s.enabled }">
+            <div class="stream-head">
+              <label class="switch small"><input type="checkbox" :checked="s.enabled" @change="toggle(s)"><span class="slider"></span></label>
+              <span class="dot" :class="s.enabled ? (s.health ? s.health.level : 'starting') : 'off'"></span>
+              <b x-text="s.name"></b>
+              <a class="small muted ext" :href="s.url" target="_blank" rel="noopener" title="Open stream">↗</a>
+            </div>
+            <div class="stream-status small muted" x-text="s.enabled ? (s.health ? s.health.detail : 'starting...') : 'off'"></div>
+            <div class="transcript" :id="'tx-' + s.id" x-show="s.enabled">
+              <template x-for="l in (lines[s.id] || [])" :key="l.id">
+                <div class="tx-line" :class="{ hit: l.hit }">
+                  <span class="ts" x-text="fmt.time(l.start_ts)"></span>
+                  <span class="txt" x-html="highlight(l)"></span>
+                  <template x-for="c in (l.candidates || [])" :key="c"><span class="chip" x-text="c"></span></template>
+                </div>
+              </template>
+              <div class="muted small pad" x-show="!(lines[s.id] || []).length">Waiting for speech...</div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p class="note" x-show="!visibleStreams.length">No streams turned on. Turn some on here or add one in Settings → News sources (any YouTube /live link works).</p>
+    </div>
 
     <div class="live-grid">
       <aside class="card source-list">

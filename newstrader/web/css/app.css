@@ -325,3 +325,18 @@ textarea { width: 100%; resize: vertical; font: inherit; }
 .test-result { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .test-signal { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .err { color: var(--bad); font-size: 13px; }
+
+/* ---------- live streams ---------- */
+.stream-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.stream-pane { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stream-pane.off { opacity: .55; }
+.stream-head { display: flex; align-items: center; gap: 8px; }
+.stream-head b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-head .ext { text-decoration: none; }
+.stream-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transcript { height: 230px; overflow-y: auto; font-size: 13px; line-height: 1.45; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 4px; }
+.tx-line { padding: 2px 0; }
+.tx-line .ts { color: var(--muted); font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.tx-line.hit { background: rgba(79,140,255,.07); border-left: 2px solid var(--accent); padding-left: 6px; }
+.tx-line .chip { margin-left: 4px; }
+mark.kw { background: rgba(245,165,36,.22); color: inherit; border-radius: 3px; padding: 0 2px; }
