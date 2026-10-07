@@ -78,6 +78,7 @@ class Orchestrator:
         from .sources.manager import SourceManager
         from .system_monitor import SystemMonitor
         from .trading.trader import Trader
+        from .updates import UpdateChecker
 
         self.add(SystemMonitor(self.ctx))
         self.add(AlertManager(self.ctx))
@@ -89,6 +90,7 @@ class Orchestrator:
         self.add(MarketMonitor(self.ctx))
         self.add(BacktestRunner(self.ctx))
         self.add(ModelTrainer(self.ctx))
+        self.add(UpdateChecker(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary

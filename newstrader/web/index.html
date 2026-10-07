@@ -110,6 +110,18 @@
   <b>Daily loss limit hit.</b> Trading is paused until the next trading day.
   <button class="btn ghost small" @click="if (confirm('Resume trading today anyway?')) NT.api.post('/halt/clear').then(() => refresh())">Resume anyway</button>
 </div>
+<div class="banner info" x-show="s.update && s.update.newer && dismissedUpdate !== s.update.latest">
+  <b>NewsTrader <span x-text="s.update && s.update.latest"></span> is out</b>
+  <span class="muted">(you have <span x-text="s.version"></span>)</span>
+  <template x-if="s.update && !s.update.source_mode">
+    <a class="btn small" :href="fmt.url(s.update.download)" target="_blank" rel="noopener">Download</a>
+  </template>
+  <template x-if="s.update && s.update.source_mode">
+    <span>Double-click <b>update.bat</b> (Windows) or <b>update.command</b> (Mac) to get it.</span>
+  </template>
+  <a :href="fmt.url(s.update && s.update.url)" target="_blank" rel="noopener">What's new</a>
+  <button class="btn ghost small" @click="dismissUpdate()">Later</button>
+</div>
 <div class="banner live" x-show="s.mode === 'live'">
   <b>LIVE TRADING - REAL MONEY.</b> Switch back in Settings -> Live trading, or restart the app.
 </div>

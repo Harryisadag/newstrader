@@ -269,6 +269,8 @@ pre.raw { white-space: pre-wrap; word-break: break-word; font-family: var(--mono
 .banner.bad { background: var(--bad-bg); color: #ffb4b4; }
 .banner.warn { background: var(--warn-bg); color: #ffd58a; }
 .banner.live { background: var(--bad); color: #fff; font-weight: 600; }
+.banner.info { background: var(--accent-bg, rgba(77, 140, 255, 0.12)); color: var(--text); }
+.banner.info a:not(.btn) { color: var(--accent); }
 
 /* ---------- KPIs ---------- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }

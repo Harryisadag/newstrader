@@ -347,6 +347,8 @@ class MarketSettings(_Model):
 class UISettings(_Model):
     # Times in the app: "local" = this computer's time zone, "market" = New York (ET), "utc"
     time_zone: Literal["local", "market", "utc"] = "local"
+    # Check GitHub once a day for a newer NewsTrader and show a banner (nothing is installed by itself)
+    check_updates: bool = True
 
 
 class AppSettings(_Model):

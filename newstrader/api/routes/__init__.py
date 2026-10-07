@@ -15,6 +15,7 @@ from . import (
     streams,
     system,
     trading,
+    updates,
 )
 
 ALL_ROUTERS = [
@@ -32,4 +33,5 @@ ALL_ROUTERS = [
     performance.router,
     backtest.router,
     ml.router,
+    updates.router,
 ]

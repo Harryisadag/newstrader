@@ -47,6 +47,12 @@ document.addEventListener("alpine:init", () => {
     fmt: NT.fmt,
     get s() { return Alpine.store("nt").status; },
     get store() { return Alpine.store("nt"); },
+    dismissedUpdate: (() => { try { return localStorage.getItem("nt_dismissed_update") || ""; } catch (e) { return ""; } })(),
+
+    dismissUpdate() {
+      this.dismissedUpdate = (this.s.update && this.s.update.latest) || "";
+      try { localStorage.setItem("nt_dismissed_update", this.dismissedUpdate); } catch (e) { /* private window */ }
+    },
 
     async init() {
       window.addEventListener("nt:connection", (e) => { this.store.connected = e.detail.connected; if (e.detail.connected) this.refresh(); });
