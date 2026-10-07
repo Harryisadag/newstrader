@@ -1,0 +1,32 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# App data (database, logs, config, models, exports)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build output
+build/
+dist/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# CI temp files
+requirements-ci.txt
+requirements-dev-ci.txt

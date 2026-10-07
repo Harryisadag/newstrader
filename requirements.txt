@@ -1,0 +1,33 @@
+# NewsTrader runtime dependencies (installed automatically by run.bat)
+
+# Web server + desktop window
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pywebview>=5.0
+pydantic>=2.7
+python-dotenv>=1.0
+httpx>=0.27
+tzdata
+
+# Trading + AI
+alpaca-py>=0.40
+anthropic>=1.0
+
+# News inputs
+feedparser>=6.0
+
+# Live streams + transcription
+numpy
+faster-whisper>=1.2
+# 4.6.3+ is the first CTranslate2 with CUDA 12.8 / RTX 50-series (Blackwell) support
+ctranslate2>=4.6.3
+# CUDA math library DLLs for the GPU (so you don't need to install the CUDA Toolkit)
+nvidia-cublas-cu12>=12.8 ; sys_platform == "win32"
+# yt-dlp + its YouTube JavaScript helper; deno is the JavaScript runtime YouTube now needs
+yt-dlp[default]>=2025.11.12
+deno>=2.0
+# Bundled ffmpeg binary (used if ffmpeg isn't already installed)
+imageio-ffmpeg>=0.5
+
+# Windows desktop notifications
+winotify>=1.1 ; sys_platform == "win32"

@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies (skipping the large CUDA library - CI has no GPU)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          grep -v "nvidia-cublas" requirements.txt > requirements-ci.txt
+          sed "s/-r requirements.txt/-r requirements-ci.txt/" requirements-dev.txt > requirements-dev-ci.txt
+          pip install -r requirements-dev-ci.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Start the app headless and check it answers
+        run: python scripts/smoke_test.py

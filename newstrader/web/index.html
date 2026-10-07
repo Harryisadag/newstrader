@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NewsTrader</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/logs.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+</head>
+<body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
+
+<!-- ===================== HEADER ===================== -->
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◆</span> NewsTrader
+  </div>
+
+  <div class="mode-badge" :class="s.mode === 'live' ? 'live' : 'paper'"
+       :title="s.mode === 'live' ? 'LIVE TRADING - REAL MONEY' : 'Paper trading - simulated money'">
+    <span x-text="s.mode === 'live' ? 'LIVE · REAL MONEY' : 'PAPER'"></span>
+  </div>
+
+  <div class="stat" title="US stock market">
+    <div class="stat-label">Market</div>
+    <div class="stat-value">
+      <span class="dot" :class="s.market && s.market.is_open ? 'ok' : 'off'"></span>
+      <span x-text="s.market ? (s.market.is_open ? 'Open' : 'Closed') : '—'"></span>
+    </div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-label">Equity</div>
+    <div class="stat-value" x-text="s.account ? fmt.money(s.account.equity) : '—'"></div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-label">Today P/L</div>
+    <div class="stat-value" :class="s.account ? fmt.plClass(s.account.day_pl) : ''"
+         x-text="s.account ? fmt.signedMoney(s.account.day_pl) : '—'"></div>
+  </div>
+
+  <div class="stat spend" :title="'Estimated Claude API cost today (cap ' + fmt.money(s.spend_cap) + ')'">
+    <div class="stat-label">Claude today</div>
+    <div class="stat-value"><span x-text="fmt.money(s.spend_today)"></span>
+      <span class="muted small">/ <span x-text="fmt.money(s.spend_cap, 0)"></span></span></div>
+    <div class="meter"><div :style="'width:' + spendPct + '%'" :class="spendPct >= 100 ? 'bad' : (spendPct > 75 ? 'warn' : '')"></div></div>
+  </div>
+
+  <div class="stat" :title="tradingState.tip">
+    <div class="stat-label">Trading</div>
+    <div class="stat-value"><span class="pill" :class="tradingState.cls" x-text="tradingState.label"></span></div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="conn" :class="store.connected ? 'ok' : 'bad'" :title="store.connected ? 'Connected to engine' : 'Reconnecting to engine...'">
+    <span class="dot" :class="store.connected ? 'ok' : 'error'"></span>
+    <span x-show="problemCount > 0" class="pill bad small clickable" @click="store.setTab('logs')"
+          x-text="problemCount + (problemCount === 1 ? ' problem' : ' problems')"></span>
+  </div>
+
+  <div id="kill-slot"></div>
+</header>
+
+<!-- ===================== TABS ===================== -->
+<nav class="tabs">
+  <template x-for="t in store.tabs" :key="t.id">
+    <button class="tab" :class="{ active: store.tab === t.id }" @click="store.setTab(t.id)" x-text="t.label"></button>
+  </template>
+</nav>
+
+<main>
+  <!-- ===================== LIVE ===================== -->
+  <section x-show="store.tab === 'live'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Live</h2>
+      <p class="muted">Transcripts and headlines from each source will scroll here (built in phases 3 and 4).</p>
+    </div>
+  </section>
+
+  <!-- ===================== SIGNALS ===================== -->
+  <section x-show="store.tab === 'signals'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Signals</h2>
+      <p class="muted">Every AI signal with ticker, confidence, reasoning, source and whether it traded (phase 3).</p>
+    </div>
+  </section>
+
+  <!-- ===================== PORTFOLIO ===================== -->
+  <section x-show="store.tab === 'portfolio'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Portfolio</h2>
+      <p class="muted">Open positions, P/L and account value chart (phase 2).</p>
+    </div>
+  </section>
+
+  <!-- ===================== TRADES ===================== -->
+  <section x-show="store.tab === 'trades'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Trade Log</h2>
+      <p class="muted">All trades with CSV export (phase 2).</p>
+    </div>
+  </section>
+
+  <!-- ===================== PERFORMANCE ===================== -->
+  <section x-show="store.tab === 'performance'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Performance</h2>
+      <p class="muted">Is the AI actually right? Win rate by confidence and source (phase 6).</p>
+    </div>
+  </section>
+
+  <!-- ===================== BACKTEST ===================== -->
+  <section x-show="store.tab === 'backtest'" class="tab-page">
+    <div class="placeholder card">
+      <h2>Backtest</h2>
+      <p class="muted">Run the AI over historical Alpaca news (phase 6).</p>
+    </div>
+  </section>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <section x-show="store.tab === 'settings'" class="tab-page settings" x-data="settingsTab">
+    <aside class="subnav">
+      <template x-for="sec in sections" :key="sec.id">
+        <button :class="{ active: section === sec.id }" @click="section = sec.id" x-text="sec.label"></button>
+      </template>
+      <div class="subnav-sep"></div>
+      <button :class="{ active: section === 'sources' }" @click="section = 'sources'">News sources</button>
+      <button :class="{ active: section === 'keys' }" @click="section = 'keys'">API keys</button>
+      <button :class="{ active: section === 'live' }" @click="section = 'live'" class="danger-link">Live trading</button>
+    </aside>
+
+    <div class="settings-body">
+      <!-- generic schema-driven sections -->
+      <template x-if="form && currentSection">
+        <div class="card">
+          <div class="card-head">
+            <h2 x-text="currentSection.label"></h2>
+            <button class="btn ghost small" @click="resetDefaults()">Reset all to defaults</button>
+          </div>
+          <div class="form-grid">
+            <template x-for="f in currentSection.fields" :key="f.key">
+              <div class="field" :class="f.type">
+                <label :for="'f-' + f.key" x-text="f.label"></label>
+                <div class="control">
+                  <template x-if="f.type === 'toggle'">
+                    <label class="switch">
+                      <input type="checkbox" :id="'f-' + f.key" :checked="get(f.key)" @change="set(f.key, $event.target.checked)">
+                      <span class="slider"></span>
+                    </label>
+                  </template>
+                  <template x-if="f.type === 'number'">
+                    <div class="input-wrap">
+                      <span class="affix" x-show="f.prefix" x-text="f.prefix"></span>
+                      <input type="number" :id="'f-' + f.key" :min="f.min" :max="f.max" :step="f.step || 1"
+                             :value="get(f.key)" @input="num(f.key, $event.target.value)">
+                      <span class="affix" x-show="f.suffix" x-text="f.suffix"></span>
+                    </div>
+                  </template>
+                  <template x-if="f.type === 'text' || f.type === 'list'">
+                    <input type="text" :id="'f-' + f.key" :placeholder="f.placeholder || ''" :value="get(f.key)"
+                           @input="set(f.key, $event.target.value)">
+                  </template>
+                  <template x-if="f.type === 'select'">
+                    <select :id="'f-' + f.key" @change="set(f.key, $event.target.value)">
+                      <template x-for="[val, lab] in Object.entries(options(f))" :key="val">
+                        <option :value="val" :selected="String(get(f.key)) === String(val)" x-text="lab"></option>
+                      </template>
+                    </select>
+                  </template>
+                </div>
+                <p class="help" x-show="f.help" x-text="f.help"></p>
+              </div>
+            </template>
+          </div>
+          <template x-if="section === 'ai'">
+            <p class="note">Cost estimate: each analysed story costs roughly $0.002–$0.02 with Sonnet 5.5 at low effort.
+              Haiku 4.5 is about half that. The daily cap is a hard stop.</p>
+          </template>
+        </div>
+      </template>
+
+      <!-- Sources -->
+      <div x-show="section === 'sources'" x-data="sourcesManager" class="card">
+        <div class="card-head">
+          <h2>News sources</h2>
+          <div class="row gap">
+            <select x-model="filter" class="small">
+              <option value="all">All types</option>
+              <option value="stream">Live streams</option>
+              <option value="rss">RSS feeds</option>
+              <option value="social_rss">Social</option>
+              <option value="x_account">X (API)</option>
+              <option value="alpaca_news">Alpaca news</option>
+            </select>
+            <button class="btn primary small" @click="adding = !adding" x-text="adding ? 'Cancel' : '+ Add source'"></button>
+          </div>
+        </div>
+
+        <div x-show="adding" class="add-source">
+          <div class="form-grid compact">
+            <div class="field"><label>Type</label>
+              <select x-model="draft.type">
+                <template x-for="[val, lab] in Object.entries(types)" :key="val"><option :value="val" x-text="lab"></option></template>
+              </select></div>
+            <div class="field"><label>Name</label><input type="text" x-model="draft.name" placeholder="e.g. Reuters Business"></div>
+            <div class="field wide" x-show="draft.type !== 'alpaca_news'"><label x-text="draft.type === 'x_account' ? 'Username' : 'URL'"></label>
+              <input type="text" x-model="draft.url" :placeholder="urlPlaceholder()"></div>
+            <div class="field" x-show="draft.type === 'social_rss' || draft.type === 'x_account'"><label>Who posts (speaker)</label>
+              <input type="text" x-model="draft.speaker" placeholder="e.g. Elon Musk"></div>
+            <div class="field" x-show="['rss','social_rss','x_account'].includes(draft.type)"><label>Check every (seconds)</label>
+              <input type="number" min="10" max="3600" x-model.number="draft.poll_seconds"></div>
+          </div>
+          <div class="row end"><button class="btn primary" @click="add()">Add source</button></div>
+        </div>
+
+        <table class="table">
+          <thead><tr><th>On</th><th>Name</th><th>Type</th><th>URL</th><th>Health</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="src in visible" :key="src.id">
+              <tr :class="{ dim: !src.enabled }">
+                <td><label class="switch small"><input type="checkbox" :checked="src.enabled" @change="toggle(src)"><span class="slider"></span></label></td>
+                <td><span x-text="src.name"></span> <span class="tag" x-show="src.builtin">preset</span></td>
+                <td><span class="tag" :class="'t-' + src.type" x-text="typeLabel(src.type)"></span></td>
+                <td class="url" :title="src.url" x-text="src.url || '—'"></td>
+                <td>
+                  <template x-if="src.health"><span :title="src.health.detail"><span class="dot" :class="src.health.level"></span>
+                    <span class="small muted" x-text="src.health.detail"></span></span></template>
+                  <template x-if="!src.health"><span class="small muted" x-text="src.enabled ? 'not started' : 'off'"></span></template>
+                </td>
+                <td class="right"><button class="btn ghost small danger" @click="remove(src)">Remove</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <p class="note">Truth Social: preloaded via the free trumpstruth.org archive feed. X/Twitter has no free read access —
+          add an X account with a paid X API token, or paste an RSS feed (e.g. from rss.app) as a "Social" source.</p>
+      </div>
+
+      <!-- API keys -->
+      <div x-show="section === 'keys'" x-data="keysManager" class="card">
+        <div class="card-head"><h2>API keys</h2></div>
+        <p class="muted">Keys are stored only on this PC, in <code x-text="envFile"></code>. Leave a box empty to keep the current value.</p>
+        <div class="keys-list">
+          <template x-for="k in keys" :key="k.name">
+            <div class="key-row" :class="{ live: isLive(k.name) }">
+              <div class="key-label">
+                <div x-text="k.label"></div>
+                <code class="small muted" x-text="k.name"></code>
+              </div>
+              <div class="key-current">
+                <span class="dot" :class="k.set ? 'ok' : 'off'"></span>
+                <span class="small" x-text="k.set ? k.masked : 'not set'"></span>
+              </div>
+              <input type="password" autocomplete="off" spellcheck="false" :placeholder="k.set ? 'paste a new value to replace' : 'paste here'"
+                     :value="edits[k.name] || ''" @input="edits[k.name] = $event.target.value">
+              <button class="btn ghost small" x-show="k.set" @click="if (confirm('Remove ' + k.name + '?')) save(k.name)">Clear</button>
+            </div>
+          </template>
+        </div>
+        <div class="row end"><button class="btn primary" :disabled="!changed.length || saving" @click="save()">Save keys</button></div>
+      </div>
+
+      <!-- Live trading (danger zone) -->
+      <div x-show="section === 'live'" class="card danger-zone">
+        <h2>Live trading</h2>
+        <p>NewsTrader always starts in <b>PAPER</b> mode (fake money). Live trading controls arrive in phase 2.</p>
+      </div>
+
+      <!-- save bar -->
+      <div class="savebar" x-show="dirty || errors.length" x-transition>
+        <div class="errors" x-show="errors.length">
+          <template x-for="err in errors"><div class="err" x-text="err"></div></template>
+        </div>
+        <span x-show="dirty && !errors.length">You have unsaved changes.</span>
+        <div class="spacer"></div>
+        <button class="btn ghost" @click="discard()">Discard</button>
+        <button class="btn primary" :disabled="saving" @click="save()">Save settings</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LOGS ===================== -->
+  <section x-show="store.tab === 'logs'" class="tab-page" x-data="logsTab">
+    <div class="card">
+      <div class="card-head">
+        <h2>System status</h2>
+        <div class="row gap">
+          <button class="btn ghost small" @click="openFolder('data')">Open data folder</button>
+          <button class="btn ghost small" @click="openFolder('logs')">Open log files</button>
+          <button class="btn primary" @click="runDiagnostics()" :disabled="diagRunning"
+                  x-text="diagRunning ? 'Checking...' : 'Run diagnostics'"></button>
+        </div>
+      </div>
+      <div class="status-grid">
+        <template x-for="c in components" :key="c.component">
+          <div class="status-card" :class="c.level">
+            <div class="row"><span class="dot" :class="c.level"></span><b x-text="c.component"></b></div>
+            <div class="small muted" x-text="c.detail"></div>
+            <div class="tiny muted" x-text="fmt.ago(c.updated_at)"></div>
+          </div>
+        </template>
+        <div x-show="!components.length" class="muted">No services running yet.</div>
+      </div>
+
+      <template x-if="diag">
+        <div class="diag">
+          <h3>Diagnostics
+            <span class="pill good small" x-text="diag.summary.ok + ' ok'"></span>
+            <span class="pill warn small" x-show="diag.summary.warn" x-text="diag.summary.warn + ' warnings'"></span>
+            <span class="pill bad small" x-show="diag.summary.error" x-text="diag.summary.error + ' problems'"></span>
+          </h3>
+          <table class="table">
+            <tbody>
+              <template x-for="c in diag.checks" :key="c.name">
+                <tr>
+                  <td class="nowrap"><span class="dot" :class="c.status === 'ok' ? 'ok' : (c.status === 'warn' ? 'warn' : 'error')"></span> <b x-text="c.name"></b></td>
+                  <td x-text="c.detail"></td>
+                  <td class="fix" x-text="c.fix"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="seg">
+          <button :class="{ active: view === 'logs' }" @click="view = 'logs'">Log</button>
+          <button :class="{ active: view === 'rejections' }" @click="view = 'rejections'; loadRejections()">Rejected AI responses</button>
+        </div>
+        <div class="row gap" x-show="view === 'logs'">
+          <select x-model="level" @change="load()" class="small">
+            <option value="DEBUG">Debug+</option><option value="INFO">Info+</option>
+            <option value="WARNING">Warnings+</option><option value="ERROR">Errors only</option>
+          </select>
+          <input type="search" class="small" placeholder="Search..." x-model="q" @keydown.enter="load()">
+          <label class="row small"><input type="checkbox" x-model="paused"> Pause</label>
+        </div>
+      </div>
+
+      <div x-show="view === 'logs'" class="log-view">
+        <template x-for="row in logs" :key="row.id">
+          <div class="log-row" :class="levelClass(row.level)">
+            <span class="ts" x-text="fmt.dateTime(row.ts)"></span>
+            <span class="lvl" x-text="row.level"></span>
+            <span class="lg" x-text="row.logger"></span>
+            <span class="msg" x-text="row.message"></span>
+          </div>
+        </template>
+        <div x-show="!logs.length && !loading" class="muted pad">No log entries.</div>
+      </div>
+
+      <div x-show="view === 'rejections'">
+        <p class="muted small">Claude responses that failed validation (bad JSON, a ticker that doesn't exist, confidence out of range, refusals). They are never traded.</p>
+        <table class="table">
+          <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Reason</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="r in rejections" :key="r.id">
+              <tr>
+                <td class="nowrap" x-text="fmt.dateTime(r.created_at)"></td>
+                <td x-text="r.source_name"></td>
+                <td><span class="pill small" :class="r.status === 'error' ? 'bad' : 'warn'" x-text="r.status"></span></td>
+                <td>
+                  <div x-text="r.error"></div>
+                  <pre class="raw" x-show="expanded === r.id" x-text="r.raw_response"></pre>
+                </td>
+                <td><button class="btn ghost small" @click="expanded = expanded === r.id ? null : r.id" x-text="expanded === r.id ? 'Hide' : 'Raw'"></button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div x-show="!rejections.length" class="muted pad">Nothing rejected.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ===================== TOASTS ===================== -->
+<div class="toasts">
+  <template x-for="t in store.toasts" :key="t.id">
+    <div class="toast" :class="t.kind" @click="store.dismiss(t.id)">
+      <div class="toast-title" x-text="t.title"></div>
+      <div class="toast-msg" x-show="t.message" x-text="t.message"></div>
+    </div>
+  </template>
+</div>
+</body>
+</html>

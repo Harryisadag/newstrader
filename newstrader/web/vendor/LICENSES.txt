@@ -1,0 +1,4 @@
+Bundled third-party files (MIT licensed):
+
+alpine.min.js      - Alpine.js 3.17.4  https://github.com/alpinejs/alpine  (MIT, (c) Caleb Porzio and contributors)
+chart.umd.min.js   - Chart.js 4.5.1    https://github.com/chartjs/Chart.js (MIT, (c) Chart.js Contributors)

@@ -1,0 +1,19 @@
+[project]
+name = "newstrader"
+version = "0.1.0"
+description = "Watches live news, asks Claude if it's bullish or bearish, and paper-trades on Alpaca."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["newstrader/web/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008"]

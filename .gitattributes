@@ -1,0 +1,9 @@
+# Windows batch files are stored with CRLF line endings as-is (works from git clone AND ZIP download)
+*.bat -text
+*.cmd -text
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.ico binary
