@@ -60,3 +60,13 @@ def test_live_flag_never_persists(tmp_path):
 
 def test_trading_day_format():
     assert len(trading_day()) == 10
+
+
+def test_gpu_status_text():
+    from newstrader.system_monitor import describe_gpu
+
+    lvl, d = describe_gpu({"cuda_devices": 1, "name": "NVIDIA GeForce RTX 5070 Ti", "utilization_pct": 35.0,
+                           "memory_used_mb": 4200, "memory_total_mb": 16303, "driver": "581.0"})
+    assert lvl == "ok" and "RTX 5070 Ti" in d and "35% busy" in d and "/16 GB" in d
+    assert describe_gpu({"cuda_devices": 0})[0] == "warn"
+    assert describe_gpu({"cuda_devices": 0, "name": "NVIDIA GeForce RTX 5070 Ti"})[0] == "error"

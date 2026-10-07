@@ -74,8 +74,10 @@ class Orchestrator:
         from .backtest.runner import BacktestRunner
         from .performance.tracker import PerformanceTracker
         from .sources.manager import SourceManager
+        from .system_monitor import SystemMonitor
         from .trading.trader import Trader
 
+        self.add(SystemMonitor(self.ctx))
         self.add(AlertManager(self.ctx))
         self.add(Trader(self.ctx))
         self.add(Pipeline(self.ctx))
