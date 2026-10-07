@@ -41,6 +41,15 @@ def _enum(value: Any) -> str | None:
     return str(getattr(value, "value", value))
 
 
+def _patient(client: Any) -> None:
+    """alpaca-py retries a rate-limited (429) request only 3 times, 3 s apart; long training downloads need more."""
+    try:
+        client._retry = max(int(getattr(client, "_retry", 3)), 6)
+        client._retry_wait = max(int(getattr(client, "_retry_wait", 3)), 5)
+    except Exception:
+        pass
+
+
 def order_to_dict(o: Any) -> dict:
     legs = [order_to_dict(leg) for leg in (getattr(o, "legs", None) or [])]
     return {
@@ -95,6 +104,7 @@ class Broker:
         self.data_feed = data_feed
         self.trading = TradingClient(creds.api_key, creds.secret_key, paper=creds.paper)
         self.data = StockHistoricalDataClient(creds.api_key, creds.secret_key)
+        _patient(self.data)
         self._news = None
 
     @property
@@ -224,14 +234,20 @@ class Broker:
         return [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
                  "v": _f(b.volume)} for b in rows]
 
-    def bars_multi(self, symbols: list[str], start: datetime, end: datetime, timeframe: str = "1Min") -> dict[str, list[dict]]:
-        """Bars for several symbols in one request (the SDK follows the pages). Used to label training data."""
+    def bars_multi(self, symbols: list[str], start: datetime, end: datetime, timeframe: str = "1Min",
+                   feed: str | None = None) -> dict[str, list[dict]]:
+        """Bars for several symbols in one request (the SDK follows the pages). Used to label training data.
+
+        feed="sip" asks for the full consolidated tape, which free accounts may use for history that ended more
+        than 15 minutes ago (denser than IEX for smaller stocks)."""
+        from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
         tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute)}[timeframe]
+        chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
         res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=list(symbols), start=start, end=end,
-                                                        timeframe=tf, feed=self._feed()))
+                                                        timeframe=tf, feed=chosen))
         data = res.data if hasattr(res, "data") else {}
         return {sym: [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
                        "v": _f(b.volume)} for b in rows] for sym, rows in data.items()}
@@ -241,6 +257,7 @@ class Broker:
 
         if self._news is None:
             self._news = NewsClient(self.creds.api_key, self.creds.secret_key)
+            _patient(self._news)
         return self._news
 
     def news(self, start: datetime, end: datetime, symbols: list[str] | None = None, limit: int = 200,

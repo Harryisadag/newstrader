@@ -128,8 +128,10 @@ class FakeBroker:
             return []
         return [{"t": start.isoformat(), "o": p, "h": p, "l": p, "c": p, "v": 100}]
 
-    def bars_multi(self, symbols, start, end, timeframe="1Min") -> dict[str, list[dict]]:
-        self.calls.append(("bars_multi", tuple(symbols)))
+    def bars_multi(self, symbols, start, end, timeframe="1Min", feed=None) -> dict[str, list[dict]]:
+        self.calls.append(("bars_multi", tuple(symbols), feed))
+        if feed == "sip" and getattr(self, "refuse_sip", False):
+            raise RuntimeError("subscription does not permit querying recent SIP data")
         out = {}
         for sym in symbols:
             if sym in self.bar_data:

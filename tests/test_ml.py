@@ -290,6 +290,30 @@ def test_build_dataset_labels_and_caches(ctx):
     assert again["days_cached"] == 3 and len(fb.calls) == calls_before  # nothing re-downloaded
 
 
+def test_build_dataset_falls_back_from_sip_and_survives_a_bad_day(ctx):
+    table = make_tickers(ctx.db)
+    days = weekdays(date(2026, 3, 2), 3)
+    fb = synthetic_broker(days)
+    fb.refuse_sip = True  # free account that can't read SIP history
+    real_news = fb.news
+
+    def flaky_news(start, end, *a, **k):
+        if start.date() == days[1]:
+            raise RuntimeError("429 too many requests")
+        return real_news(start, end, *a, **k)
+
+    fb.news = flaky_news
+    stats = build_dataset(ctx.db, fb, table, days[0], days[-1], 60, 1000, lambda f, m: None, lambda: False,
+                          throttle=Throttle(0))
+    assert stats["price_feed"] == "settings" and stats["days_failed"] == 1 and stats["labelled"] == 40
+    feeds = [c[2] for c in fb.calls if c[0] == "bars_multi"]
+    assert feeds[0] == "sip" and set(feeds[1:]) == {None}
+    fb.news = real_news  # next run only fetches the day that failed
+    again = build_dataset(ctx.db, fb, table, days[0], days[-1], 60, 1000, lambda f, m: None, lambda: False,
+                          throttle=Throttle(0))
+    assert again["days_cached"] == 2 and again["labelled"] == 20
+
+
 def test_time_split_never_leaks_the_future():
     t0 = datetime(2026, 1, 5, 15, tzinfo=UTC)
     feats = SampleFeatures("x", SentimentScores(0.3, 0.3, 0.4), 1.0, True, True, 1, 0.5)

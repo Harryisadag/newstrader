@@ -131,68 +131,96 @@ def build_dataset(db: Database, broker, table: TickerTable, start: date, end: da
     todo = [s for s in sessions if s["date"] not in done]
     per_day = max(10, math.ceil(max_articles / max(1, len(sessions))))
     stats = {"days": len(sessions), "days_cached": len(sessions) - len(todo), "articles": 0, "samples": 0,
-             "labelled": 0}
+             "labelled": 0, "days_failed": 0, "price_feed": "sip"}
+    feed = ["sip"]  # full-market prices if the account allows it, else the feed chosen in Settings
+    failures_in_a_row = 0
     for i, sess in enumerate(todo):
         if cancelled():
             raise Cancelled()
         progress(i / max(1, len(todo)),
                  f"downloading day {i + 1} of {len(todo)} ({sess['date']}) - {stats['labelled']:,} labelled so far")
-        open_t, close_t = parse_iso(sess["open"]), parse_iso(sess["close"])
-        last_t = close_t - timedelta(minutes=horizon_min) - LATENCY - timedelta(minutes=1)
-        if last_t <= open_t:
-            done.add(sess["date"])
+        try:
+            _one_day(db, broker, table, sess, horizon_min, per_day, throttle, cancelled, feed, stats)
+        except Cancelled:
+            raise
+        except Exception as exc:  # one bad day (rate limit, network blip) shouldn't throw away the whole run
+            stats["days_failed"] += 1
+            failures_in_a_row += 1
+            log.warning("Training data for %s failed (%s) - will retry on the next training run", sess["date"], exc)
+            if failures_in_a_row >= 5:
+                raise RuntimeError(f"Alpaca downloads keep failing ({exc}). Days fetched so far are saved - "
+                                   "try again later.") from exc
             continue
-        slices = _slices(open_t, last_t)
-        per_slice = max(3, math.ceil(per_day / len(slices)))
-        articles, seen_ids, seen_titles = [], set(), set()
-        for s0, s1 in slices:
+        failures_in_a_row = 0
+        done.add(sess["date"])
+        db.kv_set(_done_key(horizon_min), sorted(done))
+    stats["price_feed"] = feed[0] or "settings"
+    progress(1.0, "prices downloaded")
+    return stats
+
+
+def _one_day(db: Database, broker, table: TickerTable, sess: dict, horizon_min: int, per_day: int,
+             throttle: Throttle, cancelled: Callable[[], bool], feed: list, stats: dict) -> None:
+    open_t, close_t = parse_iso(sess["open"]), parse_iso(sess["close"])
+    last_t = close_t - timedelta(minutes=horizon_min) - LATENCY - timedelta(minutes=1)
+    if last_t <= open_t:
+        return
+    slices = _slices(open_t, last_t)
+    per_slice = max(3, math.ceil(per_day / len(slices)))
+    articles, seen_ids, seen_titles = [], set(), set()
+    for s0, s1 in slices:
+        if cancelled():
+            raise Cancelled()
+        throttle.wait()
+        for n in broker.news(s0, s1, None, limit=per_slice, include_content=False):
+            nid = str(n.get("id"))
+            title = (n.get("headline") or "").strip()
+            if not title or nid in seen_ids or title.lower() in seen_titles:
+                continue
+            syms = [str(x).upper() for x in (n.get("symbols") or [])]
+            if not 1 <= len(syms) <= MAX_SYMBOLS_PER_ARTICLE:
+                continue
+            created = n.get("created_at")
+            created = parse_iso(created) if isinstance(created, str) else created
+            if created is None or not (open_t <= created <= last_t):
+                continue
+            seen_ids.add(nid)
+            seen_titles.add(title.lower())
+            articles.append({"id": nid, "headline": title, "summary": (n.get("summary") or "").strip(),
+                             "symbols": syms, "created_at": created})
+    stats["articles"] += len(articles)
+    pairs = [(a, sym) for a in articles for sym in a["symbols"] if table.is_valid(sym)]
+    if pairs:
+        symbols = sorted({sym for _, sym in pairs} | {MARKET})
+        bars: dict[str, list[dict]] = {}
+        for j in range(0, len(symbols), BARS_CHUNK):
             if cancelled():
                 raise Cancelled()
             throttle.wait()
-            for n in broker.news(s0, s1, None, limit=per_slice, include_content=False):
-                nid = str(n.get("id"))
-                title = (n.get("headline") or "").strip()
-                if not title or nid in seen_ids or title.lower() in seen_titles:
-                    continue
-                syms = [str(x).upper() for x in (n.get("symbols") or [])]
-                if not 1 <= len(syms) <= MAX_SYMBOLS_PER_ARTICLE:
-                    continue
-                created = n.get("created_at")
-                created = parse_iso(created) if isinstance(created, str) else created
-                if created is None or not (open_t <= created <= last_t):
-                    continue
-                seen_ids.add(nid)
-                seen_titles.add(title.lower())
-                articles.append({"id": nid, "headline": title, "summary": (n.get("summary") or "").strip(),
-                                 "symbols": syms, "created_at": created})
-        stats["articles"] += len(articles)
-        pairs = [(a, sym) for a in articles for sym in a["symbols"] if table.is_valid(sym)]
-        if pairs:
-            symbols = sorted({sym for _, sym in pairs} | {MARKET})
-            bars: dict[str, list[dict]] = {}
-            for j in range(0, len(symbols), BARS_CHUNK):
-                if cancelled():
-                    raise Cancelled()
+            chunk = symbols[j:j + BARS_CHUNK]
+            start_b, end_b = open_t - timedelta(minutes=1), close_t + timedelta(minutes=1)
+            try:
+                bars.update(broker.bars_multi(chunk, start_b, end_b, feed=feed[0]))
+            except Exception as exc:
+                if feed[0] is None:
+                    raise
+                log.info("Full-market (SIP) history not available (%s) - using the feed from Settings", exc)
+                feed[0] = None
                 throttle.wait()
-                bars.update(broker.bars_multi(symbols[j:j + BARS_CHUNK], open_t - timedelta(minutes=1),
-                                              close_t + timedelta(minutes=1)))
-            spy = bars.get(MARKET, [])
-            rows = []
-            for a, sym in pairs:
-                lab = compute_label(bars.get(sym, []), spy, a["created_at"], horizon_min, close_t)
-                rows.append((a["id"], sym, horizon_min, iso(a["created_at"]), a["headline"][:500], a["summary"][:2000],
-                             json.dumps(a["symbols"]), lab.status, lab.entry_price, lab.exit_price, lab.ret_pct,
-                             lab.spy_ret_pct, lab.adj_ret_pct, iso()))
-                stats["samples"] += 1
-                stats["labelled"] += lab.status == "ok"
-            db.executemany(
-                "INSERT OR REPLACE INTO ml_samples (news_id, symbol, horizon_min, published_at, headline, summary, "
-                "symbols, label_status, entry_price, exit_price, ret_pct, spy_ret_pct, adj_ret_pct, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-        done.add(sess["date"])
-        db.kv_set(_done_key(horizon_min), sorted(done))
-    progress(1.0, "prices downloaded")
-    return stats
+                bars.update(broker.bars_multi(chunk, start_b, end_b, feed=None))
+        spy = bars.get(MARKET, [])
+        rows = []
+        for a, sym in pairs:
+            lab = compute_label(bars.get(sym, []), spy, a["created_at"], horizon_min, close_t)
+            rows.append((a["id"], sym, horizon_min, iso(a["created_at"]), a["headline"][:500], a["summary"][:2000],
+                         json.dumps(a["symbols"]), lab.status, lab.entry_price, lab.exit_price, lab.ret_pct,
+                         lab.spy_ret_pct, lab.adj_ret_pct, iso()))
+            stats["samples"] += 1
+            stats["labelled"] += lab.status == "ok"
+        db.executemany(
+            "INSERT OR REPLACE INTO ml_samples (news_id, symbol, horizon_min, published_at, headline, summary, "
+            "symbols, label_status, entry_price, exit_price, ret_pct, spy_ret_pct, adj_ret_pct, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
 
 
 def forget_cached_days(db: Database, horizon_min: int) -> None:

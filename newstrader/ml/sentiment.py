@@ -175,9 +175,14 @@ def finbert_dir(models_dir: Path) -> Path:
     return models_dir / "finbert"
 
 
+MIN_ONNX_BYTES = 50_000_000  # the int8 FinBERT file is ~110 MB; anything much smaller is a broken download
+
+
 def finbert_present(models_dir: Path) -> bool:
     d = finbert_dir(models_dir)
-    return all((d / f).exists() and (d / f).stat().st_size > 0 for f in FINBERT_FILES)
+    if not all((d / f).exists() and (d / f).stat().st_size > 0 for f in FINBERT_FILES):
+        return False
+    return (d / FINBERT_ONNX).stat().st_size >= MIN_ONNX_BYTES
 
 
 def download_finbert(models_dir: Path) -> Path:
@@ -187,7 +192,11 @@ def download_finbert(models_dir: Path) -> Path:
     dest = finbert_dir(models_dir)
     dest.mkdir(parents=True, exist_ok=True)
     for name in FINBERT_FILES:
-        hf_hub_download(FINBERT_REPO, name, revision=FINBERT_REVISION, local_dir=str(dest))
+        f = dest / name
+        broken = name == FINBERT_ONNX and f.exists() and f.stat().st_size < MIN_ONNX_BYTES
+        hf_hub_download(FINBERT_REPO, name, revision=FINBERT_REVISION, local_dir=str(dest), force_download=broken)
+    if not finbert_present(models_dir):
+        raise RuntimeError("FinBERT download looks incomplete - try again")
     return dest
 
 
