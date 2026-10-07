@@ -196,3 +196,12 @@ def test_cost_estimates():
     cost = estimate_cost("claude-sonnet-5-5", input_tokens=1_000_000, output_tokens=100_000)
     assert cost == pytest.approx(2.0 + 1.0)
     assert estimate_cost("claude-unknown-9", 1_000_000) >= 4.0  # unknown -> priced high, never under-counted
+
+
+async def test_no_claude_calls_without_ticker_list(ctx):
+    from newstrader.ai.tickers import TickerTable
+
+    fake = FakeClaude()
+    p = Pipeline(ctx, analyzer=ClaudeAnalyzer(ctx, client_factory=lambda: fake), tickers=TickerTable(ctx.db))
+    out = await p.submit(item("Fed signals a rate cut in December"))
+    assert out["status"] == "no_tickers" and not fake.requests

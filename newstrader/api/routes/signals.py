@@ -141,6 +141,8 @@ async def test_ai(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
     if len(text) < 10:
         raise bad_request("Paste a headline or paragraph (at least 10 characters).")
     p = _pipeline(ctx)
+    if not p.tickers.loaded:
+        raise bad_request("The ticker list isn't loaded yet - add your Alpaca keys and wait a minute.", 409)
     if spend_today(ctx.db) >= ctx.config.settings.ai.daily_spend_cap_usd:
         raise bad_request("Today's Claude spend cap is reached (Settings -> AI engine).", 429)
     item = NewsItem(source_id="manual-test", source_type="manual", source_name="Manual test",

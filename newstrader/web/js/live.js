@@ -62,7 +62,7 @@ document.addEventListener("alpine:init", () => {
     statusLabel(s) {
       return { filtered: "not relevant", duplicate: "same story", queued: "analysing...", analysed: "no trade signal",
         signal: "signal", rejected: "AI rejected", refusal: "AI declined", error: "error", skipped_cap: "spend cap",
-        stale: "too old", dropped: "dropped", received: "new" }[s] || s;
+        stale: "too old", dropped: "dropped", received: "new", no_tickers: "waiting for ticker list" }[s] || s;
     },
     statusClass(s) {
       return { signal: "good", queued: "info", analysed: "", duplicate: "", filtered: "", rejected: "warn",

@@ -87,7 +87,8 @@ class Pipeline:
                     await self.sync_tickers()
             except Exception:
                 log.exception("ticker refresh failed")
-            await asyncio.sleep(1800)
+            # retry every minute until the list has loaded once, then check twice an hour
+            await asyncio.sleep(1800 if self.tickers.loaded else 60)
 
     async def sync_tickers(self) -> int:
         trader = self.ctx.service("trader")
@@ -131,6 +132,9 @@ class Pipeline:
         reason = ""
         if not pre.hit:
             status, reason = "filtered", "no company, ticker or market keyword"
+        elif not self.tickers.loaded:
+            # Without the ticker list every answer would be rejected - don't pay for Claude calls yet.
+            status, reason = "no_tickers", "ticker list not loaded yet (needs Alpaca keys)"
         elif item.kind == "text" and item.published_at and now - item.published_at > MAX_ITEM_AGE:
             status, reason = "stale", "published too long ago"
         elif item.kind == "text":
