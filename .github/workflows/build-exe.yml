@@ -33,7 +33,7 @@ jobs:
         run: pyinstaller --noconfirm --clean newstrader.spec
 
       - name: Start the built exe and check it works
-        run: python scripts/smoke_test.py dist/NewsTrader/NewsTrader.exe --tools
+        run: python scripts/smoke_test.py dist/NewsTrader/NewsTrader.exe --tools --ml
 
       - name: Show build size
         shell: bash

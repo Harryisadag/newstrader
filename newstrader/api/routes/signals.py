@@ -127,7 +127,8 @@ async def ai_stats(ctx: AppContext = Depends(get_ctx)):
         "spend_today": round(spend_today(ctx.db), 4),
         "calls_today": calls_today(ctx.db),
         "cap": ctx.config.settings.ai.daily_spend_cap_usd,
-        "model": ctx.config.settings.ai.model,
+        "engine": ctx.config.settings.ai.engine,
+        "model": p.local.label() if p and ctx.config.settings.ai.engine == "local" else ctx.config.settings.ai.model,
         "queue": p.queue.qsize() if p else 0,
         "tickers_loaded": len(p.tickers.by_symbol) if p else 0,
         "stats": p.stats if p else {},
@@ -136,19 +137,21 @@ async def ai_stats(ctx: AppContext = Depends(get_ctx)):
 
 @router.post("/ai/test")
 async def test_ai(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
-    """Analyse pasted text with Claude. Shows the result but never trades (costs one Claude call)."""
+    """Analyse pasted text with the selected engine. Shows the result but never trades
+    (with Claude it costs one call; the local engine is free)."""
     text = str(body.get("text", "")).strip()
     if len(text) < 10:
         raise bad_request("Paste a headline or paragraph (at least 10 characters).")
     p = _pipeline(ctx)
     if not p.tickers.loaded:
         raise bad_request("The ticker list isn't loaded yet - add your Alpaca keys and wait a minute.", 409)
-    if spend_today(ctx.db) >= ctx.config.settings.ai.daily_spend_cap_usd:
+    claude = ctx.config.settings.ai.engine == "claude"
+    if claude and spend_today(ctx.db) >= ctx.config.settings.ai.daily_spend_cap_usd:
         raise bad_request("Today's Claude spend cap is reached (Settings -> AI engine).", 429)
     item = NewsItem(source_id="manual-test", source_type="manual", source_name="Manual test",
                     external_id=stable_id(text, datetime.now(UTC).isoformat()), title=text[:300],
                     body=text if len(text) > 300 else "", published_at=datetime.now(UTC))
-    pre = prefilter(item.text, p.tickers, [], True)
+    pre = prefilter(item.text, p.tickers, [], claude)
     result = await p.analyze_item(item, pre, dry_run=True)
     return {"prefilter": pre.as_dict(), **result}
 

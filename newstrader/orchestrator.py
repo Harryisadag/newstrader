@@ -72,6 +72,7 @@ class Orchestrator:
         from .alerts.manager import AlertManager
         from .audio.stream_manager import StreamManager
         from .backtest.runner import BacktestRunner
+        from .ml.trainer import ModelTrainer
         from .performance.tracker import PerformanceTracker
         from .sources.manager import SourceManager
         from .system_monitor import SystemMonitor
@@ -85,6 +86,7 @@ class Orchestrator:
         self.add(StreamManager(self.ctx))
         self.add(PerformanceTracker(self.ctx))
         self.add(BacktestRunner(self.ctx))
+        self.add(ModelTrainer(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary

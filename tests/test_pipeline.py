@@ -18,6 +18,7 @@ from .helpers import FakeClaude, make_tickers, sig, signal_json
 
 @pytest.fixture
 async def env(ctx):
+    ctx.config.update({"ai": {"engine": "claude"}})
     broker = FakeBroker(prices={"NVDA": 180.0, "AAPL": 230.0, "TSLA": 250.0, "JPM": 300.0})
     trader = Trader(ctx, broker_factory=lambda: broker)
     ctx.services["trader"] = trader
@@ -201,6 +202,7 @@ def test_cost_estimates():
 async def test_no_claude_calls_without_ticker_list(ctx):
     from newstrader.ai.tickers import TickerTable
 
+    ctx.config.update({"ai": {"engine": "claude"}})
     fake = FakeClaude()
     p = Pipeline(ctx, analyzer=ClaudeAnalyzer(ctx, client_factory=lambda: fake), tickers=TickerTable(ctx.db))
     out = await p.submit(item("Fed signals a rate cut in December"))

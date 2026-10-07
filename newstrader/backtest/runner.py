@@ -1,8 +1,10 @@
-"""Backtest: run the AI engine over historical Alpaca/Benzinga news for a date range and show what it would
-have done, using the same pre-filter, Claude prompt, validator and your current trading/risk settings.
+"""Backtest: run an AI engine (local ML or Claude) over historical Alpaca/Benzinga news for a date range and
+show what it would have done, using the same pre-filter, engine, validator and your current trading/risk
+settings.
 
-Caveat shown in the UI: Claude may already "know" what happened after older news (it was trained on data up
-to a cutoff date), which makes backtests on older dates look better than live trading would be.
+Caveats shown in the UI: Claude may already "know" what happened after older news (it was trained on data up
+to a cutoff date), and the local price model has already seen the news inside its training range - both make
+backtests over those dates look better than live trading would be.
 """
 
 from __future__ import annotations
@@ -43,13 +45,18 @@ class BacktestParams:
     model: str = ""
     budget_usd: float = 5.0
     hold: str = "eod"  # "eod" = close at the end of the trading day, or a number of hours as a string
+    engine: str = ""  # "local" / "claude"; empty = the engine chosen in Settings
 
 
-def estimate(params: BacktestParams, default_model: str) -> dict:
+def estimate(params: BacktestParams, default_model: str, default_engine: str = "claude") -> dict:
+    engine = params.engine or default_engine
+    if engine == "local":
+        return {"engine": "local", "model": "local machine learning", "per_article": 0.0, "max_cost": 0.0,
+                "articles": params.max_articles}
     model = params.model or default_model
     per = estimate_cost(model, EST_INPUT, EST_OUTPUT, 0, EST_CACHED)
-    return {"model": model, "per_article": round(per, 4), "max_cost": round(per * params.max_articles, 2),
-            "articles": params.max_articles}
+    return {"engine": "claude", "model": model, "per_article": round(per, 4),
+            "max_cost": round(per * params.max_articles, 2), "articles": params.max_articles}
 
 
 def _session_for(t: datetime, sessions: list[dict]) -> tuple[dict | None, bool]:
@@ -92,6 +99,9 @@ class BacktestRunner:
     def launch(self, params: BacktestParams) -> int:
         if self.running:
             raise RuntimeError("A backtest is already running.")
+        trainer = self.ctx.service("ml_trainer")
+        if trainer is not None and getattr(trainer, "running", False):
+            raise RuntimeError("Wait for the model training to finish first.")
         run_id = self.ctx.db.insert("backtest_runs", {"created_at": iso(), "params": json.dumps(asdict(params), default=str),
                                                       "status": "running", "progress": 0, "message": "starting...",
                                                       "cost_usd": 0})
@@ -127,8 +137,14 @@ class BacktestRunner:
             raise RuntimeError("Not connected to Alpaca - historical news and prices need your Alpaca keys.")
         if pipeline is None or not pipeline.tickers.loaded:
             raise RuntimeError("Ticker list not loaded yet - wait a minute after adding Alpaca keys.")
-        analyzer = self.analyzer or pipeline.analyzer
+        engine = params.engine or s.ai.engine
+        if engine == "local":
+            analyzer = pipeline.local
+            await analyzer.ensure_ready()
+        else:
+            analyzer = self.analyzer or pipeline.analyzer
         model = params.model or s.ai.model
+        keyword_only = s.ai.analyze_keyword_only and engine == "claude"
 
         start_dt = datetime.combine(params.start, datetime.min.time(), UTC)
         end_dt = datetime.combine(params.end, datetime.max.time(), UTC)
@@ -143,7 +159,7 @@ class BacktestRunner:
             item.source_type = "backtest"
             if not item.title or item.published_at is None:
                 continue
-            pre = prefilter(item.text, pipeline.tickers, item.symbols, s.ai.analyze_keyword_only)
+            pre = prefilter(item.text, pipeline.tickers, item.symbols, keyword_only)
             if pre.hit:
                 items.append((item, pre))
             if len(items) >= params.max_articles:
@@ -162,7 +178,7 @@ class BacktestRunner:
             if self._cancel:
                 self._progress(run_id, i / len(items), "cancelled", status="cancelled")
                 break
-            if cost >= params.budget_usd:
+            if engine == "claude" and cost >= params.budget_usd:
                 self._progress(run_id, i / len(items), f"stopped: budget ${params.budget_usd:.2f} reached")
                 break
             chunk = items[i:i + batch]
@@ -182,7 +198,7 @@ class BacktestRunner:
                     "cost_usd": res.cost_usd, "latency_ms": res.latency_ms,
                     "status": res.status if not res.ok else validation.status,
                     "error": res.error if not res.ok else (validation.summary or None),
-                    "raw_response": res.text[:20000], "is_backtest": 1})
+                    "raw_response": res.text[:20000], "is_backtest": 1, "engine": res.engine})
                 if validation is None:
                     continue
                 for sig in validation.signals:

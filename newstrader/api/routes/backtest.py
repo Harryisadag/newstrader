@@ -13,9 +13,26 @@ router = APIRouter(tags=["backtest"])
 
 LOOKAHEAD_WARNING = ("Claude was trained on data up to a cutoff date, so for older news it may already 'know' "
                      "what happened next. Treat backtest results on older dates as optimistic.")
+LOCAL_WARNING = ("The local engine is free. If you trained its price model, only backtest dates AFTER its "
+                 "training range give an honest result.")
 
 
-def _params(body: dict) -> BacktestParams:
+def _warning(ctx: AppContext, p: BacktestParams) -> str:
+    if p.engine != "local":
+        return LOOKAHEAD_WARNING
+    pipeline = ctx.service("pipeline")
+    pm = pipeline.local.active_price_model() if pipeline else None
+    if pm is None:
+        return "The local engine is free. No trained price model is in use, so this tests sentiment scoring only."
+    lo, hi = str(pm.meta.get("trained_from", "")), str(pm.meta.get("trained_to", ""))
+    if lo and hi and p.start.isoformat() <= hi and p.end.isoformat() >= lo:
+        return (f"Warning: the price model was trained on news from {lo} to {hi}, which overlaps these dates - "
+                f"it has already seen the answers, so results will look much better than reality. "
+                f"Backtest dates after {hi} for an honest test.")
+    return LOCAL_WARNING
+
+
+def _params(body: dict, default_engine: str) -> BacktestParams:
     try:
         start = date.fromisoformat(str(body.get("start")))
         end = date.fromisoformat(str(body.get("end")))
@@ -36,8 +53,11 @@ def _params(body: dict) -> BacktestParams:
     if not 1 <= max_articles <= 2000:
         raise bad_request("Max stories must be between 1 and 2000.")
     hold = str(body.get("hold", "eod"))
+    engine = str(body.get("engine") or default_engine)
+    if engine not in ("local", "claude"):
+        raise bad_request("Engine must be 'local' or 'claude'.")
     return BacktestParams(start=start, end=end, symbols=symbols, max_articles=max_articles,
-                          model=str(body.get("model") or ""), budget_usd=max(0.01, budget), hold=hold)
+                          model=str(body.get("model") or ""), budget_usd=max(0.01, budget), hold=hold, engine=engine)
 
 
 def _runner(ctx: AppContext):
@@ -49,13 +69,13 @@ def _runner(ctx: AppContext):
 
 @router.post("/backtest/estimate")
 async def bt_estimate(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
-    p = _params(body)
-    return {**estimate(p, ctx.config.settings.ai.model), "warning": LOOKAHEAD_WARNING}
+    p = _params(body, ctx.config.settings.ai.engine)
+    return {**estimate(p, ctx.config.settings.ai.model, p.engine), "warning": _warning(ctx, p)}
 
 
 @router.post("/backtest/run")
 async def bt_run(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
-    p = _params(body)
+    p = _params(body, ctx.config.settings.ai.engine)
     if body.get("confirm") is not True:
         raise bad_request("Confirm the cost estimate first.")
     try:

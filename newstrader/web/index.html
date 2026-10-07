@@ -50,11 +50,15 @@
          x-text="s.account ? fmt.signedMoney(s.account.day_pl) : '—'"></div>
   </div>
 
-  <div class="stat spend" :title="'Estimated Claude API cost today (cap ' + fmt.money(s.spend_cap) + ')'">
+  <div class="stat spend" x-show="s.ai_engine === 'claude'" :title="'Estimated Claude API cost today (cap ' + fmt.money(s.spend_cap) + ')'">
     <div class="stat-label">Claude today</div>
     <div class="stat-value"><span x-text="fmt.money(s.spend_today)"></span>
       <span class="muted small">/ <span x-text="fmt.money(s.spend_cap, 0)"></span></span></div>
     <div class="meter"><div :style="'width:' + spendPct + '%'" :class="spendPct >= 100 ? 'bad' : (spendPct > 75 ? 'warn' : '')"></div></div>
+  </div>
+  <div class="stat" x-show="s.ai_engine !== 'claude'" title="The free local machine-learning engine is analysing the news (Settings -> AI engine)">
+    <div class="stat-label">AI engine</div>
+    <div class="stat-value">Local ML <span class="muted small">free</span></div>
   </div>
 
   <div class="stat" :title="tradingState.tip">
@@ -119,11 +123,12 @@
 <main>
   <!-- ===================== LIVE ===================== -->
   <section x-show="store.tab === 'live'" class="tab-page" x-data="liveTab">
-    <div class="card welcome" x-show="s.keys && !(s.keys.alpaca_paper && s.keys.anthropic)">
+    <div class="card welcome" x-show="s.keys && !(s.keys.alpaca_paper && (s.keys.anthropic || s.ai_engine === 'local'))">
       <h2>Welcome to NewsTrader</h2>
       <p class="muted">Three quick steps and it starts watching the news (in PAPER mode - no real money):</p>
       <ol>
-        <li><b>Add your keys</b> - Alpaca <i>paper</i> key + secret, and your Anthropic (Claude) key.
+        <li><b>Add your keys</b> - Alpaca <i>paper</i> key + secret. (An Anthropic key is only needed if you switch the
+          AI engine to Claude - the default local engine is free.)
           <button class="btn primary small" @click="goto('settings', 'keys')">Open API keys</button></li>
         <li><b>Check everything works</b> - Logs → Run diagnostics. Each red line says how to fix it.
           <button class="btn ghost small" @click="goto('logs')">Open Logs</button></li>
@@ -189,7 +194,7 @@
         <div class="card-head">
           <h2>Headlines <span class="small muted" x-show="sourceFilter">(one source - click it again to show all)</span></h2>
           <div class="row gap">
-            <span class="small muted" x-show="stats" x-text="stats ? `${fmt.num(stats.tickers_loaded)} tickers · ${stats.calls_today} Claude calls today · queue ${stats.queue}` : ''"></span>
+            <span class="small muted" x-show="stats" x-text="stats ? `${fmt.num(stats.tickers_loaded)} tickers · ${stats.engine === 'local' ? 'local ML engine' : stats.calls_today + ' Claude calls today'} · queue ${stats.queue}` : ''"></span>
             <label class="row small"><input type="checkbox" x-model="onlyRelevant"> Hide irrelevant</label>
             <label class="row small"><input type="checkbox" x-model="paused"> Pause</label>
           </div>
@@ -222,8 +227,8 @@
       <div class="kpi"><div class="kpi-label">Traded today</div><div class="kpi-value" x-text="today.traded"></div></div>
       <div class="kpi"><div class="kpi-label">Awaiting review</div><div class="kpi-value" :class="reviewQueue.length ? 'warn-text' : ''" x-text="reviewQueue.length"></div></div>
       <div class="kpi"><div class="kpi-label">Avg confidence</div><div class="kpi-value" x-text="today.avg ?? '—'"></div></div>
-      <div class="kpi"><div class="kpi-label">Claude calls today</div><div class="kpi-value" x-text="stats ? stats.calls_today : '—'"></div></div>
-      <div class="kpi"><div class="kpi-label">Claude cost today</div><div class="kpi-value" x-text="stats ? fmt.money(stats.spend_today) : '—'"></div></div>
+      <div class="kpi"><div class="kpi-label">AI engine</div><div class="kpi-value small-text" x-text="stats ? stats.model : '—'"></div></div>
+      <div class="kpi" x-show="stats && stats.engine === 'claude'"><div class="kpi-label">Claude cost today</div><div class="kpi-value" x-text="stats ? fmt.money(stats.spend_today) : '—'"></div></div>
     </div>
 
     <div class="card review" x-show="reviewQueue.length">
@@ -280,7 +285,7 @@
                   <div class="small"><b>Headline:</b> <a :href="fmt.url(s.url)" target="_blank" rel="noopener" x-text="s.headline"></a></div>
                   <div class="small" x-show="(s.sources_seen || []).length > 1"><b>Also reported by:</b> <span x-text="(s.sources_seen || []).join(', ')"></span></div>
                   <template x-if="detail[s.id] && detail[s.id].analysis">
-                    <div class="small muted" x-text="`Claude ${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
+                    <div class="small muted" x-text="`${detail[s.id].analysis.engine === 'local' ? '' : 'Claude '}${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
                   </template>
                   <div class="row gap" x-show="!s.traded && s.direction !== 'neutral'">
                     <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)">Trade this signal now</button>
@@ -291,13 +296,13 @@
           </template>
         </tbody>
       </table>
-      <div x-show="!signals.length" class="muted pad">No signals yet. They appear here when Claude finds a tradeable story.</div>
+      <div x-show="!signals.length" class="muted pad">No signals yet. They appear here when the AI engine finds a tradeable story.</div>
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Test the AI</h2><span class="small muted">Paste any headline or paragraph. Costs one Claude call. Never trades.</span></div>
+      <div class="card-head"><h2>Test the AI</h2><span class="small muted" x-text="(stats && stats.engine === 'claude') ? 'Paste any headline or paragraph. Costs one Claude call. Never trades.' : 'Paste any headline that names a company. Free (local ML engine). Never trades.'"></span></div>
       <textarea x-model="testText" rows="3" placeholder="e.g. Nvidia wins $10 billion Pentagon AI contract, shares jump premarket"></textarea>
-      <div class="row end"><button class="btn primary" :disabled="testing || testText.length < 10" @click="runTest()" x-text="testing ? 'Asking Claude...' : 'Analyse'"></button></div>
+      <div class="row end"><button class="btn primary" :disabled="testing || testText.length < 10" @click="runTest()" x-text="testing ? 'Analysing...' : 'Analyse'"></button></div>
       <template x-if="testResult">
         <div class="test-result">
           <div class="small muted" x-text="`Pre-filter: ${testResult.prefilter.hit ? 'passed' : 'would be filtered out'} · candidates: ${testResult.prefilter.candidates.map(c => c.symbol).join(', ') || 'none'} · status: ${testResult.status} · cost ${fmt.money(testResult.cost_usd, 4)}`"></div>
@@ -310,7 +315,8 @@
               <div class="cases"><div class="case bull"><b>Bull case</b><p x-text="t.bull_case"></p></div><div class="case bear"><b>Bear case</b><p x-text="t.bear_case"></p></div></div>
             </div>
           </template>
-          <div x-show="testResult.status === 'ok' && !testResult.signals.length" class="muted">Claude found nothing tradeable in this text.</div>
+          <div x-show="testResult.status === 'ok' && !testResult.signals.length" class="muted" x-text="testResult.engine === 'local' ? 'The local engine found no clearly good or bad news about a named company in this text.' : 'Claude found nothing tradeable in this text.'"></div>
+          <div x-show="testResult.model" class="small muted" x-text="'Engine: ' + testResult.model"></div>
         </div>
       </template>
     </div>
@@ -530,34 +536,99 @@
 
   <!-- ===================== BACKTEST ===================== -->
   <section x-show="store.tab === 'backtest'" class="tab-page" x-data="backtestTab">
+    <!-- Local ML model: train on price history -->
+    <div class="card" x-data="mlModelCard">
+      <div class="card-head">
+        <h2>Local ML model</h2>
+        <span class="pill small" :class="st && st.engine === 'local' ? 'good' : ''" x-text="st ? (st.engine === 'local' ? 'in use' : 'not in use - Claude selected') : ''"></span>
+      </div>
+      <p class="muted small">The free local engine has two layers. <b>FinBERT</b> reads the wording of each headline (good / bad /
+        neutral). The <b>price model</b> learns from your Alpaca history how stocks actually moved compared with the
+        S&amp;P 500 in the hour after similar headlines. Training is free, downloads a few minutes of data per month of history,
+        and is tested on the newest 20% of headlines it never saw while learning.</p>
+      <template x-if="st">
+        <div>
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-label">Sentiment model</div><div class="kpi-value small-text" x-text="st.sentiment"></div></div>
+            <div class="kpi"><div class="kpi-label">Price model</div>
+              <div class="kpi-value small-text" x-text="!st.price_model ? 'not trained' : (st.price_model_active ? 'active' : 'not used')"></div></div>
+            <template x-if="st.price_model">
+              <div class="kpi"><div class="kpi-label">Trained on</div>
+                <div class="kpi-value small-text" x-text="`${(st.price_model.n_samples || 0).toLocaleString()} headlines · ${st.price_model.trained_from} → ${st.price_model.trained_to}`"></div></div>
+            </template>
+            <template x-if="report">
+              <div class="kpi"><div class="kpi-label">Right direction on unseen news</div>
+                <div class="kpi-value" :class="report.passed ? 'pos' : 'neg'" x-text="report.accuracy + '%'"></div>
+                <div class="small muted" x-text="`always-guess-the-same scores ${report.majority_accuracy}% · AUC ${report.auc ?? '—'}`"></div></div>
+            </template>
+          </div>
+          <p class="note" x-show="st.price_model && !st.price_model_active && st.price_model.why_inactive" x-text="'Not used: ' + (st.price_model ? st.price_model.why_inactive : '')"></p>
+          <p class="note warn-text" x-show="st.sentiment_error" x-text="'FinBERT couldn\'t load (' + st.sentiment_error + ') - using the built-in word list for now.'"></p>
+          <template x-if="report && report.thresholds">
+            <div>
+              <h3 class="small">What each confidence threshold would have done on the test headlines</h3>
+              <table class="table compact">
+                <thead><tr><th class="num">Confidence ≥</th><th class="num">Signals</th><th class="num">Right direction</th><th class="num">Avg move vs market</th></tr></thead>
+                <tbody>
+                  <template x-for="t in report.thresholds" :key="t.threshold">
+                    <tr><td class="num" x-text="t.threshold"></td><td class="num" x-text="t.signals"></td>
+                      <td class="num" x-text="t.hit_rate === null ? '—' : t.hit_rate + '%'"></td>
+                      <td class="num" :class="fmt.plClass(t.avg_return)" x-text="t.avg_return === null ? '—' : fmt.pct(t.avg_return)"></td></tr>
+                  </template>
+                </tbody>
+              </table>
+              <p class="small muted">With the price model on, confidence is a tested probability, so it is usually lower than
+                sentiment-only scores. Use this table to pick your buy / review thresholds in Settings → Trading.</p>
+            </div>
+          </template>
+          <div class="row gap wrap" style="margin-top:10px">
+            <div class="field inline"><label>History from</label><input type="date" x-model="train.start"></div>
+            <div class="field inline"><label>to</label><input type="date" x-model="train.end"></div>
+            <label class="small row gap"><input type="checkbox" x-model="train.redownload"> re-download everything</label>
+            <button class="btn primary" :disabled="!!st.training || busy" @click="startTraining()" x-text="st.training ? 'Training...' : (st.price_model ? 'Retrain' : 'Train the price model')"></button>
+            <button class="btn ghost" x-show="st.training" @click="cancelTraining()">Cancel</button>
+            <button class="btn ghost" x-show="st.sentiment_error" @click="reload()">Retry FinBERT download</button>
+            <button class="btn ghost danger" x-show="st.price_model && !st.training" @click="removeModel()">Delete model</button>
+          </div>
+          <div class="progress" x-show="st.training"><div class="bar" :style="`width:${Math.round(progress * 100)}%`"></div></div>
+          <div class="small muted" x-show="message" x-text="message"></div>
+          <div class="small muted" x-show="st.cached_samples" x-text="`${st.cached_samples.toLocaleString()} labelled headlines saved from earlier downloads (re-used).`"></div>
+        </div>
+      </template>
+    </div>
+
     <div class="card">
       <div class="card-head"><h2>New backtest</h2></div>
-      <p class="muted small">Replays historical Alpaca/Benzinga news through the same pre-filter, Claude prompt and validator,
-        then simulates your current stop-loss / take-profit and risk settings on minute-by-minute prices. Costs Claude credits.</p>
+      <p class="muted small">Replays historical Alpaca/Benzinga news through the same pre-filter, AI engine and validator,
+        then simulates your current stop-loss / take-profit and risk settings on minute-by-minute prices. Free with the
+        local engine; costs Claude credits with Claude.</p>
       <div class="form-grid compact">
         <div class="field"><label>From</label><input type="date" x-model="form.start" @change="estimate = null"></div>
         <div class="field"><label>To</label><input type="date" x-model="form.end" @change="estimate = null"></div>
         <div class="field"><label>Only these tickers (optional)</label><input type="text" x-model="form.symbols" placeholder="e.g. NVDA, TSLA" @change="estimate = null"></div>
         <div class="field"><label>Max stories to analyse</label><input type="number" min="1" max="2000" x-model.number="form.max_articles" @change="estimate = null"></div>
-        <div class="field"><label>Budget (hard stop)</label><div class="input-wrap"><span class="affix">$</span><input type="number" min="0.5" step="0.5" x-model.number="form.budget_usd"></div></div>
+        <div class="field" x-show="form.engine === 'claude' || (form.engine === '' && engine === 'claude')"><label>Claude budget (hard stop)</label><div class="input-wrap"><span class="affix">$</span><input type="number" min="0.5" step="0.5" x-model.number="form.budget_usd"></div></div>
         <div class="field"><label>Hold each trade</label>
           <select x-model="form.hold"><option value="eod">Until market close</option><option value="1">Up to 1 hour</option><option value="2">Up to 2 hours</option><option value="4">Up to 4 hours</option></select></div>
-        <div class="field"><label>Model</label>
+        <div class="field"><label>AI engine</label>
+          <select x-model="form.engine" @change="estimate = null"><option value="">Same as Settings</option>
+            <option value="local">Local machine learning (free)</option><option value="claude">Claude (paid)</option></select></div>
+        <div class="field" x-show="form.engine === 'claude' || (form.engine === '' && engine === 'claude')"><label>Claude model</label>
           <select x-model="form.model" @change="estimate = null"><option value="">Same as Settings</option><option value="claude-sonnet-5-5">Sonnet 5.5</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5 (cheaper)</option><option value="claude-opus-5-5">Opus 5.5</option></select></div>
       </div>
       <div class="row gap end">
-        <span class="small muted" x-show="estimate" x-text="estimate ? `~${fmt.money(estimate.per_article, 3)} per story · up to ${fmt.money(estimate.max_cost)} total` : ''"></span>
+        <span class="small muted" x-show="estimate" x-text="estimate ? (estimate.engine === 'local' ? 'Free (local engine)' : `~${fmt.money(estimate.per_article, 3)} per story · up to ${fmt.money(estimate.max_cost)} total`) : ''"></span>
         <button class="btn ghost" @click="getEstimate()">Estimate cost</button>
         <button class="btn primary" :disabled="busy" @click="run()">Run backtest</button>
       </div>
-      <p class="note warn-text" x-text="warning || 'Claude may already know what happened after older news - treat results on older dates as optimistic.'"></p>
+      <p class="note warn-text" x-text="(estimate && estimate.warning) || warning"></p>
     </div>
 
     <div class="card">
       <div class="card-head"><h2>Runs</h2></div>
       <table class="table">
-        <thead><tr><th>#</th><th>Started</th><th>Range</th><th>Status</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P/L</th><th class="num">Claude cost</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Started</th><th>Range</th><th>Status</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P/L</th><th>Engine</th><th class="num">Cost</th><th></th></tr></thead>
         <tbody>
           <template x-for="r in runs" :key="r.id">
             <tr class="clickable" :class="{ open: selected === r.id }" @click="open(r.id)">
@@ -569,6 +640,7 @@
               <td class="num" x-text="r.summary ? r.summary.trades : ''"></td>
               <td class="num" x-text="r.summary && r.summary.win_rate !== null ? r.summary.win_rate + '%' : ''"></td>
               <td class="num" :class="r.summary ? fmt.plClass(r.summary.total_pnl) : ''" x-text="r.summary ? fmt.signedMoney(r.summary.total_pnl) : ''"></td>
+              <td class="small" x-text="r.params.engine === 'local' ? 'local ML' : (r.params.model || 'Claude')"></td>
               <td class="num" x-text="fmt.money(r.cost_usd)"></td>
               <td class="right" @click.stop>
                 <button class="btn ghost small" x-show="r.status === 'running'" @click="cancel(r)">Cancel</button>
@@ -643,7 +715,7 @@
           </div>
           <div class="form-grid">
             <template x-for="f in currentSection.fields" :key="f.key">
-              <div class="field" :class="f.type">
+              <div class="field" :class="f.type" x-show="visible(f)">
                 <label :for="'f-' + f.key" x-text="f.label"></label>
                 <div class="control">
                   <template x-if="f.type === 'toggle'">
@@ -665,7 +737,7 @@
                            @input="set(f.key, $event.target.value)">
                   </template>
                   <template x-if="f.type === 'select'">
-                    <select :id="'f-' + f.key" @change="set(f.key, $event.target.value)">
+                    <select :id="'f-' + f.key" @change="pick(f, $event.target.value)">
                       <template x-for="[val, lab] in Object.entries(options(f))" :key="val">
                         <option :value="val" :selected="String(get(f.key)) === String(val)" x-text="lab"></option>
                       </template>
@@ -682,13 +754,19 @@
                 <button class="btn primary" @click="testAlert()" :disabled="alertTesting" x-text="alertTesting ? 'Sending...' : 'Send a test alert'"></button>
                 <span class="small" x-show="alertResult" x-text="alertResult"></span>
               </div>
-              <p class="note">Desktop pop-ups appear in the Windows notification area. If you don't see them, check that
-                Windows "Do not disturb" is off. Discord alerts need a webhook URL in API keys.</p>
+              <p class="note">Desktop pop-ups appear in the Windows notification area or the Mac Notification Center. If
+                you don't see them, check that "Do not disturb" / Focus is off. On a Mac they come from "Script Editor" -
+                allow it in System Settings → Notifications. Discord alerts need a webhook URL in API keys.</p>
             </div>
           </template>
-          <template x-if="section === 'ai'">
+          <template x-if="section === 'ai' && get('ai.engine') === 'claude'">
             <p class="note">Cost estimate: each analysed story costs roughly $0.002–$0.02 with Sonnet 5.5 at low effort.
               Haiku 4.5 is about half that. The daily cap is a hard stop.</p>
+          </template>
+          <template x-if="section === 'ai' && get('ai.engine') === 'local'">
+            <p class="note">The local engine is free and works offline after the first download. It only scores news that
+              names a company. FinBERT judges whether the wording is good or bad; train the price model (Backtest tab →
+              Local ML model) so it also learns how stocks actually moved after similar headlines.</p>
           </template>
         </div>
       </template>
@@ -888,7 +966,7 @@
       </div>
 
       <div x-show="view === 'rejections'">
-        <p class="muted small">Claude responses that failed validation (bad JSON, a ticker that doesn't exist, confidence out of range, refusals). They are never traded.</p>
+        <p class="muted small">AI responses that failed validation (bad JSON, a ticker that doesn't exist, confidence out of range, refusals). They are never traded.</p>
         <table class="table">
           <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Reason</th><th></th></tr></thead>
           <tbody>

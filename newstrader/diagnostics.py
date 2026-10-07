@@ -16,6 +16,9 @@ from .tools import find_deno, find_ffmpeg, gpu_info, run_quiet
 
 log = logging.getLogger(__name__)
 
+MAC = sys.platform == "darwin"
+UPDATE = "update.command" if MAC else "update.bat"
+
 
 def _check(name: str, status: str, detail: str, fix: str = "") -> dict:
     # status: ok | warn | error
@@ -53,9 +56,7 @@ def _check_keys(ctx: AppContext) -> list[dict]:
         _check("Alpaca paper keys", "ok" if k.has_alpaca_paper else "error",
                "set" if k.has_alpaca_paper else "missing",
                "" if k.has_alpaca_paper else "Settings -> API Keys. Get them at app.alpaca.markets (Paper account)."),
-        _check("Anthropic API key", "ok" if k.has_anthropic else "error",
-               "set" if k.has_anthropic else "missing",
-               "" if k.has_anthropic else "Settings -> API Keys. Create one at platform.claude.com."),
+        _anthropic_key_check(ctx),
         _check("Discord webhook", "ok" if k.has_discord else "warn",
                "set" if k.has_discord else "not set (Discord alerts off)",
                "" if k.has_discord else "Optional. Settings -> API Keys."),
@@ -63,6 +64,16 @@ def _check_keys(ctx: AppContext) -> list[dict]:
     out.append(_check(".env file", "ok" if env.exists() else "warn", str(env),
                       "" if env.exists() else "It will be created when you save keys in Settings -> API Keys."))
     return out
+
+
+def _anthropic_key_check(ctx: AppContext) -> dict:
+    if ctx.keys.keys.has_anthropic:
+        return _check("Anthropic API key", "ok", "set")
+    if ctx.config.settings.ai.engine == "local":
+        return _check("Anthropic API key", "ok", "not set - not needed (the free local ML engine is selected)")
+    return _check("Anthropic API key", "error", "missing",
+                  "Settings -> API Keys (create one at platform.claude.com), or switch Settings -> AI engine "
+                  "to the free local engine.")
 
 
 async def _check_alpaca(ctx: AppContext) -> dict:
@@ -92,6 +103,8 @@ async def _check_anthropic(ctx: AppContext) -> dict:
     k = ctx.keys.keys
     model = ctx.config.settings.ai.model
     if not k.has_anthropic:
+        if ctx.config.settings.ai.engine == "local":
+            return _check("Claude API", "ok", "skipped - not needed for the local ML engine")
         return _check("Claude API", "error", "skipped - no API key")
     try:
         import anthropic
@@ -125,6 +138,14 @@ def _check_gpu(ctx: AppContext) -> dict:
 
     setup_cuda_dll_paths()
     info = gpu_info()
+    mac = info.get("mac")
+    if mac:
+        from .system_monitor import describe_gpu
+
+        level, detail = describe_gpu(info)
+        fix = "" if level == "ok" else ("Run run.command again (it installs the Apple-GPU engine on macOS 14+)."
+                                        if mac.get("apple_silicon") else "Pick 'small' or 'base' in Settings -> Transcription.")
+        return _check("Speech-to-text hardware", level, f"{detail} · macOS {mac.get('macos') or '?'}", fix)
     want_cuda = ctx.config.settings.transcription.device in ("cuda", "auto")
     if info["cuda_devices"] and info["cuda_devices"] > 0:
         detail = f"{info['name'] or 'NVIDIA GPU'} (driver {info['driver'] or '?'})"
@@ -135,7 +156,7 @@ def _check_gpu(ctx: AppContext) -> dict:
             detail += f", compute types: {', '.join(types)}"
         except Exception as exc:
             return _check("GPU (CUDA)", "error", f"{detail}; CUDA libraries failed to load: {exc}",
-                          "Run update.bat to reinstall nvidia-cublas-cu12, and update your NVIDIA driver.")
+                          f"Run {UPDATE} to reinstall nvidia-cublas-cu12, and update your NVIDIA driver.")
         return _check("GPU (CUDA)", "ok", detail)
     status = "error" if want_cuda else "warn"
     detail = info.get("error") or "No CUDA GPU detected"
@@ -148,7 +169,8 @@ def _check_gpu(ctx: AppContext) -> dict:
 def _check_ffmpeg() -> dict:
     exe = find_ffmpeg()
     if not exe:
-        return _check("ffmpeg", "error", "not found", "Run update.bat, or install with: winget install Gyan.FFmpeg")
+        return _check("ffmpeg", "error", "not found",
+                      f"Run {UPDATE}, or install it with: " + ("brew install ffmpeg" if MAC else "winget install Gyan.FFmpeg"))
     try:
         out = run_quiet([exe, "-hide_banner", "-version"], timeout=10)
         first = (out.stdout or out.stderr).splitlines()[0] if (out.stdout or out.stderr) else "unknown version"
@@ -164,11 +186,30 @@ def _check_ytdlp() -> list[dict]:
 
         out.append(_check("yt-dlp", "ok", f"version {yt_dlp.version.__version__}"))
     except Exception as exc:
-        out.append(_check("yt-dlp", "error", str(exc), "Run update.bat."))
+        out.append(_check("yt-dlp", "error", str(exc), f"Run {UPDATE}."))
     deno = find_deno()
     out.append(_check("Deno (YouTube JavaScript runtime)", "ok" if deno else "warn", deno or "not found",
-                      "" if deno else "Run update.bat. Without it some YouTube streams may fail."))
+                      "" if deno else f"Run {UPDATE}. Without it some YouTube streams may fail."))
     return out
+
+
+def _check_ml(ctx: AppContext) -> dict:
+    if ctx.config.settings.ai.engine != "local":
+        return _check("Local ML engine", "ok", "not in use (Claude engine selected)")
+    pipeline = ctx.service("pipeline")
+    if pipeline is None:
+        return _check("Local ML engine", "warn", "AI engine not running")
+    st = pipeline.local.model_status()
+    pm = st["price_model"]
+    trained = ("price model active" if st["price_model_active"] else
+               f"price model not used ({pm['why_inactive']})" if pm else "price model not trained yet")
+    if st["sentiment_error"]:
+        return _check("Local ML engine", "warn", f"FinBERT unavailable ({st['sentiment_error']}); using the built-in "
+                      f"word list · {trained}",
+                      "Check your internet connection (one-time ~110 MB download from huggingface.co), then click "
+                      "'Retry FinBERT download' in Backtest -> Local ML model.")
+    return _check("Local ML engine", "ok", f"Sentiment: {st['sentiment']} · {trained}",
+                  "" if st["price_model_active"] else "Optional: Backtest tab -> Local ML model -> Train.")
 
 
 async def run_diagnostics(ctx: AppContext) -> dict:
@@ -182,6 +223,7 @@ async def run_diagnostics(ctx: AppContext) -> dict:
     checks.append(await asyncio.to_thread(_check_gpu, ctx))
     checks.append(await asyncio.to_thread(_check_ffmpeg))
     checks += await asyncio.to_thread(_check_ytdlp)
+    checks.append(_check_ml(ctx))
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("ok", "warn", "error")}
     log.info("Diagnostics: %d ok, %d warnings, %d errors", summary["ok"], summary["warn"], summary["error"])
     return {"checks": checks, "summary": summary}

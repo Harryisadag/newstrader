@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from pathlib import Path
@@ -77,12 +78,20 @@ class SourceConfig(_Model):
         return self
 
 
+def _on_mac() -> bool:
+    return sys.platform == "darwin"
+
+
 class TranscriptionSettings(_Model):
     enabled: bool = True
-    model: str = "large-v3"
-    device: Literal["cuda", "cpu", "auto"] = "cuda"
+    # Mac: large-v3-turbo is ~4x faster than large-v3 with nearly the same accuracy (Apple GPU or CPU)
+    model: str = Field(default_factory=lambda: "large-v3-turbo" if _on_mac() else "large-v3")
+    # cuda = NVIDIA GPU, mlx = Apple Silicon GPU, cpu, auto = best available
+    device: Literal["cuda", "mlx", "cpu", "auto"] = Field(default_factory=lambda: "auto" if _on_mac() else "cuda")
     # float16 is right for RTX 50-series; INT8 is disabled on Blackwell GPUs in CTranslate2.
-    compute_type: Literal["float16", "int8_float16", "int8", "float32"] = "float16"
+    # (The Apple GPU ignores this; Mac CPUs use int8.)
+    compute_type: Literal["float16", "int8_float16", "int8", "float32"] = Field(
+        default_factory=lambda: "int8" if _on_mac() else "float16")
     language: str = "en"  # "auto" = detect
     beam_size: int = Field(5, ge=1, le=10)
     chunk_seconds: int = Field(10, ge=3, le=30)
@@ -92,7 +101,7 @@ class TranscriptionSettings(_Model):
     analysis_window_seconds: int = Field(60, ge=15, le=300)
     # Wait this long after a hit so the rest of the sentence gets included
     analysis_debounce_seconds: int = Field(10, ge=0, le=60)
-    # If YouTube says "sign in to confirm you're not a bot": chrome / edge / firefox
+    # If YouTube says "sign in to confirm you're not a bot": chrome / edge / firefox / safari / brave
     cookies_from_browser: str = ""
 
     @field_validator("model")
@@ -105,6 +114,8 @@ class TranscriptionSettings(_Model):
 
 
 class AISettings(_Model):
+    # "local" = free on-device machine learning (FinBERT + price-trained model); "claude" = Anthropic API
+    engine: Literal["local", "claude"] = "local"
     model: str = "claude-sonnet-5-5"
     effort: Literal["low", "medium", "high"] = "low"
     use_refusal_fallback: bool = True
@@ -117,7 +128,8 @@ class AISettings(_Model):
     # Same ticker + direction within this window counts as one signal
     signal_dedupe_minutes: int = Field(15, ge=0, le=240)
     max_signals_per_item: int = Field(3, ge=1, le=5)
-    # Also analyse text that only has market-moving keywords (e.g. "Fed cuts rates") with no company named
+    # Also analyse text that only has market-moving keywords (e.g. "Fed cuts rates") with no company named.
+    # Claude engine only - the local engine needs a named company to score.
     analyze_keyword_only: bool = True
 
     @field_validator("model")
@@ -127,6 +139,22 @@ class AISettings(_Model):
         if not v.startswith("claude-"):
             raise ValueError("model must be a Claude model id, e.g. claude-sonnet-5-5")
         return v
+
+
+class MLSettings(_Model):
+    """The local machine-learning engine."""
+
+    # "finbert" = FinBERT language model (~110 MB download, best); "lexicon" = small built-in word list
+    sentiment_model: Literal["finbert", "lexicon"] = "finbert"
+    # Use the model trained on price history (Backtest tab -> Local ML model) when it has passed its test:
+    # "auto" = only if it passed, "always" = even if it didn't, "never" = sentiment only
+    use_trained_model: Literal["auto", "always", "never"] = "auto"
+    # Training: how much history to learn from, how far ahead to measure the move, and the smallest move
+    # (vs the S&P 500) that counts as a reaction
+    train_days: int = Field(180, ge=30, le=730)
+    train_horizon_minutes: Literal[30, 60, 120] = 60
+    train_min_move_pct: float = Field(0.3, ge=0.0, le=5.0)
+    train_max_articles: int = Field(20000, ge=500, le=100000)
 
 
 class TradingSettings(_Model):
@@ -191,6 +219,7 @@ class AppSettings(_Model):
     schema_version: int = 1
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
+    ml: MLSettings = Field(default_factory=MLSettings)
     trading: TradingSettings = Field(default_factory=TradingSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)

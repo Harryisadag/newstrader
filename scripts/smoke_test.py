@@ -1,7 +1,9 @@
-"""Start NewsTrader headless, check the API answers, then stop it. Used by CI on Windows + Linux.
+"""Start NewsTrader headless, check the API answers, then stop it. Used by CI on Windows, Mac and Linux.
 
     python scripts/smoke_test.py                      # run from source
     python scripts/smoke_test.py dist/NewsTrader/NewsTrader.exe --tools   # test a built exe (+ ffmpeg/deno/yt-dlp)
+    python scripts/smoke_test.py dist/NewsTrader.app/Contents/MacOS/NewsTrader --tools --ml   # built Mac app,
+                                                      # and wait for FinBERT to download + load (needs internet)
 """
 
 from __future__ import annotations
@@ -16,6 +18,28 @@ import urllib.request
 
 PORT = 8799
 TOKEN = "smoke-test-token"
+
+
+def wait_for_finbert(timeout: float = 300) -> int:
+    """The engine downloads + loads FinBERT in the background on first start; wait until it's loaded."""
+    deadline = time.time() + timeout
+    detail = ""
+    while time.time() < deadline:
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/ml/status", headers={"X-NT-Token": TOKEN})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                st = json.loads(r.read())
+            detail = f"{st['sentiment']} (model id {st['sentiment_model_id']}, error {st['sentiment_error']})"
+            if st["sentiment_model_id"].startswith("finbert"):
+                print("  ok    Local ML engine:", detail)
+                return 0
+            if st["sentiment_error"]:
+                break
+        except Exception as exc:
+            detail = str(exc)
+        time.sleep(3)
+    print("smoke test FAILED: FinBERT didn't load:", detail)
+    return 1
 
 
 def main() -> int:
@@ -48,8 +72,10 @@ def main() -> int:
                         if c["status"] != "ok":
                             print("smoke test FAILED: bundled tool missing")
                             return 1
-                    gpu = checks["GPU (CUDA)"]
+                    gpu = checks.get("GPU (CUDA)") or checks.get("Speech-to-text hardware") or {"detail": "?"}
                     print(f"  info  GPU: {gpu['detail'][:150]}")
+                if "--ml" in sys.argv:
+                    return wait_for_finbert()
                 return 0
             except Exception as exc:  # server still starting
                 last_err = exc

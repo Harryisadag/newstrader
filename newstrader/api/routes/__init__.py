@@ -5,6 +5,7 @@ from . import (
     backtest,
     keys,
     logs,
+    ml,
     performance,
     settings,
     signals,
@@ -28,4 +29,5 @@ ALL_ROUTERS = [
     alerts.router,
     performance.router,
     backtest.router,
+    ml.router,
 ]

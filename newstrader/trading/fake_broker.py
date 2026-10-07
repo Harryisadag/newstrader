@@ -128,7 +128,17 @@ class FakeBroker:
             return []
         return [{"t": start.isoformat(), "o": p, "h": p, "l": p, "c": p, "v": 100}]
 
-    def news(self, start, end, symbols=None, limit=200) -> list[dict]:
+    def bars_multi(self, symbols, start, end, timeframe="1Min") -> dict[str, list[dict]]:
+        self.calls.append(("bars_multi", tuple(symbols)))
+        out = {}
+        for sym in symbols:
+            if sym in self.bar_data:
+                rows = self.bars(sym, start, end, timeframe)
+                if rows:
+                    out[sym] = rows
+        return out
+
+    def news(self, start, end, symbols=None, limit=200, include_content=True) -> list[dict]:
         out = [n for n in self.news_items if start <= n["created_at"] <= end
                and (not symbols or set(symbols) & set(n.get("symbols") or []))]
         return out[:limit]

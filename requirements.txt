@@ -1,4 +1,4 @@
-# NewsTrader runtime dependencies (installed automatically by run.bat)
+# NewsTrader runtime dependencies (installed automatically by run.bat / run.command)
 
 # Web server + desktop window
 fastapi>=0.115
@@ -12,6 +12,13 @@ tzdata
 # Trading + AI
 alpaca-py>=0.40
 anthropic>=1.0
+# Local machine-learning engine: FinBERT runs on onnxruntime + tokenizers (no PyTorch);
+# scikit-learn trains the price model. Intel Macs automatically get onnxruntime 1.23.x.
+scikit-learn>=1.5
+onnxruntime>=1.19
+tokenizers>=0.19
+huggingface_hub>=0.23
+certifi
 
 # News inputs
 feedparser>=6.0
@@ -29,5 +36,5 @@ deno>=2.0
 # Bundled ffmpeg binary (used if ffmpeg isn't already installed)
 imageio-ffmpeg>=0.5
 
-# Windows desktop notifications
+# Windows desktop notifications (Macs use the built-in osascript)
 winotify>=1.1 ; sys_platform == "win32"

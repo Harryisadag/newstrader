@@ -21,6 +21,11 @@ def isolated_paths(tmp_path, monkeypatch):
     for name in ("ALPACA_PAPER_API_KEY", "ALPACA_PAPER_SECRET_KEY", "ALPACA_LIVE_API_KEY",
                  "ALPACA_LIVE_SECRET_KEY", "ANTHROPIC_API_KEY", "DISCORD_WEBHOOK_URL", "X_BEARER_TOKEN"):
         monkeypatch.delenv(name, raising=False)
+
+    def no_download(*_a, **_k):
+        raise RuntimeError("no model downloads in tests")
+
+    monkeypatch.setattr("newstrader.ml.sentiment.download_finbert", no_download)
     yield tmp_path
 
 

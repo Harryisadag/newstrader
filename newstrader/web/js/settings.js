@@ -30,38 +30,45 @@ document.addEventListener("alpine:init", () => {
     },
     {
       id: "ai", label: "AI engine", fields: [
-        F("ai.model", "Claude model", "select", { optionsFrom: "claude_models" }),
-        F("ai.effort", "Thinking effort", "select", { options: { low: "Low (fast, cheapest)", medium: "Medium", high: "High (slowest, most thorough)" }, help: "Sonnet/Opus only. Higher = more careful but slower and more expensive." }),
-        F("ai.daily_spend_cap_usd", "Daily Claude spend cap", "number", { min: 0, step: 1, prefix: "$", help: "When today's estimated API cost reaches this, Claude calls stop until tomorrow." }),
-        F("ai.max_calls_per_minute", "Max Claude calls per minute", "number", { min: 1, max: 300 }),
-        F("ai.max_concurrent_calls", "Max simultaneous Claude calls", "number", { min: 1, max: 10 }),
+        F("ai.engine", "AI engine", "select", { optionsFrom: "engines", help: "Local = free machine learning on this computer (FinBERT reads the wording; a model you train on price history checks it). Claude = reads context better but costs money per story and needs an Anthropic key." }),
+        F("ml.sentiment_model", "Sentiment model", "select", { local: true, options: { finbert: "FinBERT (recommended - one-time ~110 MB download)", lexicon: "Built-in word list (no download, crude - never auto-buys)" } }),
+        F("ml.use_trained_model", "Use the price-trained model", "select", { local: true, options: { auto: "Auto - only if it passed its test", always: "Always (even if it didn't pass)", never: "Never - sentiment only" }, help: "Train it in the Backtest tab -> Local ML model. Its confidence is a tested probability, so it is usually lower than sentiment-only confidence." }),
+        F("ml.train_days", "Training history", "number", { local: true, min: 30, max: 730, suffix: "days", help: "More history = more examples to learn from (and a longer first download)." }),
+        F("ml.train_horizon_minutes", "Measure each stock's move over", "select", { local: true, numeric: true, options: { 30: "30 minutes", 60: "1 hour", 120: "2 hours" } }),
+        F("ml.train_min_move_pct", "Smallest move that counts", "number", { local: true, min: 0, max: 5, step: 0.05, suffix: "% vs S&P 500", help: "Headlines after which the stock moved less than this (compared with the market) are left out of training." }),
+        F("ml.train_max_articles", "Max headlines to download", "number", { local: true, min: 500, max: 100000, step: 500 }),
+        F("ai.model", "Claude model", "select", { claude: true, optionsFrom: "claude_models" }),
+        F("ai.effort", "Thinking effort", "select", { claude: true, options: { low: "Low (fast, cheapest)", medium: "Medium", high: "High (slowest, most thorough)" }, help: "Sonnet/Opus only. Higher = more careful but slower and more expensive." }),
+        F("ai.daily_spend_cap_usd", "Daily Claude spend cap", "number", { claude: true, min: 0, step: 1, prefix: "$", help: "When today's estimated API cost reaches this, Claude calls stop until tomorrow." }),
+        F("ai.max_calls_per_minute", "Max Claude calls per minute", "number", { claude: true, min: 1, max: 300 }),
+        F("ai.analyze_keyword_only", "Analyse macro news with no company named", "toggle", { claude: true, help: "e.g. 'Fed cuts rates' - Claude may pick an affected stock or ETF." }),
+        F("ai.use_refusal_fallback", "Refusal fallback (Sonnet 5.5)", "toggle", { claude: true, help: "If Claude declines a request for safety reasons, Anthropic retries it on a fallback model automatically." }),
+        F("ai.max_concurrent_calls", "Stories analysed at the same time", "number", { min: 1, max: 10 }),
         F("ai.story_dedupe_minutes", "Same-story window", "number", { min: 0, max: 240, suffix: "minutes", help: "The same headline from several sources within this window is analysed only once." }),
         F("ai.story_similarity", "Same-story similarity", "number", { min: 0.3, max: 1, step: 0.05, help: "How similar two headlines must be to count as the same story (0.3 = loose, 1 = identical)." }),
         F("ai.signal_dedupe_minutes", "Same-signal window", "number", { min: 0, max: 240, suffix: "minutes", help: "Same ticker + direction within this window counts as one signal (traded at most once)." }),
         F("ai.max_signals_per_item", "Max stocks per story", "number", { min: 1, max: 5 }),
-        F("ai.analyze_keyword_only", "Analyse macro news with no company named", "toggle", { help: "e.g. 'Fed cuts rates' - Claude may pick an affected stock or ETF." }),
-        F("ai.use_refusal_fallback", "Refusal fallback (Sonnet 5.5)", "toggle", { help: "If Claude declines a request for safety reasons, Anthropic retries it on a fallback model automatically." }),
       ],
     },
     {
       id: "transcription", label: "Transcription", fields: [
         F("transcription.enabled", "Transcribe live streams", "toggle"),
         F("transcription.max_concurrent_streams", "Max streams at once", "number", { min: 1, max: 12 }),
-        F("transcription.model", "Whisper model", "select", { optionsFrom: "whisper_models", help: "large-v3 is the most accurate (~3 GB download on first use). large-v3-turbo is faster." }),
-        F("transcription.device", "Device", "select", { options: { cuda: "GPU (CUDA)", cpu: "CPU (slow)", auto: "Auto" } }),
-        F("transcription.compute_type", "Precision", "select", { options: { float16: "float16 (recommended for RTX 50)", int8_float16: "int8_float16", int8: "int8 (CPU)", float32: "float32" } }),
+        F("transcription.model", "Whisper model", "select", { optionsFrom: "whisper_models", help: "large-v3 is the most accurate (~3 GB download on first use). large-v3-turbo is ~4x faster with nearly the same accuracy (recommended on a Mac)." }),
+        F("transcription.device", "Device", "select", { options: { cuda: "NVIDIA GPU (CUDA)", mlx: "Apple GPU (Mac with M-series chip)", cpu: "CPU (slow)", auto: "Auto (best available)" } }),
+        F("transcription.compute_type", "Precision", "select", { options: { float16: "float16 (recommended for RTX 50)", int8_float16: "int8_float16", int8: "int8 (CPU / Mac)", float32: "float32" }, help: "NVIDIA GPUs only. The Apple GPU ignores this; CPUs always use int8." }),
         F("transcription.language", "Language", "text", { help: "'en' for English, or 'auto' to detect." }),
         F("transcription.beam_size", "Beam size", "number", { min: 1, max: 10, help: "Higher = slightly more accurate, slower." }),
         F("transcription.chunk_seconds", "Audio chunk length", "number", { min: 3, max: 30, suffix: "seconds" }),
         F("transcription.vad_min_silence_ms", "Silence that splits speech", "number", { min: 100, max: 3000, suffix: "ms" }),
-        F("transcription.analysis_window_seconds", "Transcript context sent to Claude", "number", { min: 15, max: 300, suffix: "seconds" }),
+        F("transcription.analysis_window_seconds", "Transcript context analysed", "number", { min: 15, max: 300, suffix: "seconds" }),
         F("transcription.analysis_debounce_seconds", "Wait for sentence to finish", "number", { min: 0, max: 60, suffix: "seconds" }),
-        F("transcription.cookies_from_browser", "YouTube cookies from browser", "select", { options: { "": "None", chrome: "Chrome", edge: "Edge", firefox: "Firefox", brave: "Brave" }, help: "Only if YouTube says 'Sign in to confirm you're not a bot'." }),
+        F("transcription.cookies_from_browser", "YouTube cookies from browser", "select", { options: { "": "None", chrome: "Chrome", edge: "Edge", firefox: "Firefox", brave: "Brave", safari: "Safari (Mac)" }, help: "Only if YouTube says 'Sign in to confirm you're not a bot'. On a Mac, Chrome asks for Keychain access and Safari needs Full Disk Access for NewsTrader." }),
       ],
     },
     {
       id: "alerts", label: "Alerts", fields: [
-        F("alerts.desktop_enabled", "Windows desktop popups", "toggle"),
+        F("alerts.desktop_enabled", "Desktop pop-ups (Windows / Mac)", "toggle"),
         F("alerts.discord_enabled", "Discord", "toggle", { help: "Needs a webhook URL in API Keys." }),
         F("alerts.on_trade_placed", "Trade placed", "toggle"),
         F("alerts.on_trade_filled", "Trade filled / closed", "toggle"),
@@ -98,7 +105,7 @@ document.addEventListener("alpine:init", () => {
       try {
         const r = await NT.api.post("/alerts/test");
         const d = r.discord === true ? "Discord: sent ✓" : (r.discord ? "Discord: " + r.discord : "Discord: not set up");
-        const w = r.desktop ? "Desktop pop-up: shown ✓" : "Desktop pop-up: not available (Windows only)";
+        const w = r.desktop ? "Desktop pop-up: shown ✓" : "Desktop pop-up: not available on this system";
         this.alertResult = `${w} · ${d}`;
       } catch (e) { Alpine.store("nt").error(e, "Test alert failed"); }
       finally { this.alertTesting = false; }
@@ -138,6 +145,13 @@ document.addEventListener("alpine:init", () => {
       return opts;
     },
     get currentSection() { return SECTIONS.find((s) => s.id === this.section); },
+    visible(f) {
+      const engine = this.get("ai.engine");
+      if (f.local) return engine === "local";
+      if (f.claude) return engine === "claude";
+      return true;
+    },
+    pick(f, value) { if (f.numeric) this.num(f.key, value); else this.set(f.key, value); },
 
     async save() {
       this.saving = true;

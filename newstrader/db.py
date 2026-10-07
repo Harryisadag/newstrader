@@ -229,6 +229,48 @@ MIGRATIONS: list[str] = [
     ALTER TABLE backtest_results ADD COLUMN url TEXT;
     ALTER TABLE backtest_results ADD COLUMN time_sensitivity TEXT;
     """,
+    # 4 - local machine-learning engine
+    """
+    ALTER TABLE analyses ADD COLUMN engine TEXT;
+    ALTER TABLE signals ADD COLUMN engine TEXT;
+    UPDATE analyses SET engine = 'claude' WHERE engine IS NULL;
+    UPDATE signals SET engine = 'claude' WHERE engine IS NULL;
+    CREATE TABLE ml_samples (
+        news_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        horizon_min INTEGER NOT NULL,
+        published_at TEXT,
+        headline TEXT,
+        summary TEXT,
+        symbols TEXT,
+        label_status TEXT,
+        entry_price REAL,
+        exit_price REAL,
+        ret_pct REAL,
+        spy_ret_pct REAL,
+        adj_ret_pct REAL,
+        created_at TEXT,
+        PRIMARY KEY (news_id, symbol, horizon_min)
+    );
+    CREATE INDEX idx_ml_samples_time ON ml_samples(horizon_min, published_at);
+    CREATE TABLE ml_sentiment_cache (
+        model_id TEXT NOT NULL,
+        text_hash TEXT NOT NULL,
+        positive REAL,
+        negative REAL,
+        neutral REAL,
+        PRIMARY KEY (model_id, text_hash)
+    );
+    CREATE TABLE ml_runs (
+        id INTEGER PRIMARY KEY,
+        created_at TEXT,
+        params TEXT,
+        status TEXT,
+        progress REAL,
+        message TEXT,
+        report TEXT
+    );
+    """,
 ]
 
 

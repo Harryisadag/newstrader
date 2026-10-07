@@ -1,4 +1,4 @@
-"""Stage 2: ask Claude about one news item. Handles model options, cost accounting and errors."""
+"""The Claude engine: ask Claude about one news item. Handles model options, cost accounting and errors."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import asyncio
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass
 from datetime import datetime
 
 from ..context import AppContext
 from .costs import estimate_cost
+from .engine import AnalysisResult
 from .prompts import output_schema, system_prompt, user_message
 
 log = logging.getLogger(__name__)
@@ -27,20 +27,8 @@ def supports_refusal_fallback(model: str) -> bool:
     return model in ("claude-sonnet-5-5", "claude-opus-5-5", "claude-opus-5", "claude-fable-5-1")
 
 
-@dataclass
-class ClaudeResult:
-    ok: bool
-    text: str = ""
-    model: str = ""
-    stop_reason: str | None = None
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_write_tokens: int = 0
-    cost_usd: float = 0.0
-    latency_ms: int = 0
-    error: str | None = None
-    status: str = "ok"  # ok | refusal | error | truncated
+# Kept for older imports; every engine returns the same AnalysisResult.
+ClaudeResult = AnalysisResult
 
 
 class RateLimiter:
@@ -63,6 +51,8 @@ class RateLimiter:
 
 
 class ClaudeAnalyzer:
+    engine = "claude"
+
     def __init__(self, ctx: AppContext, client_factory=None):
         self.ctx = ctx
         self._client = None

@@ -1,7 +1,8 @@
 """The news -> signal -> trade pipeline.
 
-    source item -> save -> stage 1 pre-filter -> same-story check -> daily spend cap
-                -> queue -> stage 2 Claude -> validate -> merge same ticker/direction -> trader / alerts
+    source item -> save -> stage 1 pre-filter -> same-story check -> (Claude only: daily spend cap)
+                -> queue -> stage 2 AI engine (local ML or Claude) -> validate -> merge same ticker/direction
+                -> trader / alerts
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 from ..context import AppContext
 from ..db import iso, utcnow
+from ..ml.engine import LocalMLEngine
 from ..sources.base import NewsItem, safe_url
 from ..state import trading_day
 from .claude_client import ClaudeAnalyzer
@@ -34,10 +36,13 @@ MAX_ITEM_AGE = timedelta(hours=3)
 class Pipeline:
     name = "pipeline"
 
-    def __init__(self, ctx: AppContext, analyzer: ClaudeAnalyzer | None = None, tickers: TickerTable | None = None):
+    def __init__(self, ctx: AppContext, analyzer: ClaudeAnalyzer | None = None, tickers: TickerTable | None = None,
+                 local: LocalMLEngine | None = None):
         self.ctx = ctx
         self.tickers = tickers or TickerTable(ctx.db)
         self.analyzer = analyzer or ClaudeAnalyzer(ctx)
+        self.local = local or LocalMLEngine(ctx)
+        self.local.tickers = self.tickers
         self.deduper = StoryDeduper()
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         self._workers: list[asyncio.Task] = []
@@ -52,11 +57,22 @@ class Pipeline:
             log.info("Loaded %d tickers from cache", n)
         self._tasks.append(asyncio.create_task(self._ticker_refresh_loop(), name="ticker-refresh"))
         self._restart_workers()
+        self._tasks.append(asyncio.create_task(self.warm_local_engine(), name="ml-warmup"))
         loop = asyncio.get_running_loop()
+        seen = {"engine": self.ctx.config.settings.ai.engine, "sentiment": self.ctx.config.settings.ml.sentiment_model,
+                "use": self.ctx.config.settings.ml.use_trained_model}
 
         def on_settings(settings) -> None:  # called from whichever thread saved the settings
-            if settings.ai.max_concurrent_calls != len(self._workers) and not loop.is_closed():
+            if loop.is_closed():
+                return
+            if settings.ai.max_concurrent_calls != len(self._workers):
                 loop.call_soon_threadsafe(self._restart_workers)
+            now = {"engine": settings.ai.engine, "sentiment": settings.ml.sentiment_model,
+                   "use": settings.ml.use_trained_model}
+            if now != seen:
+                seen.update(now)
+                loop.call_soon_threadsafe(lambda: self._tasks.append(
+                    asyncio.create_task(self.warm_local_engine(), name="ml-warmup")))
 
         self.ctx.config.on_change(on_settings)
 
@@ -77,7 +93,47 @@ class Pipeline:
         for w in self._workers:
             w.cancel()
         n = self.ctx.config.settings.ai.max_concurrent_calls
-        self._workers = [asyncio.create_task(self._worker(i), name=f"claude-worker-{i}") for i in range(n)]
+        self._workers = [asyncio.create_task(self._worker(i), name=f"ai-worker-{i}") for i in range(n)]
+
+    # ------------------------------------------------------------------ engines
+    @property
+    def engine_name(self) -> str:
+        return self.ctx.config.settings.ai.engine
+
+    def engine(self, name: str | None = None):
+        return self.local if (name or self.engine_name) == "local" else self.analyzer
+
+    async def warm_local_engine(self) -> None:
+        """Load FinBERT (downloading it the first time) and the trained price model in the background."""
+        self._tasks = [t for t in self._tasks if not t.done()]
+        if self.engine_name != "local":
+            self.ctx.state.set_status("ml", "off", "Not in use - Claude engine selected (Settings -> AI engine)")
+            return
+        self.ctx.state.set_status("ml", "starting", "Loading the sentiment model (first run downloads ~110 MB)...")
+        try:
+            await self.local.ensure_ready()
+            await asyncio.to_thread(self.local.load_price_model)
+        except Exception as exc:
+            log.exception("Local ML engine failed to load")
+            self.ctx.state.set_status("ml", "error", f"Local ML engine failed to load: {exc}")
+            return
+        self.update_ml_status()
+
+    def update_ml_status(self) -> None:
+        if self.engine_name != "local":
+            self.ctx.state.set_status("ml", "off", "Not in use - Claude engine selected (Settings -> AI engine)")
+            return
+        st = self.local.model_status()
+        parts = [f"Sentiment: {st['sentiment']}"]
+        pm = st["price_model"]
+        if st["price_model_active"]:
+            parts.append(f"price model active (trained {str(pm['trained_at'])[:10]} on {pm['n_samples']:,} headlines)")
+        elif pm:
+            parts.append(f"price model not used: {pm['why_inactive']}")
+        else:
+            parts.append("price model not trained yet (Backtest tab -> Local ML model)")
+        level = "warn" if st["sentiment_error"] else "ok"
+        self.ctx.state.set_status("ml", level, " · ".join(parts))
 
     async def _ticker_refresh_loop(self) -> None:
         await asyncio.sleep(2)
@@ -126,14 +182,17 @@ class Pipeline:
             return {"status": "seen"}
 
         ai = self.ctx.config.settings.ai
-        pre = await asyncio.to_thread(prefilter, item.text, self.tickers, item.symbols, ai.analyze_keyword_only)
+        claude = ai.engine == "claude"
+        keyword_only = ai.analyze_keyword_only and claude  # the local engine needs a named company
+        pre = await asyncio.to_thread(prefilter, item.text, self.tickers, item.symbols, keyword_only)
         status = "queued"
         dup_of = None
         reason = ""
         if not pre.hit:
-            status, reason = "filtered", "no company, ticker or market keyword"
+            status, reason = "filtered", ("no company, ticker or market keyword" if claude
+                                          else "no company or ticker named")
         elif not self.tickers.loaded:
-            # Without the ticker list every answer would be rejected - don't pay for Claude calls yet.
+            # Without the ticker list every answer would be rejected - don't analyse (or pay for Claude) yet.
             status, reason = "no_tickers", "ticker list not loaded yet (needs Alpaca keys)"
         elif item.kind == "text" and item.published_at and now - item.published_at > MAX_ITEM_AGE:
             status, reason = "stale", "published too long ago"
@@ -143,7 +202,7 @@ class Pipeline:
                                                 window_minutes=ai.story_dedupe_minutes, threshold=ai.story_similarity)
             if dup_of:
                 status, reason = "duplicate", f"same story as item #{dup_of}"
-        if status == "queued" and spend_today(db) >= ai.daily_spend_cap_usd:
+        if status == "queued" and claude and spend_today(db) >= ai.daily_spend_cap_usd:
             status, reason = "skipped_cap", "daily Claude spend cap reached"
             await self._spend_cap_alert()
 
@@ -226,12 +285,13 @@ class Pipeline:
 
     async def analyze_item(self, item: NewsItem, pre: PrefilterResult, dry_run: bool = False) -> dict:
         ai = self.ctx.config.settings.ai
-        if not dry_run and spend_today(self.ctx.db) >= ai.daily_spend_cap_usd:
+        engine_name = ai.engine
+        if engine_name == "claude" and not dry_run and spend_today(self.ctx.db) >= ai.daily_spend_cap_usd:
             self.ctx.db.update("news_items", item.db_id, {"status": "skipped_cap"})
             await self._spend_cap_alert()
             return {"status": "skipped_cap", "signals": []}
         now = datetime.now(UTC)
-        result = await self.analyzer.analyze(item, pre, self._market_open(), now)
+        result = await self.engine(engine_name).analyze(item, pre, self._market_open(), now)
         validation = validate_response(result.text, self.tickers, ai.max_signals_per_item) if result.ok else None
         if not result.ok:
             status, error = result.status, result.error
@@ -243,7 +303,7 @@ class Pipeline:
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
             "cache_read_tokens": result.cache_read_tokens, "cache_write_tokens": result.cache_write_tokens,
             "cost_usd": result.cost_usd, "latency_ms": result.latency_ms, "status": status, "error": error,
-            "raw_response": result.text[:20000], "is_backtest": 0,
+            "raw_response": result.text[:20000], "is_backtest": 0, "engine": result.engine,
         })
         self.stats["analysed"] += 1
         if item.db_id:
@@ -256,14 +316,15 @@ class Pipeline:
         out = []
         if validation is not None:
             for sig in validation.signals:
-                out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run))
+                out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine))
         if item.db_id and any(sig.direction != "neutral" for sig in (validation.signals if validation else [])):
             self.ctx.db.update("news_items", item.db_id, {"status": "signal"})
         return {"status": status, "error": error, "analysis_id": analysis_id, "signals": out,
-                "cost_usd": result.cost_usd, "raw": result.text}
+                "cost_usd": result.cost_usd, "raw": result.text, "engine": result.engine, "model": result.model}
 
     # ------------------------------------------------------------------ signals
-    async def _handle_signal(self, sig, item: NewsItem, analysis_id: int, dry_run: bool = False) -> dict:
+    async def _handle_signal(self, sig, item: NewsItem, analysis_id: int, dry_run: bool = False,
+                             engine: str = "claude") -> dict:
         s = self.ctx.config.settings
         db = self.ctx.db
         now = utcnow()
@@ -273,7 +334,7 @@ class Pipeline:
             "source_id": item.source_id, "source_name": item.source_name, "source_type": item.source_type,
             "reasoning": sig.reasoning, "bull_case": sig.bull_case, "bear_case": sig.bear_case,
             "time_sensitivity": sig.time_sensitivity, "headline": item.title[:500], "url": item.url,
-            "sources_seen": json.dumps([item.source_name]),
+            "sources_seen": json.dumps([item.source_name]), "engine": engine,
         }
         if dry_run:
             return {**row, "action": "test", "action_reason": "Test only - not traded", "traded": 0}

@@ -165,7 +165,8 @@ async def test_backtest_end_to_end(ctx):
     pipeline = Pipeline(ctx, analyzer=analyzer, tickers=make_tickers(ctx.db))
     ctx.services["pipeline"] = pipeline
     runner = BacktestRunner(ctx)
-    params = BacktestParams(start=date(2026, 10, 6), end=date(2026, 10, 6), max_articles=10, budget_usd=5)
+    params = BacktestParams(start=date(2026, 10, 6), end=date(2026, 10, 6), max_articles=10, budget_usd=5,
+                            engine="claude")
     run_id = ctx.db.insert("backtest_runs", {"created_at": iso(), "params": "{}", "status": "running"})
     summary = await runner.run(run_id, params)
     assert summary["analysed"] == 2 and summary["signals"] == 2

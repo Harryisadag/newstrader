@@ -95,6 +95,7 @@ class Broker:
         self.data_feed = data_feed
         self.trading = TradingClient(creds.api_key, creds.secret_key, paper=creds.paper)
         self.data = StockHistoricalDataClient(creds.api_key, creds.secret_key)
+        self._news = None
 
     @property
     def mode(self) -> str:
@@ -223,15 +224,33 @@ class Broker:
         return [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
                  "v": _f(b.volume)} for b in rows]
 
-    def news(self, start: datetime, end: datetime, symbols: list[str] | None = None, limit: int = 200) -> list[dict]:
-        """Historical Benzinga news (oldest first), used by backtests."""
+    def bars_multi(self, symbols: list[str], start: datetime, end: datetime, timeframe: str = "1Min") -> dict[str, list[dict]]:
+        """Bars for several symbols in one request (the SDK follows the pages). Used to label training data."""
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
+        tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute)}[timeframe]
+        res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=list(symbols), start=start, end=end,
+                                                        timeframe=tf, feed=self._feed()))
+        data = res.data if hasattr(res, "data") else {}
+        return {sym: [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
+                       "v": _f(b.volume)} for b in rows] for sym, rows in data.items()}
+
+    def _news_client(self):
         from alpaca.data.historical.news import NewsClient
+
+        if self._news is None:
+            self._news = NewsClient(self.creds.api_key, self.creds.secret_key)
+        return self._news
+
+    def news(self, start: datetime, end: datetime, symbols: list[str] | None = None, limit: int = 200,
+             include_content: bool = True) -> list[dict]:
+        """Historical Benzinga news (oldest first), used by backtests and model training."""
         from alpaca.data.requests import NewsRequest
 
-        client = NewsClient(self.creds.api_key, self.creds.secret_key)
         req = NewsRequest(start=start, end=end, symbols=",".join(symbols) if symbols else None, limit=limit,
-                          sort="asc", include_content=True)
-        res = client.get_news(req)
+                          sort="asc", include_content=include_content)
+        res = self._news_client().get_news(req)
         return [n.model_dump() for n in res.data.get("news", [])]
 
     # ---------------------------------------------------------------- orders
