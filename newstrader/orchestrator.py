@@ -68,9 +68,13 @@ class Orchestrator:
         """Create every background service, in start order."""
         if self.services:
             return
+        from .ai.pipeline import Pipeline
+        from .sources.manager import SourceManager
         from .trading.trader import Trader
 
         self.add(Trader(self.ctx))
+        self.add(Pipeline(self.ctx))
+        self.add(SourceManager(self.ctx))
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary

@@ -12,6 +12,8 @@
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/portfolio.js"></script>
+  <script src="/static/js/live.js"></script>
+  <script src="/static/js/signals.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -114,18 +116,150 @@
 
 <main>
   <!-- ===================== LIVE ===================== -->
-  <section x-show="store.tab === 'live'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Live</h2>
-      <p class="muted">Transcripts and headlines from each source will scroll here (built in phases 3 and 4).</p>
+  <section x-show="store.tab === 'live'" class="tab-page" x-data="liveTab">
+    <div id="streams-slot"></div>
+
+    <div class="live-grid">
+      <aside class="card source-list">
+        <div class="card-head"><h2>Text sources</h2></div>
+        <template x-for="src in sources" :key="src.id">
+          <div class="source-row" :class="{ dim: !src.enabled, active: sourceFilter === src.id }">
+            <label class="switch small"><input type="checkbox" :checked="src.enabled" @change="toggle(src)"><span class="slider"></span></label>
+            <span class="dot" :class="src.enabled ? (src.health ? src.health.level : 'starting') : 'off'" :title="src.health ? src.health.detail : ''"></span>
+            <button class="linklike" @click="sourceFilter = sourceFilter === src.id ? '' : src.id" x-text="src.name"></button>
+          </div>
+        </template>
+        <p class="note">Add or remove sources in Settings → News sources.</p>
+      </aside>
+
+      <div class="card feed">
+        <div class="card-head">
+          <h2>Headlines <span class="small muted" x-show="sourceFilter">(one source - click it again to show all)</span></h2>
+          <div class="row gap">
+            <span class="small muted" x-show="stats" x-text="stats ? `${fmt.num(stats.tickers_loaded)} tickers · ${stats.calls_today} Claude calls today · queue ${stats.queue}` : ''"></span>
+            <label class="row small"><input type="checkbox" x-model="onlyRelevant"> Hide irrelevant</label>
+            <label class="row small"><input type="checkbox" x-model="paused"> Pause</label>
+          </div>
+        </div>
+        <div class="feed-list">
+          <template x-for="n in visible" :key="n.id">
+            <div class="feed-row">
+              <span class="ts" x-text="fmt.time(n.received_at)"></span>
+              <span class="tag" :class="'t-' + n.source_type" x-text="n.source_name"></span>
+              <div class="feed-main">
+                <a class="title" :href="n.url || null" target="_blank" rel="noopener" x-text="n.title"></a>
+                <div class="chips">
+                  <template x-for="c in (n.candidates || [])" :key="c"><span class="chip" x-text="c"></span></template>
+                  <template x-for="k in (n.keywords || []).slice(0, 3)" :key="k"><span class="chip kw" x-text="k"></span></template>
+                </div>
+              </div>
+              <span class="pill small" :class="statusClass(n.status)" x-text="statusLabel(n.status)"></span>
+            </div>
+          </template>
+          <div x-show="!visible.length" class="muted pad">Waiting for news... (sources check every minute; the first check only analyses stories from the last 30 minutes)</div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- ===================== SIGNALS ===================== -->
-  <section x-show="store.tab === 'signals'" class="tab-page">
-    <div class="placeholder card">
-      <h2>Signals</h2>
-      <p class="muted">Every AI signal with ticker, confidence, reasoning, source and whether it traded (phase 3).</p>
+  <section x-show="store.tab === 'signals'" class="tab-page" x-data="signalsTab">
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-label">Signals today</div><div class="kpi-value" x-text="today.count"></div></div>
+      <div class="kpi"><div class="kpi-label">Traded today</div><div class="kpi-value" x-text="today.traded"></div></div>
+      <div class="kpi"><div class="kpi-label">Awaiting review</div><div class="kpi-value" :class="reviewQueue.length ? 'warn-text' : ''" x-text="reviewQueue.length"></div></div>
+      <div class="kpi"><div class="kpi-label">Avg confidence</div><div class="kpi-value" x-text="today.avg ?? '—'"></div></div>
+      <div class="kpi"><div class="kpi-label">Claude calls today</div><div class="kpi-value" x-text="stats ? stats.calls_today : '—'"></div></div>
+      <div class="kpi"><div class="kpi-label">Claude cost today</div><div class="kpi-value" x-text="stats ? fmt.money(stats.spend_today) : '—'"></div></div>
+    </div>
+
+    <div class="card review" x-show="reviewQueue.length">
+      <div class="card-head"><h2>Manual review</h2><span class="small muted">Confidence between your review and buy thresholds. Approving still runs every risk check.</span></div>
+      <template x-for="s in reviewQueue" :key="s.id">
+        <div class="review-row">
+          <b class="ticker" x-text="s.ticker"></b>
+          <span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span>
+          <span class="conf" :class="confClass(s.confidence)" x-text="s.confidence"></span>
+          <span class="reason" x-text="s.reasoning"></span>
+          <span class="small muted" x-text="s.source_name + ' · ' + fmt.ago(s.created_at)"></span>
+          <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)" x-text="s.direction === 'bullish' ? 'Approve & Buy' : 'Approve & Sell'"></button>
+          <button class="btn ghost small" @click="dismiss(s)">Dismiss</button>
+        </div>
+      </template>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>All signals</h2>
+        <div class="row gap">
+          <input type="search" class="small" placeholder="Ticker" x-model="filters.ticker" @keydown.enter="load()" style="width:90px">
+          <select class="small" x-model="filters.direction" @change="load()">
+            <option value="">Any direction</option><option value="bullish">Bullish</option><option value="bearish">Bearish</option><option value="neutral">Neutral</option>
+          </select>
+          <select class="small" x-model="filters.action" @change="load()">
+            <option value="">Any outcome</option><option value="traded">Traded</option><option value="review">Review</option>
+            <option value="blocked">Blocked by risk</option><option value="ignored">Ignored</option><option value="error">Error</option>
+          </select>
+          <label class="row small">Min conf. <input type="number" class="small" min="0" max="100" x-model.number="filters.min_confidence" @change="load()" style="width:64px"></label>
+        </div>
+      </div>
+      <table class="table signals">
+        <thead><tr><th>Time</th><th>Ticker</th><th>Direction</th><th>Conf.</th><th>Outcome</th><th>Source</th><th>Reasoning</th></tr></thead>
+        <tbody>
+          <template x-for="s in signals" :key="s.id">
+            <tr class="clickable" @click="toggle(s)" :class="{ open: expanded === s.id }">
+              <td class="nowrap" x-text="fmt.dateTime(s.created_at)"></td>
+              <td><b x-text="s.ticker"></b></td>
+              <td><span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span></td>
+              <td><div class="confbar" :class="confClass(s.confidence)"><div :style="'width:' + s.confidence + '%'"></div><span x-text="s.confidence"></span></div></td>
+              <td><span class="pill small" :class="actionClass(s.action)" x-text="actionLabel(s)" :title="s.action_reason"></span></td>
+              <td class="small"><span x-text="s.source_name"></span>
+                <span class="pill small info" x-show="s.corroborations > 1" x-text="'+' + (s.corroborations - 1)" :title="(s.sources_seen || []).join(', ')"></span></td>
+              <td class="reason-cell">
+                <div x-text="s.reasoning"></div>
+                <div class="expand" x-show="expanded === s.id" @click.stop>
+                  <div class="cases">
+                    <div class="case bull"><b>Bull case</b><p x-text="s.bull_case"></p></div>
+                    <div class="case bear"><b>Bear case</b><p x-text="s.bear_case"></p></div>
+                  </div>
+                  <div class="small"><b>Outcome:</b> <span x-text="s.action_reason"></span></div>
+                  <div class="small"><b>Speaker:</b> <span x-text="s.speaker"></span> · <b>Time-sensitivity:</b> <span x-text="s.time_sensitivity"></span></div>
+                  <div class="small"><b>Headline:</b> <a :href="s.url || null" target="_blank" rel="noopener" x-text="s.headline"></a></div>
+                  <div class="small" x-show="(s.sources_seen || []).length > 1"><b>Also reported by:</b> <span x-text="(s.sources_seen || []).join(', ')"></span></div>
+                  <template x-if="detail[s.id] && detail[s.id].analysis">
+                    <div class="small muted" x-text="`Claude ${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
+                  </template>
+                  <div class="row gap" x-show="!s.traded && s.direction !== 'neutral'">
+                    <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)">Trade this signal now</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="!signals.length" class="muted pad">No signals yet. They appear here when Claude finds a tradeable story.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Test the AI</h2><span class="small muted">Paste any headline or paragraph. Costs one Claude call. Never trades.</span></div>
+      <textarea x-model="testText" rows="3" placeholder="e.g. Nvidia wins $10 billion Pentagon AI contract, shares jump premarket"></textarea>
+      <div class="row end"><button class="btn primary" :disabled="testing || testText.length < 10" @click="runTest()" x-text="testing ? 'Asking Claude...' : 'Analyse'"></button></div>
+      <template x-if="testResult">
+        <div class="test-result">
+          <div class="small muted" x-text="`Pre-filter: ${testResult.prefilter.hit ? 'passed' : 'would be filtered out'} · candidates: ${testResult.prefilter.candidates.map(c => c.symbol).join(', ') || 'none'} · status: ${testResult.status} · cost ${fmt.money(testResult.cost_usd, 4)}`"></div>
+          <div class="err" x-show="testResult.error" x-text="testResult.error"></div>
+          <template x-for="t in testResult.signals" :key="t.ticker">
+            <div class="test-signal">
+              <div class="row gap"><b x-text="t.ticker"></b><span class="pill small" :class="dirClass(t.direction)" x-text="t.direction"></span>
+                <span class="conf" :class="confClass(t.confidence)" x-text="t.confidence"></span><span class="small muted" x-text="t.time_sensitivity"></span></div>
+              <div x-text="t.reasoning"></div>
+              <div class="cases"><div class="case bull"><b>Bull case</b><p x-text="t.bull_case"></p></div><div class="case bear"><b>Bear case</b><p x-text="t.bear_case"></p></div></div>
+            </div>
+          </template>
+          <div x-show="testResult.status === 'ok' && !testResult.signals.length" class="muted">Claude found nothing tradeable in this text.</div>
+        </div>
+      </template>
     </div>
   </section>
 
@@ -179,7 +313,7 @@
               <td class="num" :class="fmt.plClass(p.change_today)" x-text="fmt.pct(p.change_today)"></td>
               <td class="num muted" x-text="p.stop_loss ? fmt.money(p.stop_loss) : '—'"></td>
               <td class="num muted" x-text="p.take_profit ? fmt.money(p.take_profit) : '—'"></td>
-              <td class="right"><button class="btn ghost small danger" :disabled="busy[p.symbol]" @click="closePosition(p)">Close</button></td>
+              <td class="right"><button class="btn ghost small danger" :disabled="!!busy[p.symbol]" @click="closePosition(p)">Close</button></td>
             </tr>
           </template>
         </tbody>
