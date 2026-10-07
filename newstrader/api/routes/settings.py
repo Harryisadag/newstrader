@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends
 
 from ...ai.engine import ENGINES
-from ...config import CLAUDE_MODELS, WHISPER_MODELS
+from ...config import CLAUDE_MODELS, WHISPER_LANGUAGES, WHISPER_MODELS
 from ...context import AppContext
 from ..deps import get_ctx
 
@@ -21,6 +21,7 @@ def _payload(ctx: AppContext) -> dict:
             "claude_models": CLAUDE_MODELS,
             "engines": ENGINES,
             "whisper_models": WHISPER_MODELS,
+            "languages": {"auto": "Detect automatically", **WHISPER_LANGUAGES},
             "effort_note": "Effort only applies to Sonnet/Opus. Haiku 4.5 ignores it.",
         },
     }

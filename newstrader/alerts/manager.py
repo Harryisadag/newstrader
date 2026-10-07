@@ -1,6 +1,7 @@
 """Sends alerts to the in-app toast area, Windows desktop pop-ups and Discord, following Settings -> Alerts.
 
-Alert kinds: trade_placed, trade_filled, manual_review, error, daily_loss_limit, spend_cap, kill_switch.
+Alert kinds: trade_placed, trade_filled, manual_review, error, daily_loss_limit, spend_cap, kill_switch,
+market_spike (a watched stock suddenly jumps/drops), market_move (a big market-wide move).
 Errors logged anywhere in the app are also turned into "error" alerts (throttled so you don't get spammed).
 """
 
@@ -29,6 +30,8 @@ KIND_SETTING = {
     "daily_loss_limit": "on_daily_loss_limit",
     "spend_cap": "on_spend_cap",
     "kill_switch": "on_kill_switch",
+    "market_spike": "on_market_spike",
+    "market_move": "on_market_move",
 }
 TOAST_KIND = {"trade": "trade", "error": "error", "warn": "warn", "success": "success", "info": "info"}
 DEDUPE_SECONDS = 60

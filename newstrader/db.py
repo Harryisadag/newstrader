@@ -275,6 +275,43 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE ml_samples ADD COLUMN text_version INTEGER;
     """,
+    # 6 - market monitor: sudden price/volume spikes and market-wide moves
+    """
+    CREATE TABLE market_events (
+        id INTEGER PRIMARY KEY,
+        ts TEXT NOT NULL,
+        trading_day TEXT,
+        kind TEXT NOT NULL,
+        scope TEXT,
+        symbol TEXT,
+        price REAL,
+        ref_price REAL,
+        change_pct REAL,
+        window_min INTEGER,
+        volume REAL,
+        volume_ratio REAL,
+        level TEXT,
+        news_id INTEGER,
+        signal_id INTEGER,
+        headline TEXT,
+        url TEXT,
+        alerted INTEGER DEFAULT 0,
+        detail TEXT
+    );
+    CREATE INDEX idx_market_events_ts ON market_events(ts);
+    CREATE INDEX idx_market_events_symbol ON market_events(symbol, ts);
+    """,
+    # 7 - international: the language a transcript / news item was in
+    """
+    ALTER TABLE transcripts ADD COLUMN language TEXT;
+    ALTER TABLE news_items ADD COLUMN language TEXT;
+    """,
+    # 8 - better detection: the news event behind a signal, its flags, and how far the price had already moved
+    """
+    ALTER TABLE signals ADD COLUMN event TEXT;
+    ALTER TABLE signals ADD COLUMN flags TEXT;
+    ALTER TABLE signals ADD COLUMN pre_move_pct REAL;
+    """,
 ]
 
 

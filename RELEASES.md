@@ -66,6 +66,11 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 
 ## Versions
 
+## v0.3.0 — in progress
+
+Market alerts and sudden-spike detection, more news networks (including international ones), and better
+good/bad news detection. Full notes are written when it is released.
+
 ## v0.2.1 — 7 October 2026
 
 Fixes for the downloadable apps.

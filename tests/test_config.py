@@ -91,3 +91,55 @@ def test_live_trading_is_not_a_saved_setting():
     data = AppSettings().model_dump()
     flat = json.dumps(data).lower()
     assert "live_trading" not in flat and "live_armed" not in flat
+
+
+def test_languages_are_validated_without_breaking_the_config(tmp_path):
+    from newstrader.config import SourceConfig, TranscriptionSettings, normalize_language
+
+    assert normalize_language("German", "") == "de" and normalize_language(" JA ", "") == "ja"
+    assert normalize_language("auto", "en") == "auto" and normalize_language("klingon", "en") == "en"
+    assert TranscriptionSettings(language="english").language == "en"
+    assert TranscriptionSettings(language="xx").language == "en"  # unknown -> default, never an error
+    src = SourceConfig(id="dw", type="stream", name="DW", url="https://www.youtube.com/@dwnews/live",
+                       language="Deutsch?", translate=True, region="  Europe ", category="TV")
+    assert src.language == "" and src.translate and src.region == "Europe"
+
+
+def test_market_settings_defaults_and_lists():
+    from newstrader.config import MarketSettings
+
+    m = MarketSettings()
+    assert m.enabled and m.index_symbols == ["SPY", "QQQ", "IWM", "DIA"] and "EWJ" in m.world_symbols
+    m = MarketSettings(watchlist="aapl, $nvda nvda", spike_window_minutes="15")
+    assert m.watchlist == ["AAPL", "NVDA"] and m.spike_window_minutes == 15
+    with pytest.raises(ValidationError):
+        MarketSettings(watchlist="not a ticker!")
+
+
+def test_old_config_gets_new_preset_fields_but_keeps_user_edits(tmp_path, monkeypatch):
+    import json
+
+    from newstrader import config as cfg
+    from newstrader.config import ConfigStore
+
+    presets = [
+        {"id": "dw-news", "type": "stream", "name": "DW News", "url": "https://www.youtube.com/@dwnews/live",
+         "enabled": False, "region": "Europe", "category": "TV", "language": "en"},
+        {"id": "nikkei", "type": "rss", "name": "Nikkei Asia", "url": "https://example.com/n.rss",
+         "enabled": False, "region": "Asia", "category": "Business news"},
+    ]
+    monkeypatch.setattr(cfg, "default_sources", lambda: [dict(p, builtin=True) for p in presets])
+    old = {"schema_version": 1, "risk": {"max_dollars_per_trade": 250},
+           "sources": [{"id": "dw-news", "type": "stream", "name": "DW News",
+                        "url": "https://www.youtube.com/@dwnews/live", "enabled": True, "builtin": True},
+                       {"id": "nikkei", "type": "rss", "name": "My Nikkei", "url": "https://example.com/n.rss",
+                        "enabled": True, "builtin": True, "region": "Japan"}]}
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(old), encoding="utf-8")
+    store = ConfigStore(path)
+    dw, nk = store.source("dw-news"), store.source("nikkei")
+    assert dw.enabled and dw.region == "Europe" and dw.category == "TV" and dw.language == "en"
+    assert nk.region == "Japan" and nk.name == "My Nikkei" and nk.category == "Business news"
+    assert store.settings.risk.max_dollars_per_trade == 250  # nothing else was reset
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["schema_version"] == 2 and saved["sources"][0]["region"] == "Europe"

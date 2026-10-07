@@ -36,6 +36,61 @@ CLAUDE_MODELS = {
 
 WHISPER_MODELS = ["large-v3", "large-v3-turbo", "distil-large-v3", "medium", "small", "base", "tiny"]
 
+# Languages Whisper can transcribe (code -> name). Kept here (not imported from faster-whisper) so loading settings
+# stays light. "auto" = let Whisper detect the language of each chunk.
+WHISPER_LANGUAGES: dict[str, str] = {
+    "en": "English", "zh": "Chinese", "de": "German", "es": "Spanish", "ru": "Russian", "ko": "Korean",
+    "fr": "French", "ja": "Japanese", "pt": "Portuguese", "tr": "Turkish", "pl": "Polish", "ca": "Catalan",
+    "nl": "Dutch", "ar": "Arabic", "sv": "Swedish", "it": "Italian", "id": "Indonesian", "hi": "Hindi",
+    "fi": "Finnish", "vi": "Vietnamese", "he": "Hebrew", "uk": "Ukrainian", "el": "Greek", "ms": "Malay",
+    "cs": "Czech", "ro": "Romanian", "da": "Danish", "hu": "Hungarian", "ta": "Tamil", "no": "Norwegian",
+    "th": "Thai", "ur": "Urdu", "hr": "Croatian", "bg": "Bulgarian", "lt": "Lithuanian", "la": "Latin",
+    "mi": "Maori", "ml": "Malayalam", "cy": "Welsh", "sk": "Slovak", "te": "Telugu", "fa": "Persian",
+    "lv": "Latvian", "bn": "Bengali", "sr": "Serbian", "az": "Azerbaijani", "sl": "Slovenian", "kn": "Kannada",
+    "et": "Estonian", "mk": "Macedonian", "br": "Breton", "eu": "Basque", "is": "Icelandic", "hy": "Armenian",
+    "ne": "Nepali", "mn": "Mongolian", "bs": "Bosnian", "kk": "Kazakh", "sq": "Albanian", "sw": "Swahili",
+    "gl": "Galician", "mr": "Marathi", "pa": "Punjabi", "si": "Sinhala", "km": "Khmer", "sn": "Shona",
+    "yo": "Yoruba", "so": "Somali", "af": "Afrikaans", "oc": "Occitan", "ka": "Georgian", "be": "Belarusian",
+    "tg": "Tajik", "sd": "Sindhi", "gu": "Gujarati", "am": "Amharic", "yi": "Yiddish", "lo": "Lao",
+    "uz": "Uzbek", "fo": "Faroese", "ht": "Haitian Creole", "ps": "Pashto", "tk": "Turkmen", "nn": "Nynorsk",
+    "mt": "Maltese", "sa": "Sanskrit", "lb": "Luxembourgish", "my": "Myanmar", "bo": "Tibetan", "tl": "Tagalog",
+    "mg": "Malagasy", "as": "Assamese", "tt": "Tatar", "haw": "Hawaiian", "ln": "Lingala", "ha": "Hausa",
+    "ba": "Bashkir", "jw": "Javanese", "su": "Sundanese", "yue": "Cantonese",
+}
+_LANGUAGE_NAMES = {name.lower(): code for code, name in WHISPER_LANGUAGES.items()}
+
+
+def normalize_language(value: Any, empty: str) -> str:
+    """A Whisper language code, "auto", or `empty` for anything unknown.
+
+    Never raises: a typo in config.json must not reset every other setting (a bad code would also make
+    Whisper fail on every audio chunk). English names ("German") are accepted too.
+    """
+    v = str(value or "").strip().lower()
+    if v in WHISPER_LANGUAGES or v == "auto":
+        return v
+    if v in _LANGUAGE_NAMES:
+        return _LANGUAGE_NAMES[v]
+    if v:
+        log.warning("Unknown language '%s' in settings - using '%s'", value, empty or "the default")
+    return empty
+
+
+def parse_tickers(v: Any) -> list[str]:
+    """'aapl, $NVDA msft' / ['AAPL'] -> ['AAPL', 'NVDA', 'MSFT'] (validated, de-duplicated)."""
+    if isinstance(v, str):
+        v = re.split(r"[\s,;]+", v)
+    out: list[str] = []
+    for item in v or []:
+        t = str(item).strip().upper().lstrip("$")
+        if not t:
+            continue
+        if not _TICKER_RE.match(t):
+            raise ValueError(f"'{item}' doesn't look like a ticker")
+        if t not in out:
+            out.append(t)
+    return out
+
 _TICKER_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 
 
@@ -54,6 +109,13 @@ class SourceConfig(_Model):
     poll_seconds: int = Field(60, ge=10, le=3600)
     # For social sources: who is posting (passed to Claude as the speaker)
     speaker: str = ""
+    # Where the source is from and what it is (presets fill these in; used to group sources in the app)
+    region: str = ""      # e.g. "US", "UK", "Europe", "Asia", "India", "Middle East", "Global"
+    category: str = ""    # e.g. "TV", "Business news", "Press releases", "Regulators", "Central banks", "Social"
+    # Live streams: the language spoken ("" = use Settings -> Transcription -> Language; "auto" = detect)
+    language: str = ""
+    # Live streams: translate the speech to English while transcribing (Whisper's built-in translation)
+    translate: bool = False
 
     @field_validator("id")
     @classmethod
@@ -70,6 +132,16 @@ class SourceConfig(_Model):
         if not v:
             raise ValueError("source name cannot be empty")
         return v[:80]
+
+    @field_validator("region", "category", mode="before")
+    @classmethod
+    def _label(cls, v: Any) -> str:
+        return str(v or "").strip()[:40]
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _language(cls, v: Any) -> str:
+        return normalize_language(v, "")
 
     @model_validator(mode="after")
     def _needs_url(self) -> SourceConfig:
@@ -111,6 +183,11 @@ class TranscriptionSettings(_Model):
         if not v:
             raise ValueError("whisper model cannot be empty")
         return v
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _language(cls, v: Any) -> str:
+        return normalize_language(v, "en")
 
 
 class AISettings(_Model):
@@ -160,6 +237,13 @@ class MLSettings(_Model):
     train_horizon_minutes: Literal[30, 60, 120] = 60
     train_min_move_pct: float = Field(0.3, ge=0.0, le=5.0)
     train_max_articles: int = Field(20000, ge=500, le=100000)
+    # Recognise concrete news events (earnings beats/misses, guidance, buyouts, FDA decisions, analyst
+    # up/downgrades, offerings...) and who they are good or bad for, and discount recaps, opinion pieces and
+    # unconfirmed reports. Off = v0.2 behaviour (FinBERT wording score only).
+    event_rules: bool = True
+    # International macro news (e.g. "Bank of Japan raises rates") can create signals for US-listed country
+    # ETFs (EWJ, FXI, EWG...). They are always sent to manual review, never auto-traded.
+    country_etfs: bool = True
 
     @field_validator("train_horizon_minutes", mode="before")
     @classmethod
@@ -177,6 +261,9 @@ class TradingSettings(_Model):
     take_profit_pct: float = Field(4.0, gt=0, le=200)
     # "iex" is free with every Alpaca account; "sip" needs a paid market-data plan
     data_feed: Literal["iex", "sip"] = "iex"
+    # Don't chase: if the price already moved this much (%) in the signal's direction since the news came out,
+    # send the signal to manual review instead of auto-trading it. 0 = off.
+    max_chase_pct: float = Field(3.0, ge=0, le=50)
 
     @model_validator(mode="after")
     def _thresholds(self) -> TradingSettings:
@@ -199,18 +286,7 @@ class RiskSettings(_Model):
     @field_validator("blacklist", "whitelist", mode="before")
     @classmethod
     def _tickers(cls, v: Any) -> list[str]:
-        if isinstance(v, str):
-            v = re.split(r"[\s,;]+", v)
-        out: list[str] = []
-        for item in v or []:
-            t = str(item).strip().upper().lstrip("$")
-            if not t:
-                continue
-            if not _TICKER_RE.match(t):
-                raise ValueError(f"'{item}' doesn't look like a ticker")
-            if t not in out:
-                out.append(t)
-        return out
+        return parse_tickers(v)
 
 
 class AlertSettings(_Model):
@@ -223,16 +299,66 @@ class AlertSettings(_Model):
     on_daily_loss_limit: bool = True
     on_spend_cap: bool = True
     on_kill_switch: bool = True
+    on_market_spike: bool = True   # a watched stock suddenly jumps or drops
+    on_market_move: bool = True    # the whole market (S&P 500, Nasdaq...) makes a big move
+
+
+class MarketSettings(_Model):
+    """Market monitor: sudden price/volume spikes, big market-wide moves and top movers."""
+
+    enabled: bool = True
+    scan_seconds: int = Field(60, ge=15, le=600)
+    # Also scan before 9:30am and after 4pm ET (IEX pre/after-market data is thin, so spikes are noisier)
+    extended_hours: bool = False
+    # Which stocks to watch: your positions, stocks with recent signals, your watchlist, and today's top movers
+    watch_positions: bool = True
+    watch_signals_minutes: int = Field(120, ge=0, le=1440)
+    watch_movers: bool = True
+    movers_top: int = Field(20, ge=5, le=50)
+    max_symbols: int = Field(100, ge=10, le=400)
+    watchlist: list[str] = Field(default_factory=list)
+    # Market-wide gauges (US-listed ETFs: S&P 500, Nasdaq 100, Russell 2000, Dow) and world markets
+    index_symbols: list[str] = Field(default_factory=lambda: ["SPY", "QQQ", "IWM", "DIA"])
+    world_symbols: list[str] = Field(default_factory=lambda: ["EWJ", "FXI", "EWG", "EWU", "INDA", "EWZ", "EZU", "EWY"])
+    # A spike = the price moves at least spike_pct within spike_window_minutes, on unusual volume
+    spike_window_minutes: Literal[1, 5, 15] = 5
+    spike_pct: float = Field(3.0, ge=0.5, le=50)
+    volume_ratio: float = Field(3.0, ge=1.0, le=100)
+    min_price: float = Field(2.0, ge=0)
+    # Market-wide alert: an index ETF moves this much within 15 minutes, or its day change crosses each step
+    market_move_pct: float = Field(1.0, ge=0.2, le=10)
+    market_day_step_pct: float = Field(1.0, ge=0.5, le=10)
+    # Look up the news behind a spike (Alpaca/Benzinga news for that stock)
+    lookup_news: bool = True
+    alert_cooldown_minutes: int = Field(30, ge=1, le=1440)
+    max_alerts_per_scan: int = Field(3, ge=1, le=20)
+
+    @field_validator("watchlist", "index_symbols", "world_symbols", mode="before")
+    @classmethod
+    def _tickers(cls, v: Any) -> list[str]:
+        return parse_tickers(v)
+
+    @field_validator("spike_window_minutes", mode="before")
+    @classmethod
+    def _window(cls, v: Any) -> Any:
+        return int(v) if isinstance(v, str) and v.strip().isdigit() else v
+
+
+class UISettings(_Model):
+    # Times in the app: "local" = this computer's time zone, "market" = New York (ET), "utc"
+    time_zone: Literal["local", "market", "utc"] = "local"
 
 
 class AppSettings(_Model):
-    schema_version: int = 1
+    schema_version: int = 2
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
     trading: TradingSettings = Field(default_factory=TradingSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
+    market: MarketSettings = Field(default_factory=MarketSettings)
+    ui: UISettings = Field(default_factory=UISettings)
     sources: list[SourceConfig] = Field(default_factory=lambda: [SourceConfig(**s) for s in default_sources()])
 
     @field_validator("sources")
@@ -244,6 +370,24 @@ class AppSettings(_Model):
                 raise ValueError(f"duplicate source id '{src.id}'")
             seen.add(src.id)
         return v
+
+
+def _backfill_presets(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before v0.3 (schema 1): give built-in sources the new preset fields (region, category,
+    language, translate) they were saved without. Fields already in the user's file are never changed."""
+    presets = {p["id"]: p for p in default_sources()}
+    raw_sources = {s.get("id"): s for s in raw.get("sources", []) if isinstance(s, dict)}
+    out = []
+    for src in settings.sources:
+        data = src.model_dump(mode="json")
+        preset = presets.get(src.id)
+        if src.builtin and preset is not None:
+            saved = raw_sources.get(src.id, {})
+            for key in ("region", "category", "language", "translate"):
+                if key not in saved and key in preset:
+                    data[key] = preset[key]
+        out.append(data)
+    return AppSettings.model_validate({**settings.model_dump(mode="json"), "schema_version": 2, "sources": out})
 
 
 def _deep_merge(base: dict, patch: dict) -> dict:
@@ -262,10 +406,11 @@ class ConfigStore:
     def __init__(self, path: Path):
         self.path = path
         self.engine_was_defaulted = False
+        self.needs_save = False
         self._lock = threading.RLock()
         self._listeners: list = []
         self._settings = self._load()
-        if self.engine_was_defaulted:
+        if self.engine_was_defaulted or self.needs_save:
             self._save()  # write the new ai.engine now, so the "engine changed" notice is shown only once
 
     # ---- reading ----
@@ -370,6 +515,9 @@ class ConfigStore:
                     {**settings.model_dump(mode="json"),
                      "sources": [s.model_dump(mode="json") for s in settings.sources + added]})
             self._removed_presets = sorted(removed)
+            if int(raw.get("schema_version") or 1) < 2:
+                settings = _backfill_presets(raw, settings)
+                self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]
             return settings
