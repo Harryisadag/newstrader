@@ -321,6 +321,17 @@ async def test_max_alerts_per_check_most_significant_first(mon):
     assert {r["symbol"]: r["alerted"] for r in _events(mon.ctx)} == {"NVDA": 0, "AAPL": 1, "TSLA": 1}
 
 
+async def test_spike_in_a_stock_you_hold_ranks_higher(mon):
+    mon.trader.positions = [{"symbol": "NVDA", "qty": 5}]
+    mon.ctx.config.update({"market": {"watchlist": ["AAPL", "TSLA"], "max_alerts_per_scan": 2}})
+    mon.broker.bar_data["NVDA"] = spike_bars(tail=(101.5, 103.0, 104.5))
+    mon.broker.bar_data["AAPL"] = spike_bars(tail=(102.0, 104.0, 106.0))
+    mon.broker.bar_data["TSLA"] = spike_bars(tail=(97.0, 94.0, 92.0))
+    await mon.m.run_once(now=T0)
+    assert [a["title"].split()[0] for a in mon.alerts.sent] == ["TSLA", "NVDA"]
+    assert mon.m.universe["NVDA"][0] == "position"  # (it is also a top mover in the fake broker)
+
+
 async def test_turned_off_alert_type_still_stores_the_event(mon):
     mon.ctx.config.update({"alerts": {"on_market_spike": False}})
     mon.broker.bar_data["NVDA"] = spike_bars()
@@ -403,11 +414,12 @@ async def test_market_wide_moves(mon):
     assert len(moves) == 2 and res["alerts"] == 1  # one alert per symbol per check
     day = next(r for r in moves if r["window_min"] is None)
     window = next(r for r in moves if r["window_min"] == 15)
-    assert json.loads(day["detail"])["level_pct"] == -2.0 and day["alerted"] == 1
-    assert window["change_pct"] == pytest.approx(-1.3) and window["scope"] == "market"
-    [alert] = mon.alerts.sent
-    assert alert["kind"] == "market_move" and alert["title"] == "S&P 500 (SPY) is now down 2% today"
-    assert json.loads(window["detail"])["title"] == "S&P 500 (SPY) fell 1.3% in 15 minutes"
+    assert json.loads(day["detail"])["level_pct"] == -2.0 and day["alerted"] == 0
+    assert json.loads(day["detail"])["title"] == "S&P 500 (SPY) is now down 2% today"
+    assert window["change_pct"] == pytest.approx(-1.3) and window["scope"] == "market" and window["alerted"] == 1
+    [alert] = mon.alerts.sent  # the fast drop is the bigger news
+    assert alert["kind"] == "market_move" and alert["title"] == "S&P 500 (SPY) fell 1.3% in 15 minutes"
+    assert "most stocks tend to move with it" in alert["message"]
     await mon.m.run_once(now=T0 + timedelta(minutes=1))
     assert len(_events(mon.ctx, "market_move")) == 2  # nothing new
     assert mon.m.summary()["spy_change_pct"] == pytest.approx(-2.2, abs=0.01)

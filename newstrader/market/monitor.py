@@ -506,8 +506,8 @@ class MarketMonitor:
             price = r.get("price") or (self.snapshots.get(sym) or {}).get("price")
             if price is not None and price < min_price:
                 continue
-            out.append({**r, "symbol": sym, "name": wording.company_name(info.name) if info else "",
-                        "price": price})
+            name = wording.company_name(info.name) if info else ""
+            out.append({**r, "symbol": sym, "name": "" if name == sym else name, "price": price})
         return out
 
     async def _fetch_bars(self, broker, symbols: list[str], now: datetime, s) -> dict[str, list[dict]]:
@@ -581,7 +581,8 @@ class MarketMonitor:
                         "bars": st.bars}
         ev["_alert"] = None if surge else "market_spike"
         ev["_cooldown"] = (sym, kind)
-        ev["_score"] = abs(st.change_pct or 0) / s.spike_pct
+        # sudden moves outrank slow day-change levels; a stock you hold comes first
+        ev["_score"] = 1 + abs(st.change_pct or 0) / s.spike_pct + (1 if "position" in reasons else 0)
         return ev
 
     def _market_window_event(self, sym: str, st: WindowStats, s, now: datetime) -> dict:
@@ -590,7 +591,7 @@ class MarketMonitor:
         ev["detail"] = {"name": wording.market_name(sym)}
         ev["_alert"] = "market_move"
         ev["_cooldown"] = (sym, "market_move")
-        ev["_score"] = 1 + abs(st.change_pct or 0) / s.market_move_pct  # market-wide moves come first
+        ev["_score"] = 2 + abs(st.change_pct or 0) / s.market_move_pct  # a fast market-wide move comes first
         return ev
 
     def _day_level_event(self, sym: str, level: float, snap: dict, s, now: datetime, world: bool) -> dict:
