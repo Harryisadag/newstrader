@@ -1,7 +1,10 @@
 """Runs the live TV streams: yt-dlp -> ffmpeg -> chunks -> Whisper -> rolling transcript -> AI pipeline.
 
-- At most `max_concurrent_streams` run at once (the rest wait for a free slot).
+- Every turned-on stream is watched, but only `max_concurrent_streams` can be transcribed at once: a channel that
+  isn't live (most "live events" channels, e.g. the White House) doesn't use a slot. When a live-events channel goes
+  live and every slot is busy, it borrows the slot of the lowest always-on stream until the event ends.
 - Each stream reconnects by itself (re-resolving the URL, since YouTube stream links expire).
+- Non-English streams can be translated to English while they are transcribed (Settings -> News sources).
 - When new transcript lines mention a company, ticker or market keyword, the last ~60 seconds of
   transcript are sent to the AI pipeline (after a short wait so the sentence can finish). Lines that were
   already analysed are only included as context.
@@ -16,6 +19,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from ..ai.prefilter import prefilter
 from ..config import SourceConfig
@@ -30,6 +34,9 @@ from .transcriber import Job, Segment, Transcriber
 log = logging.getLogger(__name__)
 
 OFFLINE_RECHECK = 300  # seconds between checks when a channel isn't live
+SLOT_RECHECK = 180  # a live stream waiting for a free slot checks again this often (or as soon as one frees up)
+MAX_WATCHED = 30  # turned-on streams watched at once (each offline check is one small yt-dlp request)
+ET = ZoneInfo("America/New_York")
 
 
 @dataclass
@@ -70,7 +77,8 @@ class RollingTranscript:
 
 
 def _clock(ts: float) -> str:
-    return datetime.fromtimestamp(ts, UTC).astimezone().strftime("%H:%M:%S")
+    # New York time, like every other time the AI is shown (the US market's clock)
+    return datetime.fromtimestamp(ts, UTC).astimezone(ET).strftime("%H:%M:%S")
 
 
 def build_item(src: SourceConfig, context: list[Line], new: list[Line]) -> NewsItem:
@@ -85,7 +93,7 @@ def build_item(src: SourceConfig, context: list[Line], new: list[Line]) -> NewsI
     return NewsItem(source_id=src.id, source_type="stream", source_name=src.name,
                     external_id=f"{src.id}:{new[0].id}-{new[-1].id}", title=new_text[:200],
                     body="\n".join(parts), url=src.url, published_at=datetime.fromtimestamp(new[0].start, UTC),
-                    kind="transcript")
+                    kind="transcript", language="en" if src.translate else src.language.replace("auto", ""))
 
 
 class StreamWorker:
@@ -97,6 +105,11 @@ class StreamWorker:
         self.title = ""
         self.rolling = RollingTranscript()
         self._analysis_timer: asyncio.Task | None = None
+        self.paused_reason = ""  # set when this stream gives its slot to a live event (or the limit was lowered)
+
+    def pause(self, reason: str) -> None:
+        """Give up the transcription slot; the capture loop notices within ~2 seconds."""
+        self.paused_reason = reason
 
     def set_status(self, level: str, detail: str) -> None:
         self.m.ctx.state.set_status(f"source:{self.src.id}", level, detail, name=self.src.name, type="stream")
@@ -119,6 +132,13 @@ class StreamWorker:
                 continue
 
             self.title = resolved.title
+            if not self.m.acquire_slot(self):
+                n = self.m.ctx.config.settings.transcription.max_concurrent_streams
+                self.set_status("off", f"live, waiting for a free slot - {n} stream{'s' if n != 1 else ''} already "
+                                       "being transcribed (Settings -> Transcription -> Max streams at once)")
+                await self.m.wait_for_slot(SLOT_RECHECK)
+                continue
+            self.paused_reason = ""
             chunker = AudioChunker(self.m.ctx.config.settings.transcription.chunk_seconds)
             started_wall = time.time()
             transcriber = self.m.transcriber
@@ -126,20 +146,22 @@ class StreamWorker:
             def on_audio(data: bytes, chunker=chunker, transcriber=transcriber, started_wall=started_wall) -> None:
                 # runs on the ffmpeg reader thread
                 for offset, audio in chunker.feed(data):
-                    transcriber.submit(Job(self.src.id, started_wall + offset, audio, self.prompt))
+                    transcriber.submit(self._job(started_wall + offset, audio))
 
             self.capture = FfmpegCapture(resolved.media_url, on_audio, resolved.headers, name=self.src.id)
             try:
                 await asyncio.to_thread(self.capture.start)
             except Exception as exc:
+                self.m.release_slot(self)
                 self.set_status("error", str(exc))
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 600)
                 continue
-            self.set_status("ok", f"live - {resolved.title[:80]}")
+            self.set_status("ok", f"live - {resolved.title[:80]}" + (" (translated to English)" if self.src.translate
+                                                                      else ""))
             last_bytes, stalled_since = 0, time.monotonic()
             try:
-                while self.capture.running:
+                while self.capture.running and not self.paused_reason:
                     await asyncio.sleep(2)
                     if self.capture.bytes_read != last_bytes:
                         last_bytes, stalled_since = self.capture.bytes_read, time.monotonic()
@@ -149,14 +171,23 @@ class StreamWorker:
                         break
             finally:
                 await asyncio.to_thread(self.capture.stop)
+                self.m.release_slot(self)
             for offset, audio in chunker.flush():
-                transcriber.submit(Job(self.src.id, started_wall + offset, audio, self.prompt))
+                transcriber.submit(self._job(started_wall + offset, audio))
+            if self.paused_reason:
+                self.set_status("off", f"paused - {self.paused_reason}; continues when a slot frees up")
+                await self.m.wait_for_slot(SLOT_RECHECK)
+                continue
             if not resolved.is_live:
                 self.set_status("off", "finished (this was a recorded video, not a live stream)")
                 return
             self.set_status("warn", f"stream dropped ({self.capture.last_error or 'ended'}); reconnecting in {backoff}s")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
+
+    def _job(self, started_at: float, audio) -> Job:
+        return Job(self.src.id, started_at, audio, self.prompt, language=self.src.language,
+                   task="translate" if self.src.translate else "transcribe")
 
     def stop(self) -> None:
         if self.capture is not None:
@@ -173,7 +204,8 @@ class StreamWorker:
         for seg in segs:
             row = {"source_id": self.src.id, "source_name": self.src.name,
                    "start_ts": iso(datetime.fromtimestamp(seg.start, UTC)),
-                   "end_ts": iso(datetime.fromtimestamp(seg.end, UTC)), "text": seg.text, "created_at": iso()}
+                   "end_ts": iso(datetime.fromtimestamp(seg.end, UTC)), "text": seg.text, "created_at": iso(),
+                   "language": "en" if self.src.translate else (seg.language or self.src.language or None)}
             row["id"] = ctx.db.insert("transcripts", row)
             self.rolling.add(Line(row["id"], seg.start, seg.end, seg.text))
             texts.append(seg.text)
@@ -211,6 +243,9 @@ class StreamManager:
         self.workers: dict[str, StreamWorker] = {}
         self.tasks: dict[str, asyncio.Task] = {}
         self.configs: dict[str, dict] = {}
+        self.live: dict[str, StreamWorker] = {}  # streams being transcribed right now (they hold a slot)
+        self._waiting: set[str] = set()  # live streams waiting for a slot
+        self._slot_freed = asyncio.Event()
         self._changed = asyncio.Event()
         self._watch: asyncio.Task | None = None
 
@@ -256,7 +291,7 @@ class StreamManager:
         t = self.ctx.config.settings.transcription
         streams = [s for s in self.ctx.config.settings.sources if s.type == "stream"]
         enabled = [s for s in streams if s.enabled] if t.enabled else []
-        wanted = {s.id: s for s in enabled[: t.max_concurrent_streams]}
+        wanted = {s.id: s for s in enabled[:MAX_WATCHED]}
         for sid in list(self.tasks):
             if sid not in wanted or self.configs.get(sid) != wanted[sid].model_dump():
                 await self._stop(sid)
@@ -273,8 +308,9 @@ class StreamManager:
                 self.ctx.state.set_status(f"source:{s.id}", "off", "turned off", name=s.name, type="stream")
             else:
                 self.ctx.state.set_status(f"source:{s.id}", "off",
-                                          f"waiting - max {t.max_concurrent_streams} streams at once", name=s.name,
-                                          type="stream")
+                                          f"not watched - at most {MAX_WATCHED} streams can be turned on at once",
+                                          name=s.name, type="stream")
+        self._enforce_limit()
         if not wanted:
             self.ctx.state.set_status("transcriber", "off", "no live streams running")
         elif self.transcriber.model is None and not any(
@@ -290,7 +326,7 @@ class StreamManager:
         def on_segments(job: Job, segs: list[Segment]) -> None:  # transcriber thread
             loop.call_soon_threadsafe(lambda: asyncio.ensure_future(worker.handle_segments(job, segs)))
 
-        self.transcriber.register(src.id, on_segments)
+        self.transcriber.register(src.id, on_segments, translate=src.translate)
         self.workers[src.id] = worker
         self.tasks[src.id] = asyncio.create_task(self._guard(worker), name=f"stream-{src.id}")
         self.configs[src.id] = src.model_dump()
@@ -304,10 +340,66 @@ class StreamManager:
             log.exception("stream %s crashed", worker.src.name)
             worker.set_status("error", f"crashed: {exc}")
 
+    # ---- transcription slots ----
+    def _rank(self) -> dict[str, int]:
+        """Lower = more important: the order of Settings -> News sources (then the order streams started)."""
+        rank = {s.id: i for i, s in enumerate(self.ctx.config.settings.sources)}
+        for i, sid in enumerate(self.workers):
+            rank.setdefault(sid, 100_000 + i)
+        return rank
+
+    def acquire_slot(self, worker: StreamWorker) -> bool:
+        """Give a live stream a transcription slot. A live-events channel may take one from an always-on stream."""
+        sid = worker.src.id
+        if self.live.get(sid) is worker:
+            return True
+        limit = self.ctx.config.settings.transcription.max_concurrent_streams
+        free = limit - len(self.live)
+        events_waiting = sum(1 for w in self._waiting if w != sid and w in self.workers
+                             and self.workers[w].src.live_events)
+        if free > 0 and (worker.src.live_events or free > events_waiting):
+            self.live[sid] = worker
+            self._waiting.discard(sid)
+            return True
+        if worker.src.live_events:
+            order = self._rank()
+            always_on = [w for w in self.live.values() if not w.src.live_events]
+            if always_on:
+                victim = max(always_on, key=lambda w: order.get(w.src.id, 0))
+                victim.pause(f"gave its slot to {worker.src.name} (live event)")
+                self.live.pop(victim.src.id, None)
+                self.live[sid] = worker
+                self._waiting.discard(sid)
+                return True
+        self._waiting.add(sid)
+        return False
+
+    def release_slot(self, worker: StreamWorker) -> None:
+        if self.live.get(worker.src.id) is worker:
+            del self.live[worker.src.id]
+        self._slot_freed.set()
+        self._slot_freed = asyncio.Event()
+
+    async def wait_for_slot(self, timeout: float) -> None:
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._slot_freed.wait(), timeout)
+
+    def _enforce_limit(self) -> None:
+        """If Max streams at once was lowered, pause the lowest-priority streams (always-on ones first)."""
+        limit = self.ctx.config.settings.transcription.max_concurrent_streams
+        order = self._rank()
+        while len(self.live) > limit:
+            victim = max(self.live.values(), key=lambda w: (not w.src.live_events, order.get(w.src.id, 0)))
+            victim.pause(f"max {limit} stream{'s' if limit != 1 else ''} at once")
+            self.live.pop(victim.src.id, None)
+
     async def _stop(self, sid: str) -> None:
         worker = self.workers.pop(sid, None)
         task = self.tasks.pop(sid, None)
         self.configs.pop(sid, None)
+        self._waiting.discard(sid)
+        if worker is not None:
+            self.release_slot(worker)
         self.transcriber.unregister(sid)
         if worker is not None:
             await asyncio.to_thread(worker.stop)
@@ -318,5 +410,5 @@ class StreamManager:
 
     def summary(self) -> dict:
         tr = self.transcriber
-        return {"running": list(self.tasks), "model": tr.model_desc, "device": tr.device, "queue": tr.queue_size,
+        return {"running": list(self.live), "watching": list(self.tasks), "model": tr.model_desc, "device": tr.device, "queue": tr.queue_size,
                 "processed": tr.processed, "dropped": tr.dropped, "rtf": round(tr.last_rtf, 3)}

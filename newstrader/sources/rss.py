@@ -5,17 +5,20 @@ from __future__ import annotations
 import asyncio
 import calendar
 import logging
+import random
 from datetime import UTC, datetime, timedelta
 
 import feedparser
 import httpx
 
+from .. import __version__
 from ..config import SourceConfig
 from .base import NewsItem, stable_id, strip_html
+from .lang import detect_language
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsTrader/0.1 (personal news monitor)"
+USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsTrader/{__version__} (personal news monitor)"
 # On the very first poll, only items newer than this are analysed (the rest are just marked as seen).
 FIRST_POLL_MAX_AGE = timedelta(minutes=30)
 
@@ -31,8 +34,9 @@ def _entry_time(entry) -> datetime | None:
     return None
 
 
-def parse_feed(content: bytes, src: SourceConfig) -> list[NewsItem]:
-    parsed = feedparser.parse(content)
+def parse_feed(content: bytes, src: SourceConfig, content_type: str = "") -> list[NewsItem]:
+    # the HTTP Content-Type can carry the character set (e.g. Shift_JIS) - without it some feeds decode wrongly
+    parsed = feedparser.parse(content, response_headers={"content-type": content_type} if content_type else None)
     items: list[NewsItem] = []
     for e in parsed.entries[:100]:
         title = strip_html(e.get("title"), 1000)
@@ -46,7 +50,9 @@ def parse_feed(content: bytes, src: SourceConfig) -> list[NewsItem]:
         kind_type = src.type if src.type in ("rss", "social_rss") else "rss"
         items.append(NewsItem(source_id=src.id, source_type=kind_type, source_name=src.name, external_id=str(ext)[:300],
                               title=title, body=summary, url=link, published_at=_entry_time(e),
-                              speaker=src.speaker))
+                              speaker=src.speaker,
+                              language=src.language if src.language not in ("", "auto")
+                              else detect_language(f"{title} {summary[:500]}")))
     return items
 
 
@@ -67,6 +73,8 @@ class FeedPoller:
 
     async def run(self) -> None:
         self.set_status("starting", "first check...")
+        # spread the first checks out, so dozens of feeds don't all hit the network at the same moment
+        await asyncio.sleep(random.uniform(0, min(10.0, self.src.poll_seconds / 6)))
         while True:
             try:
                 await self.poll_once()
@@ -95,7 +103,7 @@ class FeedPoller:
             raise RuntimeError(f"HTTP {r.status_code}")
         self.etag = r.headers.get("ETag")
         self.modified = r.headers.get("Last-Modified")
-        items = await asyncio.to_thread(parse_feed, r.content, self.src)
+        items = await asyncio.to_thread(parse_feed, r.content, self.src, r.headers.get("content-type", ""))
         if not items and b"<" not in r.content[:200]:
             raise RuntimeError("response is not a feed")
         now = datetime.now(UTC)

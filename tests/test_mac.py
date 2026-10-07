@@ -77,8 +77,9 @@ class FakeMlx:
     def warm_up(self):
         pass
 
-    def transcribe(self, audio, language, prompt, min_silence_ms):
+    def transcribe(self, audio, language, prompt, min_silence_ms, task="transcribe"):
         self.calls.append((language, prompt, min_silence_ms))
+        self.tasks = getattr(self, "tasks", []) + [task]
         return [SimpleNamespace(start=0.5, end=1.5, text=" apple gpu words ", no_speech_prob=0.1, avg_logprob=-0.2,
                                 compression_ratio=1.1)]
 
@@ -162,3 +163,16 @@ def test_run_command_scripts_are_valid_bash():
         script = root / name
         assert script.read_bytes().count(b"\r\n") == 0, f"{name} must use LF line endings"
         assert subprocess.run([bash, "-n", str(script)], capture_output=True).returncode == 0, name
+
+
+def test_translating_stream_switches_turbo_to_a_model_that_can_translate(apple_silicon, monkeypatch):
+    monkeypatch.setattr(tr, "MlxWhisper", FakeMlx)
+    t, statuses = make_transcriber(TranscriptionSettings(device="auto", model="large-v3-turbo"))
+    t.register("dw-deutsch", lambda job, segs: None, translate=True)
+    t._load()
+    assert FakeMlx.instances[-1].name == "large-v3" and "can't translate" in t.model_desc
+    t._transcribe(tr.Job("dw-deutsch", 0.0, loud(), language="de", task="translate"))
+    assert FakeMlx.instances[-1].calls[-1][0] == "de" and FakeMlx.instances[-1].tasks[-1] == "translate"
+    t.unregister("dw-deutsch")  # no translating streams left -> back to the faster model on the next chunk
+    t._load()
+    assert FakeMlx.instances[-1].name == "large-v3-turbo"

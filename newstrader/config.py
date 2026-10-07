@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .sources.presets import default_sources
+from .sources.presets import PRESET_URL_FIXES, default_sources
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +116,9 @@ class SourceConfig(_Model):
     language: str = ""
     # Live streams: translate the speech to English while transcribing (Whisper's built-in translation)
     translate: bool = False
+    # Live streams that only go live for events (press conferences, interviews, hearings): when one goes live
+    # and every slot is busy, it borrows a slot from an always-on channel until the event ends
+    live_events: bool = False
 
     @field_validator("id")
     @classmethod
@@ -385,11 +388,27 @@ def _backfill_presets(raw: dict, settings: AppSettings) -> AppSettings:
         preset = presets.get(src.id)
         if src.builtin and preset is not None:
             saved = raw_sources.get(src.id, {})
-            for key in ("region", "category", "language", "translate"):
+            for key in ("region", "category", "language", "translate", "live_events"):
                 if key not in saved and key in preset:
                     data[key] = preset[key]
         out.append(data)
     return AppSettings.model_validate({**settings.model_dump(mode="json"), "schema_version": 2, "sources": out})
+
+
+def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
+    """Move built-in sources off a URL that a NewsTrader update replaced (only if the user never edited it)."""
+    changed = False
+    out = []
+    for src in settings.sources:
+        data = src.model_dump(mode="json")
+        fix = PRESET_URL_FIXES.get(src.id)
+        if src.builtin and fix and src.url == fix[0]:
+            data["url"] = fix[1]
+            changed = True
+        out.append(data)
+    if not changed:
+        return None
+    return AppSettings.model_validate({**settings.model_dump(mode="json"), "sources": out})
 
 
 def _deep_merge(base: dict, patch: dict) -> dict:
@@ -520,6 +539,9 @@ class ConfigStore:
             if int(raw.get("schema_version") or 1) < 2:
                 settings = _backfill_presets(raw, settings)
                 self.needs_save = True
+            fixed = _fix_preset_urls(settings)
+            if fixed is not None:
+                settings, self.needs_save = fixed, True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]
             return settings

@@ -46,6 +46,7 @@ class NewsItem:
     speaker: str = ""
     kind: str = "text"  # text | transcript
     db_id: int | None = None
+    language: str = ""  # "en", another language code, or "" = not known yet (the pipeline guesses)
 
     @property
     def text(self) -> str:

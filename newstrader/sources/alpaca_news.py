@@ -35,7 +35,8 @@ def news_to_item(n, src: SourceConfig) -> NewsItem:
     return NewsItem(source_id=src.id, source_type="alpaca_news", source_name=f"{src.name} ({origin})",
                     external_id=str(g("id")), title=strip_html(g("headline") or "", 1000), body=body,
                     url=g("url") or "", published_at=created,
-                    symbols=[s.upper() for s in (g("symbols") or []) if isinstance(s, str)], speaker=author)
+                    symbols=[s.upper() for s in (g("symbols") or []) if isinstance(s, str)], speaker=author,
+                    language="en")
 
 
 class AlpacaNewsSource:

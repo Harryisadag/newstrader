@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import numpy as np
@@ -218,6 +219,30 @@ def test_diagnostics_update_hint_for_the_downloaded_app(monkeypatch):
     assert diagnostics._update_hint() == f"Run {diagnostics.UPDATE}"
 
 
+def test_per_stream_language_and_translation(pc_whisper, monkeypatch):
+    calls = []
+
+    class Model:
+        def transcribe(self, audio, **kw):
+            calls.append(kw)
+            return iter([seg(0.0, 1.0, " Die Zinsen steigen.")]), SimpleNamespace(language="de")
+
+    monkeypatch.setattr(pc_whisper, "_cuda_devices", lambda: 1)
+    import faster_whisper
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", lambda name, **kw: Model())
+    settings = SimpleNamespace(model="large-v3", device="cuda", compute_type="float16", language="en", beam_size=1,
+                               vad_min_silence_ms=500)
+    t = Transcriber(lambda: settings, lambda *a: None)
+    audio = np.frombuffer(pcm(2.0), dtype=np.int16).astype(np.float32) / 32768
+    segs = t._transcribe(Job("dw", 0.0, audio)) if t._load() is None else None
+    assert calls[-1]["language"] == "en" and calls[-1]["task"] == "transcribe"
+    segs = t._transcribe(Job("dw", 0.0, audio, language="de", task="translate"))
+    assert calls[-1]["language"] == "de" and calls[-1]["task"] == "translate" and segs[0].language == "de"
+    segs = t._transcribe(Job("dw", 0.0, audio, language="auto"))
+    assert calls[-1]["language"] is None
+
+
 # ---------------------------------------------------------------- rolling transcript -> AI
 def test_rolling_transcript_marks_lines_once():
     r = RollingTranscript()
@@ -277,7 +302,7 @@ def transcriber_seg(start, text):
     return Segment(start, start + 3, text)
 
 
-async def test_max_concurrent_streams(ctx, monkeypatch):
+async def test_every_turned_on_stream_is_watched_but_offline_ones_use_no_slot(ctx, monkeypatch):
     from newstrader.audio import stream_manager as sm
 
     def offline(url, cookies=""):
@@ -289,13 +314,68 @@ async def test_max_concurrent_streams(ctx, monkeypatch):
     await mgr.reconcile()
     try:
         enabled = [s.id for s in ctx.config.settings.sources if s.type == "stream" and s.enabled]
-        assert len(mgr.tasks) == 2 and list(mgr.tasks) == enabled[:2]
+        assert len(enabled) > 2 and list(mgr.tasks) == enabled  # all watched...
+        await asyncio.sleep(0.05)
+        assert mgr.live == {}  # ...but none is live, so no slot is used
         comps = {c["component"]: c for c in ctx.state.components()}
-        waiting = comps[f"source:{enabled[2]}"]
-        assert "max 2" in waiting["detail"]
+        assert "offline" in comps[f"source:{enabled[0]}"]["detail"]
     finally:
         for sid in list(mgr.tasks):
             await mgr._stop(sid)
+
+
+def _worker(mgr, sid, events=False):
+    from newstrader.audio.stream_manager import StreamWorker
+    from newstrader.config import SourceConfig
+
+    src = SourceConfig(id=sid, type="stream", name=sid.upper(), url=f"https://www.youtube.com/@{sid}/live",
+                       live_events=events)
+    w = StreamWorker(mgr, src)
+    mgr.workers[sid] = w
+    return w
+
+
+async def test_live_event_borrows_a_slot_from_an_always_on_stream(ctx):
+    ctx.config.update({"transcription": {"max_concurrent_streams": 2}})
+    mgr = StreamManager(ctx, transcriber=Transcriber(lambda: None, lambda *a: None))
+    a, b, c = _worker(mgr, "aaa"), _worker(mgr, "bbb"), _worker(mgr, "ccc")
+    wh = _worker(mgr, "whitehouse", events=True)
+    assert mgr.acquire_slot(a) and mgr.acquire_slot(b)
+    assert not mgr.acquire_slot(c)  # both slots busy -> waits
+    assert mgr.acquire_slot(wh)  # the White House goes live: it takes the newest always-on stream's slot
+    assert set(mgr.live) == {"aaa", "whitehouse"} and "WHITEHOUSE" in b.paused_reason and not a.paused_reason
+    freed = asyncio.create_task(mgr.wait_for_slot(5))
+    await asyncio.sleep(0)  # let the waiter start waiting
+    mgr.release_slot(wh)  # the event ends -> waiting streams wake up straight away
+    await asyncio.wait_for(freed, 1)
+    assert mgr.acquire_slot(b) and set(mgr.live) == {"aaa", "bbb"}
+
+
+async def test_waiting_live_event_goes_before_always_on_streams(ctx):
+    ctx.config.update({"transcription": {"max_concurrent_streams": 1}})
+    mgr = StreamManager(ctx, transcriber=Transcriber(lambda: None, lambda *a: None))
+    ev1, ev2, plain = _worker(mgr, "ev1", True), _worker(mgr, "ev2", True), _worker(mgr, "plain")
+    assert mgr.acquire_slot(ev1)
+    assert not mgr.acquire_slot(ev2)  # events never push out other events
+    mgr.release_slot(ev1)
+    assert not mgr.acquire_slot(plain)  # the free slot is kept for the waiting event
+    assert mgr.acquire_slot(ev2)
+
+
+async def test_lowering_the_limit_pauses_streams(ctx):
+    ctx.config.update({"transcription": {"max_concurrent_streams": 3}})
+    mgr = StreamManager(ctx, transcriber=Transcriber(lambda: None, lambda *a: None))
+    ws = [_worker(mgr, n) for n in ("one", "two", "three")]
+    assert all(mgr.acquire_slot(w) for w in ws)
+    ctx.config.update({"transcription": {"max_concurrent_streams": 1}})
+    mgr._enforce_limit()
+    assert list(mgr.live) == ["one"] and "max 1 stream at once" in ws[2].paused_reason
+
+
+def test_transcripts_use_new_york_time():
+    from newstrader.audio.stream_manager import _clock
+
+    assert _clock(datetime(2026, 1, 5, 15, 0, 7, tzinfo=UTC).timestamp()) == "10:00:07"
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None and find_ffmpeg() is None, reason="ffmpeg not available")

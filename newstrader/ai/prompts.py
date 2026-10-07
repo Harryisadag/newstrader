@@ -105,6 +105,8 @@ def user_message(item: NewsItem, pre: PrefilterResult, now: datetime, market_ope
     ]
     if item.speaker:
         lines.append(f"posted_by: {item.speaker}")
+    if item.language and item.language != "en":
+        lines.append(f"language: {item.language} (answer in English; tickers must be US-listed)")
     lines.append(f"published: {_fmt_time(item.published_at)}{age}")
     if item.title:
         lines.append(f"title: {item.title.strip()[:500]}")

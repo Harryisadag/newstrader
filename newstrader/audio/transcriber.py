@@ -106,7 +106,7 @@ class MlxWhisper:
         self._warm = True
 
     def transcribe(self, audio: np.ndarray, language: str | None, initial_prompt: str | None,
-                   min_silence_ms: int) -> list:
+                   min_silence_ms: int, task: str = "transcribe") -> list:
         import mlx_whisper
         from faster_whisper.vad import SpeechTimestampsMap, VadOptions, collect_chunks, get_speech_timestamps
 
@@ -117,13 +117,14 @@ class MlxWhisper:
         chunks, _ = collect_chunks(audio, speech)
         result = mlx_whisper.transcribe(np.concatenate(chunks), path_or_hf_repo=self.repo, language=language,
                                         initial_prompt=initial_prompt, condition_on_previous_text=False,
-                                        verbose=None)  # beam search isn't supported by mlx-whisper
+                                        verbose=None, task=task)  # beam search isn't supported by mlx-whisper
         ts = SpeechTimestampsMap(speech, 16000)
         return [SimpleNamespace(start=ts.get_original_time(seg["start"]),
                                 end=ts.get_original_time(seg["end"], is_end=True), text=seg.get("text", ""),
                                 no_speech_prob=seg.get("no_speech_prob", 0.0),
                                 avg_logprob=seg.get("avg_logprob", 0.0),
-                                compression_ratio=seg.get("compression_ratio", 0.0))
+                                compression_ratio=seg.get("compression_ratio", 0.0),
+                                language=result.get("language") or "")
                 for seg in result.get("segments", [])]
 
 
@@ -134,6 +135,8 @@ class Job:
     audio: np.ndarray
     prompt: str = ""
     queued_at: float = field(default_factory=time.monotonic)
+    language: str = ""  # what the stream speaks ("" = Settings -> Transcription -> Language)
+    task: str = "transcribe"  # or "translate" (to English)
 
 
 @dataclass
@@ -141,6 +144,18 @@ class Segment:
     start: float  # wall-clock seconds
     end: float
     text: str
+    language: str = ""  # the language Whisper heard (when it reports it)
+
+
+def can_translate(model: str) -> bool:
+    """large-v3-turbo was trained without translation data and distil / ".en" models are English-only: they would
+    hand back the original language even when asked to translate."""
+    m = model.lower()
+    return not (m in ("large-v3-turbo", "turbo") or "distil" in m or m.endswith(".en"))
+
+
+def translation_model(model: str) -> str:
+    return model if can_translate(model) else "large-v3"
 
 
 def clean_segments(raw: list, chunk_start: float) -> list[Segment]:
@@ -183,6 +198,7 @@ class Transcriber:
         self._thread: threading.Thread | None = None
         self._loaded_key: tuple | None = None
         self._callbacks: dict[str, Callable[[Job, list[Segment]], None]] = {}
+        self._translating: set[str] = set()  # streams that translate to English
         self.processed = 0
         self.dropped = 0
         self.last_rtf = 0.0  # processing time / audio time
@@ -196,11 +212,22 @@ class Transcriber:
     def stop(self) -> None:
         self.q.put(None)
 
-    def register(self, source_id: str, callback: Callable[[Job, list[Segment]], None]) -> None:
+    def register(self, source_id: str, callback: Callable[[Job, list[Segment]], None], translate: bool = False) -> None:
         self._callbacks[source_id] = callback
+        if translate:
+            self._translating.add(source_id)
+        else:
+            self._translating.discard(source_id)
 
     def unregister(self, source_id: str) -> None:
         self._callbacks.pop(source_id, None)
+        self._translating.discard(source_id)
+
+    def model_name(self) -> str:
+        """The Whisper model to use: the one in Settings, or large-v3 while a stream translates and the chosen
+        model can't (large-v3-turbo and distil models only transcribe)."""
+        name = self.get_settings().model
+        return translation_model(name) if self._translating else name
 
     def submit(self, job: Job) -> None:
         # If the GPU can't keep up, drop the oldest waiting chunk rather than fall further and further behind.
@@ -223,7 +250,8 @@ class Transcriber:
     # ---------------------------------------------------------------- model
     def _load(self) -> None:
         s = self.get_settings()
-        key = (s.model, s.device, s.compute_type)
+        wanted = self.model_name()
+        key = (wanted, s.device, s.compute_type)
         if self.model is not None and self._loaded_key == key:
             return
         if self.device == "mlx":
@@ -231,7 +259,7 @@ class Transcriber:
         self.model = None
         if self._factory is not None:
             self.model = self._factory(s)
-            self.model_desc, self.device = f"{s.model} (test)", "test"
+            self.model_desc, self.device = f"{wanted} (test)", "test"
             self._loaded_key = key
             self.set_status("ok", f"ready - {self.model_desc}")
             return
@@ -245,13 +273,13 @@ class Transcriber:
         mac = sys.platform == "darwin"
         if s.device == "mlx" or (s.device in ("auto", "cuda") and mac):
             if is_apple_silicon():
-                attempts.append((s.model, "mlx", "float16"))
+                attempts.append((wanted, "mlx", "float16"))
         elif s.device in ("cuda", "auto") and _cuda_devices() != 0:
             # (a failed CUDA attempt still downloads the big model first, so skip it when there's no NVIDIA GPU)
-            attempts.append((s.model, "cuda", s.compute_type))
+            attempts.append((wanted, "cuda", s.compute_type))
             if s.compute_type != "float16":
-                attempts.append((s.model, "cuda", "float16"))
-        attempts.append((s.model if s.device == "cpu" else CPU_FALLBACK_MODEL, "cpu", "int8"))
+                attempts.append((wanted, "cuda", "float16"))
+        attempts.append((wanted if s.device == "cpu" else CPU_FALLBACK_MODEL, "cpu", "int8"))
         last_exc: Exception | None = None
         if attempts[0][1] == "cpu" and s.device != "cpu":
             last_exc = RuntimeError("an Intel Mac has no GPU this app can use" if mac else "no NVIDIA GPU found")
@@ -274,6 +302,8 @@ class Transcriber:
                     self.model = WhisperModel(model_name, device=device, compute_type=compute,
                                               download_root=str(paths.models_dir()))
                 self.model_desc, self.device = f"{model_name} on {where} ({compute})", device
+                if model_name != s.model and model_name == wanted:
+                    self.model_desc += f" - instead of {s.model}, which can't translate to English"
                 self._loaded_key = key
                 if device == "cpu" and s.device != "cpu":
                     self.set_status("warn", f"GPU unavailable ({last_exc}); using CPU with '{model_name}' - slower and "
@@ -293,20 +323,30 @@ class Transcriber:
         s = self.get_settings()
         if rms(job.audio) < 0.002:  # near silence - skip the GPU entirely
             return []
+        lang = job.language or s.language
+        lang = None if lang in ("", "auto") else lang
+        loaded = self._loaded_key[0] if self._loaded_key else ""
+        task = "translate" if job.task == "translate" and can_translate(loaded) and lang != "en" else "transcribe"
         if self.device == "mlx":
-            raw = self.model.transcribe(job.audio, None if s.language in ("", "auto") else s.language,
-                                        job.prompt[-200:] or None, s.vad_min_silence_ms)
-            return clean_segments(raw, job.started_at)
-        segments, _info = self.model.transcribe(
-            job.audio,
-            language=None if s.language in ("", "auto") else s.language,
-            beam_size=s.beam_size,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": s.vad_min_silence_ms},
-            initial_prompt=job.prompt[-200:] or None,
-            condition_on_previous_text=False,
-        )
-        return clean_segments(list(segments), job.started_at)
+            raw = self.model.transcribe(job.audio, lang, job.prompt[-200:] or None, s.vad_min_silence_ms, task)
+            heard = getattr(raw[0], "language", "") if raw else ""
+        else:
+            segments, info = self.model.transcribe(
+                job.audio,
+                language=lang,
+                task=task,
+                beam_size=s.beam_size,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": s.vad_min_silence_ms},
+                initial_prompt=job.prompt[-200:] or None,
+                condition_on_previous_text=False,
+            )
+            raw = list(segments)
+            heard = getattr(info, "language", "") or ""
+        out = clean_segments(raw, job.started_at)
+        for seg in out:
+            seg.language = heard or lang or ""
+        return out
 
     # ---------------------------------------------------------------- worker thread
     def _loop(self) -> None:

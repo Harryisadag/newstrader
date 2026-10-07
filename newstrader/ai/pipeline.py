@@ -17,6 +17,7 @@ from ..context import AppContext
 from ..db import iso, utcnow
 from ..ml.engine import LocalMLEngine
 from ..sources.base import NewsItem, safe_url
+from ..sources.lang import detect_language
 from ..state import trading_day
 from .claude_client import ClaudeAnalyzer
 from .costs import spend_today
@@ -180,6 +181,8 @@ class Pipeline:
         """Called by every source. Returns what happened to the item (for tests and the UI)."""
         self.stats["received"] += 1
         item.url = safe_url(item.url)
+        if not item.language:
+            item.language = detect_language(item.text)
         now = utcnow()
         db = self.ctx.db
         row = {
@@ -187,6 +190,7 @@ class Pipeline:
             "external_id": item.external_id, "title": item.title[:1000], "body": (item.body or "")[:20000],
             "url": item.url, "speaker": item.speaker, "published_at": iso(item.published_at) if item.published_at else None,
             "received_at": iso(now), "symbols": json.dumps(item.symbols), "status": "received",
+            "language": item.language or None,
         }
         try:
             item.db_id = db.insert("news_items", row)
@@ -200,7 +204,11 @@ class Pipeline:
         status = "queued"
         dup_of = None
         reason = ""
-        if not pre.hit:
+        if not claude and item.language not in ("", "en"):
+            # FinBERT reads English only: a foreign headline would be misread, not just missed
+            status, reason = "filtered", (f"not in English ({item.language}) - the local engine reads English only "
+                                          "(the Claude engine reads any language; TV can be translated to English)")
+        elif not pre.hit:
             status, reason = "filtered", ("no company, ticker or market keyword" if claude
                                           else "no company or ticker named")
         elif not self.tickers.loaded:
@@ -243,7 +251,7 @@ class Pipeline:
                 "speaker": item.speaker,
                 "published_at": iso(item.published_at) if item.published_at else None, "received_at": iso(),
                 "status": status, "reason": reason, "candidates": [c.symbol for c in pre.candidates],
-                "keywords": pre.keywords}
+                "keywords": pre.keywords, "language": item.language}
 
     async def _spend_cap_alert(self) -> None:
         day = trading_day()

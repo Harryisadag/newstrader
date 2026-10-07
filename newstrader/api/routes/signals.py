@@ -98,7 +98,7 @@ async def dismiss(signal_id: int, ctx: AppContext = Depends(get_ctx)):
 async def recent_news(limit: int = Query(200, ge=1, le=2000), source_id: str = Query(""),
                       kind: str = Query("text"), ctx: AppContext = Depends(get_ctx)):
     sql = ("SELECT id, source_id, source_name, source_type, title, url, speaker, published_at, received_at, status, "
-           "candidates FROM news_items WHERE 1=1")
+           "candidates, language FROM news_items WHERE 1=1")
     params: list = []
     if kind == "text":
         sql += " AND source_type != 'stream'"

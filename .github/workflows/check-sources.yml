@@ -1,0 +1,30 @@
+name: check-sources
+
+# Checks every preset news source still works (RSS feeds parse and are recent, YouTube channels exist).
+# Results are in the run's summary page. Weekly, and on demand: Actions -> check-sources -> Run workflow.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install httpx feedparser
+      - name: Check every source
+        run: python scripts/check_sources.py --json sources-check.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sources-check
+          path: sources-check.json
+          retention-days: 14
