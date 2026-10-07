@@ -174,7 +174,7 @@ It runs on your computer, needs no API key, and keeps working offline after the 
 2. **FinBERT** scores that wording, for example "92% positive / 3% negative / 5% neutral".
    - Without a trained price model, **confidence = how positive or negative the wording is**.
    - It is a bit lower when the company is only mentioned in the article, not the headline.
-3. If you've trained the **price model** (below), it takes over the decision. It answers: "after headlines like this, how often did the stock beat the S&P 500 over the next hour?" Confidence is then that tested probability.
+3. If you've trained the **price model** (below), it takes over the decision for written news. It answers: "after headlines like this, how often did the stock beat the S&P 500 over the next hour?" Confidence is then that tested probability. TV transcripts are always scored on wording only, because the price model learned from written articles.
 
 What it can't do (Claude can):
 - understand context, such as whether news was already expected, or who is speaking
@@ -183,13 +183,20 @@ What it can't do (Claude can):
 ### Training the price model (recommended)
 Go to **Backtest → Local ML model → Train the price model**. It's free and runs in the background while trading continues.
 
-1. It downloads about 6 months of Benzinga headlines plus minute-by-minute prices from Alpaca, using your paper keys. The first time takes 5–20 minutes; later trainings only download the new days.
-2. For each headline it measures what the stock did from 1 minute after the news to 1 hour later, minus what the S&P 500 did. Tiny moves (under 0.3%) are left out as "no reaction".
-3. It learns from the older 80% of headlines, then **tests itself on the newest 20%, which it never saw**.
-4. The card shows how often it picked the right direction on that unseen news, next to the score you'd get by always guessing the same thing.
-5. It also shows a table of what each confidence threshold would have done: number of signals, how many were right, and the average move.
+1. It downloads about 6 months of Benzinga articles plus minute-by-minute prices from Alpaca, using your paper keys.
+   - It takes a short sample from every hour of every trading day, and uses the same text the live feed sees.
+   - The first time takes 5–20 minutes; later trainings only download the new days.
+2. For each headline it measures what the stock did from 1 minute after the news to 1 hour later, minus what the S&P 500 did.
+3. It learns from the older 80% of headlines, using only the ones where the stock clearly reacted (moved 0.3%+ vs the market).
+4. Then it **tests itself on the newest 20%, which it never saw**. That test uses *every* headline, including ones where the stock barely moved, because live trading can't know that in advance.
+5. The card shows:
+   - how often it picked the right direction on that unseen news, next to the score you'd get by always guessing the same thing
+   - its "edge over chance" (AUC, where 0.5 is a coin flip) with a likely range
+   - a table of what each confidence threshold would have done, including what plain buying on bullish calls earned
 
-The price model is **only used if it passed that test**: it has to beat a coin flip on unseen news. If it didn't pass, the engine keeps using FinBERT alone. Usually the fix is more history, which you change in Settings → AI engine → Training history.
+The price model is **only used if it passed that test**. Its edge over chance has to hold up when the test days are reshuffled (so it isn't luck), over at least 10 trading days. Honestly, predicting the next hour from headlines is hard, so don't be surprised if it doesn't pass. The usual fix is more history (Settings → AI engine → Training history).
+
+**If it doesn't pass:** the engine keeps scoring with FinBERT alone. Those signals then go to **manual review instead of auto-buying**, because your own history just showed the wording didn't reliably predict moves. You can change this with Settings → AI engine → *Sentiment-only signals can auto-buy*.
 
 > **Confidence with the price model is lower — that's normal.** It's an honest, tested probability, so 60–70 is already a strong call. Use the threshold table on the Backtest tab to pick your **buy** and **review** thresholds in Settings → Trading. With FinBERT alone, the default 80/60 thresholds make sense.
 
@@ -234,6 +241,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | AI engine | Local machine learning | Or Claude (paid). |
 | Sentiment model | FinBERT | Or the built-in word list. It needs no download but is crude, and its confidence is capped at 79, so it never auto-buys on default settings. |
 | Use the price-trained model | Auto | Auto = only if it passed its test. Always / Never are also available. |
+| Sentiment-only signals can auto-buy | Auto | Yes, unless a trained price model failed its test (then manual review only). Or Yes always / No (review only). |
 | Training history | 180 days | How much history the price model learns from. |
 | Measure each stock's move over | 1 hour | 30 min / 1 hour / 2 hours. |
 | Smallest move that counts | 0.3% | Moves smaller than this (vs the S&P 500) are left out of training. |
