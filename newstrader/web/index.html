@@ -501,6 +501,16 @@
               </div>
             </template>
           </div>
+          <template x-if="section === 'alerts'">
+            <div class="alert-test">
+              <div class="row gap">
+                <button class="btn primary" @click="testAlert()" :disabled="alertTesting" x-text="alertTesting ? 'Sending...' : 'Send a test alert'"></button>
+                <span class="small" x-show="alertResult" x-text="alertResult"></span>
+              </div>
+              <p class="note">Desktop pop-ups appear in the Windows notification area. If you don't see them, check that
+                Windows "Do not disturb" is off. Discord alerts need a webhook URL in API keys.</p>
+            </div>
+          </template>
           <template x-if="section === 'ai'">
             <p class="note">Cost estimate: each analysed story costs roughly $0.002–$0.02 with Sonnet 5.5 at low effort.
               Haiku 4.5 is about half that. The daily cap is a hard stop.</p>

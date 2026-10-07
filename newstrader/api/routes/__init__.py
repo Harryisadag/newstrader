@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import keys, logs, settings, signals, sources, status, streams, system, trading
+from . import alerts, keys, logs, settings, signals, sources, status, streams, system, trading
 
 ALL_ROUTERS = [
     status.router,
@@ -12,4 +12,5 @@ ALL_ROUTERS = [
     trading.router,
     signals.router,
     streams.router,
+    alerts.router,
 ]

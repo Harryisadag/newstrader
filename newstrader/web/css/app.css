@@ -340,3 +340,4 @@ textarea { width: 100%; resize: vertical; font: inherit; }
 .tx-line.hit { background: rgba(79,140,255,.07); border-left: 2px solid var(--accent); padding-left: 6px; }
 .tx-line .chip { margin-left: 4px; }
 mark.kw { background: rgba(245,165,36,.22); color: inherit; border-radius: 3px; padding: 0 2px; }
+.alert-test { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }

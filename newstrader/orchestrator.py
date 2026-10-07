@@ -69,10 +69,12 @@ class Orchestrator:
         if self.services:
             return
         from .ai.pipeline import Pipeline
+        from .alerts.manager import AlertManager
         from .audio.stream_manager import StreamManager
         from .sources.manager import SourceManager
         from .trading.trader import Trader
 
+        self.add(AlertManager(self.ctx))
         self.add(Trader(self.ctx))
         self.add(Pipeline(self.ctx))
         self.add(SourceManager(self.ctx))

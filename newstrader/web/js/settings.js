@@ -90,6 +90,19 @@ document.addEventListener("alpine:init", () => {
     meta: {},
     errors: [],
     saving: false,
+    alertTesting: false,
+    alertResult: "",
+
+    async testAlert() {
+      this.alertTesting = true; this.alertResult = "";
+      try {
+        const r = await NT.api.post("/alerts/test");
+        const d = r.discord === true ? "Discord: sent ✓" : (r.discord ? "Discord: " + r.discord : "Discord: not set up");
+        const w = r.desktop ? "Desktop pop-up: shown ✓" : "Desktop pop-up: not available (Windows only)";
+        this.alertResult = `${w} · ${d}`;
+      } catch (e) { Alpine.store("nt").error(e, "Test alert failed"); }
+      finally { this.alertTesting = false; }
+    },
 
     async init() {
       await this.load();
