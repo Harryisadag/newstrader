@@ -41,7 +41,17 @@ document.addEventListener("alpine:init", () => {
       } catch (e) { /* engine starting */ }
     },
 
-    get visibleStreams() { return this.showOff ? this.streams : this.streams.filter((s) => s.enabled); },
+    // Events channels (White House, Fed...) get a full pane only while they are live; off air they wait in a row.
+    offAir(s) { return s.live_events && s.enabled && !(s.health && s.health.level === "ok"); },
+    get visibleStreams() {
+      return this.streams.filter((s) => (this.showOff || s.enabled) && !this.offAir(s))
+        .sort((a, b) => (b.live_events && !this.offAir(b)) - (a.live_events && !this.offAir(a)));
+    },
+    get waitingEvents() { return this.streams.filter((s) => this.offAir(s)); },
+    badge(s) {
+      if (!s.translate || !s.language || s.language === "en") return "";
+      return (s.language === "auto" ? "any" : s.language.toUpperCase()) + " → EN";
+    },
     get offCount() { return this.streams.filter((s) => !s.enabled).length; },
 
     scroll(id) {

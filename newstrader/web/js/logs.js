@@ -27,7 +27,16 @@ document.addEventListener("alpine:init", () => {
       window.addEventListener("nt:tab", (e) => { if (e.detail === "logs" && this.view === "rejections") this.loadRejections(); });
     },
 
-    get components() { return Alpine.store("nt").status.components || []; },
+    showOffSources: false,
+    // turned-off news sources would fill the grid (there are 100+ presets) - they're hidden unless asked for
+    get components() {
+      const all = Alpine.store("nt").status.components || [];
+      return this.showOffSources ? all : all.filter((c) => !(c.component.startsWith("source:") && c.level === "off"));
+    },
+    get hiddenSources() {
+      return (Alpine.store("nt").status.components || []).filter((c) => c.component.startsWith("source:") && c.level === "off").length;
+    },
+    label(c) { return c.name || c.component; },
 
     async load() {
       this.loading = true;

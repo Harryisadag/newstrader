@@ -395,3 +395,5 @@ td.reasons .tag { margin: 0 4px 2px 0; }
 .src-edit td { background: var(--panel-2, rgba(255, 255, 255, 0.03)); }
 .tag.warn { color: var(--warn); border-color: var(--warn); }
 .tag.t-live { color: var(--accent); }
+.events-waiting { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.events-waiting .chip { display: inline-flex; align-items: center; gap: 4px; }

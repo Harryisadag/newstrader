@@ -100,15 +100,25 @@
       }
       return String(Math.round(n));
     },
+    // Settings -> Display -> Show times in: this computer's zone, New York (the US market) or UTC
+    zone() {
+      const st = window.Alpine && Alpine.store("nt");
+      const z = st && st.status && st.status.time_zone;
+      if (z === "market") return { timeZone: "America/New_York", label: " ET" };
+      if (z === "utc") return { timeZone: "UTC", label: " UTC" };
+      return { timeZone: undefined, label: "" };
+    },
     time(iso) {
       if (!iso) return "—";
-      const d = new Date(iso);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const z = fmt.zone();
+      return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit",
+        timeZone: z.timeZone }) + z.label;
     },
     dateTime(iso) {
       if (!iso) return "—";
-      const d = new Date(iso);
-      return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const z = fmt.zone();
+      return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+        timeZone: z.timeZone }) + z.label;
     },
     ago(iso) {
       if (!iso) return "never";

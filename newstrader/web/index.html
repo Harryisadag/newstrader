@@ -164,6 +164,13 @@
       <template x-if="info && !info.transcription_enabled">
         <p class="warn-text">Transcription is turned off (Settings → Transcription).</p>
       </template>
+      <div class="events-waiting small" x-show="waitingEvents.length">
+        <span class="muted">Waiting for a live event:</span>
+        <template x-for="s in waitingEvents" :key="s.id">
+          <span class="chip" :title="s.health ? s.health.detail : ''"><span class="dot" :class="s.health ? s.health.level : 'starting'"></span> <span x-text="s.name"></span></span>
+        </template>
+        <span class="muted">- each one gets a pane (and a transcription slot) as soon as it goes live.</span>
+      </div>
       <div class="stream-grid">
         <template x-for="s in visibleStreams" :key="s.id">
           <div class="stream-pane" :class="{ off: !s.enabled }">
@@ -171,6 +178,8 @@
               <label class="switch small"><input type="checkbox" :checked="s.enabled" @change="toggle(s)"><span class="slider"></span></label>
               <span class="dot" :class="s.enabled ? (s.health ? s.health.level : 'starting') : 'off'"></span>
               <b x-text="s.name"></b>
+              <span class="tag" x-show="badge(s)" x-text="badge(s)" title="Translated to English while it is transcribed"></span>
+              <span class="tag t-live" x-show="s.live_events">live event</span>
               <a class="small muted ext" :href="fmt.url(s.url)" target="_blank" rel="noopener" title="Open stream">↗</a>
             </div>
             <div class="stream-status small muted" x-text="s.enabled ? (s.health ? s.health.detail : 'starting...') : 'off'"></div>
@@ -1138,6 +1147,7 @@
       <div class="card-head">
         <h2>System status</h2>
         <div class="row gap">
+          <label class="row small" x-show="hiddenSources"><input type="checkbox" x-model="showOffSources"> Show <span x-text="hiddenSources"></span> turned-off / off-air sources</label>
           <button class="btn ghost small" @click="openFolder('data')">Open data folder</button>
           <button class="btn ghost small" @click="openFolder('logs')">Open log files</button>
           <button class="btn primary" @click="runDiagnostics()" :disabled="diagRunning"
@@ -1147,7 +1157,7 @@
       <div class="status-grid">
         <template x-for="c in components" :key="c.component">
           <div class="status-card" :class="c.level">
-            <div class="row"><span class="dot" :class="c.level"></span><b x-text="c.component"></b></div>
+            <div class="row"><span class="dot" :class="c.level"></span><b x-text="label(c)" :title="c.component"></b></div>
             <div class="small muted" x-text="c.detail"></div>
             <div class="tiny muted" x-text="fmt.ago(c.updated_at)"></div>
           </div>

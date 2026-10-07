@@ -23,6 +23,7 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     k = ctx.keys.keys
     out = {
         "version": __version__,
+        "time_zone": s.ui.time_zone,
         "mode": ctx.state.mode,
         "kill_switch": ctx.state.kill_switch,
         "halted_today": ctx.state.halted_today,

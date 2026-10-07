@@ -13,12 +13,14 @@ async def streams(ctx: AppContext = Depends(get_ctx)):
     comps = {c["component"]: c for c in ctx.state.components()}
     mgr = ctx.service("streams")
     running = set(mgr.tasks) if mgr else set()
+    live = set(mgr.live) if mgr else set()
     out = []
     for s in ctx.config.settings.sources:
         if s.type != "stream":
             continue
         out.append({"id": s.id, "name": s.name, "url": s.url, "enabled": s.enabled, "running": s.id in running,
-                    "health": comps.get(f"source:{s.id}")})
+                    "live": s.id in live, "live_events": s.live_events, "language": s.language,
+                    "translate": s.translate, "health": comps.get(f"source:{s.id}")})
     return {
         "streams": out,
         "transcription_enabled": ctx.config.settings.transcription.enabled,
