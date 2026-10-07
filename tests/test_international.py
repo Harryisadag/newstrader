@@ -52,23 +52,21 @@ def test_new_presets_reach_existing_users_but_new_streams_stay_off(tmp_path):
     assert not store.source("dw-news").enabled and not store.source("rsbn").enabled
 
 
-def test_changed_preset_url_moves_users_who_never_edited_it(tmp_path, monkeypatch):
-    from newstrader import config as cfg
-
-    monkeypatch.setattr(cfg, "PRESET_URL_FIXES", {"yahoo-finance-news": ("https://old.example/rss",
-                                                                         "https://new.example/rss")})
+def test_dead_preset_feed_moves_users_who_never_edited_it(tmp_path):
     data = AppSettings().model_dump(mode="json")
     for s in data["sources"]:
-        if s["id"] == "yahoo-finance-news":
-            s["url"] = "https://old.example/rss"
-        if s["id"] == "cnbc-top":
-            s["url"] = "https://my.own/feed"
+        if s["id"] == "yahoo-finance-news":  # a v0.2 config still on the feed that now returns 404
+            s.update(url="https://finance.yahoo.com/news/rssindex", name="Yahoo Finance News", poll_seconds=60)
+        if s["id"] == "marketwatch-realtime":
+            s["url"] = "https://my.own/feed"  # edited by the user -> left alone
     path = tmp_path / "config.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     store = ConfigStore(path)
-    assert store.source("yahoo-finance-news").url == "https://new.example/rss"
-    assert store.source("cnbc-top").url == "https://my.own/feed"
-    assert json.loads(path.read_text(encoding="utf-8"))["sources"]  # saved straight away
+    yahoo = store.source("yahoo-finance-news")
+    assert "news.google.com" in yahoo.url and yahoo.poll_seconds == 300 and "Google News" in yahoo.name
+    assert store.source("marketwatch-realtime").url == "https://my.own/feed"
+    saved = {s["id"]: s for s in json.loads(path.read_text(encoding="utf-8"))["sources"]}
+    assert "news.google.com" in saved["yahoo-finance-news"]["url"]  # saved straight away
 
 
 @pytest.mark.parametrize("text,lang", [

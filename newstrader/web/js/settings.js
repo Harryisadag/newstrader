@@ -213,12 +213,24 @@ document.addEventListener("alpine:init", () => {
   }));
 
   // ---- Sources manager (used in Settings -> Sources) ----
+  const CATEGORY_ORDER = ["Live events", "TV", "Business news", "Politics & Trump", "Regulators", "Central banks",
+    "Press releases", "Social"];
+  const blankDraft = (type = "rss") => ({ type, name: "", url: "", speaker: "", poll_seconds: 60, region: "",
+    category: "", language: "", translate: false, live_events: false });
+
   Alpine.data("sourcesManager", () => ({
     sources: [],
     types: {},
+    languages: {},
+    engine: "local",
+    maxStreams: 4,
     filter: "all",
+    region: "all",
+    show: "all",
+    search: "",
     adding: false,
-    draft: { type: "rss", name: "", url: "", speaker: "", poll_seconds: 60 },
+    editing: null,
+    draft: blankDraft(),
     fmt: NT.fmt,
 
     async init() {
@@ -233,17 +245,74 @@ document.addEventListener("alpine:init", () => {
       });
     },
     async load() {
-      try { const r = await NT.api.get("/sources"); this.sources = r.sources; this.types = r.types; }
-      catch (e) { Alpine.store("nt").error(e, "Couldn't load sources"); }
+      try {
+        const r = await NT.api.get("/sources");
+        Object.assign(this, { sources: r.sources, types: r.types, languages: r.languages || {}, engine: r.engine,
+          maxStreams: r.max_streams });
+      } catch (e) { Alpine.store("nt").error(e, "Couldn't load sources"); }
     },
-    get visible() { return this.filter === "all" ? this.sources : this.sources.filter((s) => s.type === this.filter); },
-    typeLabel(t) { return { stream: "Live stream", rss: "RSS", social_rss: "Social", x_account: "X (API)", alpaca_news: "Alpaca news" }[t] || t; },
+    get onCount() { return this.sources.filter((s) => s.enabled).length; },
+    get regions() { return [...new Set(this.sources.map((s) => s.region).filter(Boolean))].sort(); },
+    get categories() {
+      const seen = [...new Set(this.sources.map((s) => s.category).filter(Boolean))];
+      return seen.sort((a, b) => this.catRank(a) - this.catRank(b) || a.localeCompare(b));
+    },
+    catRank(c) { const i = CATEGORY_ORDER.indexOf(c); return i < 0 ? 99 : i; },
+    get visible() {
+      const q = this.search.trim().toLowerCase();
+      return this.sources.filter((s) =>
+        (this.filter === "all" || s.type === this.filter) &&
+        (this.region === "all" || s.region === this.region) &&
+        (this.show === "all" || (this.show === "on") === s.enabled) &&
+        (!q || `${s.name} ${s.url} ${s.region} ${s.category}`.toLowerCase().includes(q)));
+    },
+    get groups() {
+      const by = {};
+      for (const s of this.visible) (by[s.category || "Other"] = by[s.category || "Other"] || []).push(s);
+      return Object.entries(by)
+        .sort(([a], [b]) => this.catRank(a) - this.catRank(b) || a.localeCompare(b))
+        .map(([name, items]) => ({ name, items, on: items.filter((s) => s.enabled).length }));
+    },
+    groupHelp(name) {
+      return {
+        "Live events": "only live during press conferences, interviews, hearings",
+        "TV": "always-on channels, transcribed live",
+        "Politics & Trump": "Trump interviews, tariffs, White House",
+        "Regulators": "FDA approvals, SEC, economic data",
+        "Press releases": "very busy feeds",
+      }[name] || "";
+    },
+    typeLabel(t) { return { stream: "Live TV", rss: "RSS", social_rss: "Social", x_account: "X (API)", alpaca_news: "Alpaca news" }[t] || t; },
+    langBadge(s) {
+      const code = s.language;
+      if (!code || code === "en") return "";
+      if (code === "auto") return s.translate ? "any → EN" : "any language";
+      return s.translate && s.type === "stream" ? `${code.toUpperCase()} → EN` : code.toUpperCase();
+    },
+    claudeOnly(s) { return s.type !== "stream" && s.language && !["en", "auto", ""].includes(s.language) && this.engine === "local"; },
     async toggle(src) {
       try { await NT.api.post(`/sources/${src.id}/toggle`, { enabled: !src.enabled }); src.enabled = !src.enabled; }
       catch (e) { Alpine.store("nt").error(e); }
     },
+    async setMany(items, enabled) {
+      const n = items.filter((s) => s.enabled !== enabled).length;
+      if (enabled && n > 10 && !confirm(`Turn on ${n} sources?`)) return;
+      try { await NT.api.post("/sources/toggle-many", { ids: items.map((s) => s.id), enabled }); await this.load(); }
+      catch (e) { Alpine.store("nt").error(e); }
+    },
+    edit(src) {
+      this.adding = false;
+      this.editing = this.editing && this.editing.id === src.id ? null : JSON.parse(JSON.stringify(src));
+    },
+    async saveEdit() {
+      const e = this.editing;
+      const body = { name: e.name, url: e.url, region: e.region, category: e.category, language: e.language,
+        translate: e.translate, live_events: e.live_events, speaker: e.speaker, poll_seconds: e.poll_seconds };
+      try { await NT.api.put(`/sources/${e.id}`, body); this.editing = null; await this.load(); }
+      catch (err) { Alpine.store("nt").error(err, "Couldn't save the source"); }
+    },
     async remove(src) {
-      if (!confirm(`Remove "${src.name}"?`)) return;
+      if (!confirm(`Remove "${src.name}"?` + (src.builtin ? " (A preset - turning it off keeps it in the list.)" : ""))) return;
       try { await NT.api.del(`/sources/${src.id}`); await this.load(); }
       catch (e) { Alpine.store("nt").error(e); }
     },
@@ -251,14 +320,14 @@ document.addEventListener("alpine:init", () => {
       try {
         await NT.api.post("/sources", this.draft);
         Alpine.store("nt").toast("success", "Source added", this.draft.name);
-        this.draft = { type: this.draft.type, name: "", url: "", speaker: "", poll_seconds: 60 };
+        this.draft = blankDraft(this.draft.type);
         this.adding = false;
         await this.load();
       } catch (e) { Alpine.store("nt").error(e, "Couldn't add source"); }
     },
-    urlPlaceholder() {
+    urlPlaceholder(type) {
       return { stream: "https://www.youtube.com/@channel/live  (or any stream URL)", rss: "https://example.com/feed.xml",
-        social_rss: "RSS feed URL for the account", x_account: "X username, e.g. elonmusk", alpaca_news: "(no URL needed)" }[this.draft.type];
+        social_rss: "RSS feed URL for the account", x_account: "X username, e.g. elonmusk", alpaca_news: "(no URL needed)" }[type];
     },
   }));
 

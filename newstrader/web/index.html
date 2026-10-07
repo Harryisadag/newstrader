@@ -942,17 +942,30 @@
       <!-- Sources -->
       <div x-show="section === 'sources'" x-data="sourcesManager" class="card">
         <div class="card-head">
-          <h2>News sources</h2>
+          <h2>News sources <span class="muted small" x-text="`${onCount} of ${sources.length} on`"></span></h2>
           <div class="row gap">
-            <select x-model="filter" class="small">
-              <option value="all">All types</option>
-              <option value="stream">Live streams</option>
-              <option value="rss">RSS feeds</option>
-              <option value="social_rss">Social</option>
-              <option value="x_account">X (API)</option>
-              <option value="alpaca_news">Alpaca news</option>
-            </select>
-            <button class="btn primary small" @click="adding = !adding" x-text="adding ? 'Cancel' : '+ Add source'"></button>
+            <button class="btn primary small" @click="adding = !adding; editing = null" x-text="adding ? 'Cancel' : '+ Add source'"></button>
+          </div>
+        </div>
+
+        <div class="src-toolbar row gap">
+          <input type="search" class="src-search" x-model.debounce.150ms="search" placeholder="Search sources...">
+          <select x-model="filter" class="small">
+            <option value="all">All types</option>
+            <option value="stream">Live TV</option>
+            <option value="rss">News feeds (RSS)</option>
+            <option value="social_rss">Social</option>
+            <option value="x_account">X (API)</option>
+            <option value="alpaca_news">Alpaca news</option>
+          </select>
+          <select x-model="region" class="small">
+            <option value="all">All regions</option>
+            <template x-for="r in regions" :key="r"><option :value="r" x-text="r"></option></template>
+          </select>
+          <div class="seg small">
+            <button :class="{ active: show === 'all' }" @click="show = 'all'">All</button>
+            <button :class="{ active: show === 'on' }" @click="show = 'on'">On</button>
+            <button :class="{ active: show === 'off' }" @click="show = 'off'">Off</button>
           </div>
         </div>
 
@@ -964,35 +977,94 @@
               </select></div>
             <div class="field"><label>Name</label><input type="text" x-model="draft.name" placeholder="e.g. Reuters Business"></div>
             <div class="field wide" x-show="draft.type !== 'alpaca_news'"><label x-text="draft.type === 'x_account' ? 'Username' : 'URL'"></label>
-              <input type="text" x-model="draft.url" :placeholder="urlPlaceholder()"></div>
+              <input type="text" x-model="draft.url" :placeholder="urlPlaceholder(draft.type)"></div>
             <div class="field" x-show="draft.type === 'social_rss' || draft.type === 'x_account'"><label>Who posts (speaker)</label>
               <input type="text" x-model="draft.speaker" placeholder="e.g. Elon Musk"></div>
             <div class="field" x-show="['rss','social_rss','x_account'].includes(draft.type)"><label>Check every (seconds)</label>
               <input type="number" min="10" max="3600" x-model.number="draft.poll_seconds"></div>
+            <div class="field"><label>Region</label><input type="text" x-model="draft.region" list="src-regions" placeholder="e.g. US, Europe, Asia"></div>
+            <div class="field"><label>Kind</label><input type="text" x-model="draft.category" list="src-categories" placeholder="e.g. Business news"></div>
+            <div class="field"><label x-text="draft.type === 'stream' ? 'Language spoken' : 'Language'"></label>
+              <select x-model="draft.language">
+                <template x-for="[val, lab] in Object.entries(languages)" :key="val"><option :value="val" x-text="lab"></option></template>
+              </select></div>
+            <div class="field" x-show="draft.type === 'stream'"><label>Translate to English</label>
+              <label class="switch small"><input type="checkbox" x-model="draft.translate"><span class="slider"></span></label></div>
+            <div class="field" x-show="draft.type === 'stream'"><label>Only live for events</label>
+              <label class="switch small"><input type="checkbox" x-model="draft.live_events"><span class="slider"></span></label></div>
           </div>
           <div class="row end"><button class="btn primary" @click="add()">Add source</button></div>
         </div>
+        <datalist id="src-regions"><template x-for="r in regions" :key="r"><option :value="r"></option></template></datalist>
+        <datalist id="src-categories"><template x-for="c in categories" :key="c"><option :value="c"></option></template></datalist>
 
-        <table class="table">
-          <thead><tr><th>On</th><th>Name</th><th>Type</th><th>URL</th><th>Health</th><th></th></tr></thead>
-          <tbody>
-            <template x-for="src in visible" :key="src.id">
-              <tr :class="{ dim: !src.enabled }">
-                <td><label class="switch small"><input type="checkbox" :checked="src.enabled" @change="toggle(src)"><span class="slider"></span></label></td>
-                <td><span x-text="src.name"></span> <span class="tag" x-show="src.builtin">preset</span></td>
-                <td><span class="tag" :class="'t-' + src.type" x-text="typeLabel(src.type)"></span></td>
-                <td class="url" :title="src.url" x-text="src.url || '—'"></td>
-                <td>
-                  <template x-if="src.health"><span :title="src.health.detail"><span class="dot" :class="src.health.level"></span>
-                    <span class="small muted" x-text="src.health.detail"></span></span></template>
-                  <template x-if="!src.health"><span class="small muted" x-text="src.enabled ? 'not started' : 'off'"></span></template>
-                </td>
-                <td class="right"><button class="btn ghost small danger" @click="remove(src)">Remove</button></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-        <p class="note">Truth Social: preloaded via the free trumpstruth.org archive feed. X/Twitter has no free read access —
+        <template x-for="g in groups" :key="g.name">
+          <div class="src-group">
+            <div class="src-group-head">
+              <h3 x-text="g.name"></h3>
+              <span class="muted small" x-text="`${g.on} of ${g.items.length} on`"></span>
+              <span class="muted small" x-text="groupHelp(g.name)"></span>
+              <span class="grow"></span>
+              <button class="btn ghost small" @click="setMany(g.items, true)" x-show="g.on < g.items.length">Turn all on</button>
+              <button class="btn ghost small" @click="setMany(g.items, false)" x-show="g.on > 0">Turn all off</button>
+            </div>
+            <table class="table compact src-table">
+              <template x-for="src in g.items" :key="src.id">
+                <tbody>
+                  <tr :class="{ dim: !src.enabled }">
+                    <td class="src-on"><label class="switch small"><input type="checkbox" :checked="src.enabled" @change="toggle(src)"><span class="slider"></span></label></td>
+                    <td class="src-name">
+                      <span x-text="src.name"></span>
+                      <span class="tag" x-show="src.region" x-text="src.region"></span>
+                      <span class="tag" x-show="langBadge(src)" :class="{ warn: claudeOnly(src) }" x-text="langBadge(src)"
+                            :title="claudeOnly(src) ? 'Not in English - only the Claude engine can read it (the local engine skips it)' : ''"></span>
+                      <span class="tag t-live" x-show="src.live_events" title="Only live for events; uses a transcription slot only while live">events</span>
+                    </td>
+                    <td class="src-type"><span class="tag" :class="'t-' + src.type" x-text="typeLabel(src.type)"></span></td>
+                    <td class="src-health">
+                      <template x-if="src.health"><span :title="src.health.detail"><span class="dot" :class="src.health.level"></span>
+                        <span class="small muted" x-text="src.health.detail"></span></span></template>
+                      <template x-if="!src.health"><span class="small muted" x-text="src.enabled ? 'not started' : 'off'"></span></template>
+                    </td>
+                    <td class="right nowrap">
+                      <a class="btn ghost small" :href="fmt.url(src.url)" target="_blank" rel="noopener" x-show="src.url" title="Open">↗</a>
+                      <button class="btn ghost small" @click="edit(src)">Edit</button>
+                      <button class="btn ghost small danger" @click="remove(src)">Remove</button>
+                    </td>
+                  </tr>
+                  <template x-if="editing && editing.id === src.id">
+                  <tr class="src-edit"><td colspan="5">
+                    <div class="form-grid compact">
+                      <div class="field"><label>Name</label><input type="text" x-model="editing.name"></div>
+                      <div class="field wide" x-show="editing.type !== 'alpaca_news'"><label>URL</label><input type="text" x-model="editing.url"></div>
+                      <div class="field"><label>Region</label><input type="text" x-model="editing.region" list="src-regions"></div>
+                      <div class="field"><label>Kind</label><input type="text" x-model="editing.category" list="src-categories"></div>
+                      <div class="field"><label x-text="editing.type === 'stream' ? 'Language spoken' : 'Language'"></label>
+                        <select x-model="editing.language">
+                          <template x-for="[val, lab] in Object.entries(languages)" :key="val"><option :value="val" x-text="lab" :selected="val === editing.language"></option></template>
+                        </select></div>
+                      <div class="field" x-show="editing.type === 'stream'"><label>Translate to English</label>
+                        <label class="switch small"><input type="checkbox" x-model="editing.translate"><span class="slider"></span></label></div>
+                      <div class="field" x-show="editing.type === 'stream'"><label>Only live for events</label>
+                        <label class="switch small"><input type="checkbox" x-model="editing.live_events"><span class="slider"></span></label></div>
+                      <div class="field" x-show="['social_rss','x_account'].includes(editing.type)"><label>Who posts (speaker)</label><input type="text" x-model="editing.speaker"></div>
+                      <div class="field" x-show="['rss','social_rss','x_account'].includes(editing.type)"><label>Check every (seconds)</label>
+                        <input type="number" min="10" max="3600" x-model.number="editing.poll_seconds"></div>
+                    </div>
+                    <p class="note small" x-show="editing.type === 'stream' && editing.translate">Translation uses Whisper's large-v3 model while this stream is live (large-v3-turbo can't translate) - slower, and a one-time download if you haven't used it.</p>
+                    <div class="row end gap"><button class="btn ghost" @click="editing = null">Cancel</button><button class="btn primary" @click="saveEdit()">Save</button></div>
+                  </td></tr>
+                  </template>
+                </tbody>
+              </template>
+            </table>
+          </div>
+        </template>
+        <div class="muted pad" x-show="!groups.length">No sources match.</div>
+        <p class="note">Live TV: every stream you turn on is watched, but only <b x-text="maxStreams"></b> can be transcribed at once (Settings -> Transcription).
+          "Events" channels (the White House, Fed, Fox News live events...) only use a slot while they are live, and take one from an always-on channel if needed.
+          Non-English TV is translated to English. Non-English text feeds can only be read by the Claude engine.</p>
+        <p class="note">Truth Social: preloaded via the free trumpstruth.org archive feed. X/Twitter has no free read access -
           add an X account with a paid X API token, or paste an RSS feed (e.g. from rss.app) as a "Social" source.</p>
       </div>
 

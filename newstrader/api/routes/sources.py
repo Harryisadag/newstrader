@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 
+from ...config import WHISPER_LANGUAGES
 from ...context import AppContext
 from ..deps import bad_request, get_ctx
 
@@ -31,8 +32,22 @@ def _notify(ctx: AppContext) -> None:
 
 @router.get("/sources")
 async def list_sources(ctx: AppContext = Depends(get_ctx)):
-    sources = [_with_health(ctx, s.model_dump(mode="json")) for s in ctx.config.settings.sources]
-    return {"sources": sources, "types": TYPE_LABELS}
+    s = ctx.config.settings
+    sources = [_with_health(ctx, src.model_dump(mode="json")) for src in s.sources]
+    return {"sources": sources, "types": TYPE_LABELS,
+            "languages": {"": "Default (Settings -> Transcription)", "auto": "Detect automatically",
+                          **WHISPER_LANGUAGES},
+            "engine": s.ai.engine, "max_streams": s.transcription.max_concurrent_streams}
+
+
+@router.post("/sources/toggle-many")
+async def toggle_many(body: dict[str, Any] = Body(...), ctx: AppContext = Depends(get_ctx)):
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        raise bad_request("ids must be a list of source ids")
+    changed = ctx.config.set_sources_enabled(ids, bool(body.get("enabled")))
+    _notify(ctx)
+    return {"changed": changed}
 
 
 @router.post("/sources")

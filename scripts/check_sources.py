@@ -75,7 +75,10 @@ async def check_stream(client: httpx.AsyncClient, src: dict) -> dict:
         return {"status": "broken", "detail": "channel not found (404)"}
     if r.status_code >= 400:
         return {"status": "unknown", "detail": f"HTTP {r.status_code}"}
-    m = re.search(r'"channelId":"(UC[\w-]{22})"', r.text) or re.search(r'channel/(UC[\w-]{22})', r.text)
+    # the channel's own id (the page also mentions related channels, so "channelId" alone can be another one)
+    m = (re.search(r'"externalId":"(UC[\w-]{22})"', r.text)
+         or re.search(r'<link rel="canonical" href="https://www\.youtube\.com/channel/(UC[\w-]{22})"', r.text)
+         or re.search(r'"channelId":"(UC[\w-]{22})"', r.text))
     if not m:
         return {"status": "unknown", "detail": "page has no channel id (consent or bot page?)"}
     live = ""
@@ -85,7 +88,9 @@ async def check_stream(client: httpx.AsyncClient, src: dict) -> dict:
         live = " · live now" if '"isLiveNow":true' in lr.text or '"isLive":true' in lr.text else " · not live now"
     except httpx.HTTPError:
         pass
-    return {"status": "ok", "detail": f"channel {m.group(1)}{live}"}
+    title = re.search(r'<meta property="og:title" content="([^"]*)"', r.text)
+    name = f" ({title.group(1)})" if title else ""
+    return {"status": "ok", "detail": f"channel {m.group(1)}{name}{live}"}
 
 
 async def check(src: dict, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> dict:

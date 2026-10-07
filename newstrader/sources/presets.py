@@ -114,12 +114,12 @@ _PRESETS: list[dict] = [
          "Business news", on=True),
     _rss("marketwatch-top", "MarketWatch Top Stories",
          "https://feeds.content.dowjones.io/public/rss/mw_topstories", "US", "Business news", on=True),
-    _rss("marketwatch-realtime", "MarketWatch Real-time Headlines",
-         "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines", "US", "Business news", on=True),
+    _rss("marketwatch-realtime", "MarketWatch (via Google News)", _gnews("when:24h+site:marketwatch.com"), "US",
+         "Business news", on=True, poll=GN),
     _rss("wsj-markets", "WSJ Markets", "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain", "US",
          "Business news", on=True),
-    _rss("yahoo-finance-news", "Yahoo Finance News", "https://finance.yahoo.com/news/rssindex", "US",
-         "Business news", on=True),
+    _rss("yahoo-finance-news", "Yahoo Finance News (via Google News)", _gnews("when:24h+site:finance.yahoo.com"),
+         "US", "Business news", on=True, poll=GN),
     _rss("seeking-alpha-currents", "Seeking Alpha Market Currents", "https://seekingalpha.com/market_currents.xml",
          "US", "Business news", on=True),
     _rss("investing-stock-news", "Investing.com Stock Market News", "https://www.investing.com/rss/news_25.rss",
@@ -193,8 +193,6 @@ _PRESETS: list[dict] = [
     _rss("fda-recalls", "FDA recalls", "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml",
          "US", "Regulators"),
     _rss("sec-press", "SEC press releases", "https://www.sec.gov/news/pressreleases.rss", "US", "Regulators"),
-    _rss("sec-suspensions", "SEC trading suspensions",
-         "https://www.sec.gov/enforcement-litigation/trading-suspensions/rss", "US", "Regulators"),
     _rss("bls-latest", "BLS economic data (jobs, inflation)", "https://www.bls.gov/feed/bls_latest.rss", "US",
          "Regulators"),
     _rss("eia-press", "EIA energy data", "https://www.eia.gov/rss/press_rss.xml", "US", "Regulators"),
@@ -244,8 +242,6 @@ _PRESETS: list[dict] = [
          "Business news", poll=GN),
     _rss("economic-times", "The Economic Times (India)", "https://economictimes.indiatimes.com/rssfeedsdefault.cms",
          "India", "Business news"),
-    _rss("moneycontrol", "Moneycontrol (India)", "https://www.moneycontrol.com/rss/latestnews.xml", "India",
-         "Business news"),
     _rss("business-standard", "Business Standard (India)", "https://www.business-standard.com/rss/latest.rss",
          "India", "Business news"),
     _rss("livemint", "Mint (India)", "https://www.livemint.com/rss/news", "India", "Business news"),
@@ -269,8 +265,6 @@ _PRESETS: list[dict] = [
          "Business news", language="es"),
     _rss("el-financiero", "El Financiero (Mexico)", "https://www.elfinanciero.com.mx/rss", "Latin America",
          "Business news", language="es"),
-    _rss("nhk-ja", "NHK News (Japanese)", "https://www3.nhk.or.jp/rss/news/cat0.xml", "Asia", "Business news",
-         language="ja"),
 
     # ================= Social posts =================
     # Truth Social has no public API. trumpstruth.org is a free public archive with an RSS feed.
@@ -279,9 +273,12 @@ _PRESETS: list[dict] = [
      "region": "US", "category": "Politics & Trump"},
 ]
 
-# Built-in sources whose URL changed in an update: (old URL, new URL). Users still on the old URL are moved over;
-# a URL the user edited themselves is never touched.
-PRESET_URL_FIXES: dict[str, tuple[str, str]] = {}
+# Built-in sources whose feed moved or died: users still on the old URL are moved to the preset's current URL (and
+# its name / check interval); a URL the user edited themselves is never touched. id -> old URL.
+PRESET_URL_FIXES: dict[str, str] = {
+    "yahoo-finance-news": "https://finance.yahoo.com/news/rssindex",  # 404 since 2026
+    "marketwatch-realtime": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines",  # stopped in 2025
+}
 
 
 def default_sources() -> list[dict]:

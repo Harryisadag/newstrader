@@ -396,14 +396,16 @@ def _backfill_presets(raw: dict, settings: AppSettings) -> AppSettings:
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
-    """Move built-in sources off a URL that a NewsTrader update replaced (only if the user never edited it)."""
+    """Move built-in sources off a feed that a NewsTrader update replaced (only if the user never edited the URL)."""
+    presets = {p["id"]: p for p in default_sources()}
     changed = False
     out = []
     for src in settings.sources:
         data = src.model_dump(mode="json")
-        fix = PRESET_URL_FIXES.get(src.id)
-        if src.builtin and fix and src.url == fix[0]:
-            data["url"] = fix[1]
+        old = PRESET_URL_FIXES.get(src.id)
+        preset = presets.get(src.id)
+        if src.builtin and old and preset and src.url == old and preset["url"] != old:
+            data.update({k: preset[k] for k in ("url", "name", "poll_seconds") if k in preset})
             changed = True
         out.append(data)
     if not changed:
@@ -498,6 +500,20 @@ class ConfigStore:
             data = src.model_dump(mode="json")
             data["enabled"] = enabled
             return self.upsert_source(data)
+
+    def set_sources_enabled(self, source_ids: list[str], enabled: bool) -> int:
+        """Turn several sources on or off in one save. Returns how many changed."""
+        with self._lock:
+            wanted = set(source_ids)
+            sources = [s.model_dump(mode="json") for s in self._settings.sources]
+            changed = 0
+            for s in sources:
+                if s["id"] in wanted and s["enabled"] != enabled:
+                    s["enabled"] = enabled
+                    changed += 1
+            if changed:
+                self.update({"sources": sources})
+            return changed
 
     def delete_source(self, source_id: str) -> None:
         with self._lock:

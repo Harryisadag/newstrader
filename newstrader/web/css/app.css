@@ -380,3 +380,18 @@ mark.kw { background: rgba(245,165,36,.22); color: inherit; border-radius: 3px; 
 .mover-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.reasons .tag { margin: 0 4px 2px 0; }
 @media (max-width: 1100px) { .market-grid { grid-template-columns: 1fr; } }
+
+/* ---------- news sources ---------- */
+.src-toolbar { margin: 4px 0 12px; flex-wrap: wrap; }
+.src-search { min-width: 220px; flex: 1; max-width: 360px; }
+.src-group { margin-top: 14px; }
+.src-group-head { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.src-group-head h3 { margin: 0; font-size: 14px; }
+.src-group-head .grow { flex: 1; }
+.src-table td.src-on { width: 44px; }
+.src-table td.src-name { min-width: 260px; }
+.src-table td.src-type { width: 100px; }
+.src-table td.src-health { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-edit td { background: var(--panel-2, rgba(255, 255, 255, 0.03)); }
+.tag.warn { color: var(--warn); border-color: var(--warn); }
+.tag.t-live { color: var(--accent); }
