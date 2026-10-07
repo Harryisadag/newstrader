@@ -30,6 +30,13 @@ def find_ffmpeg() -> str | None:
 
 @functools.lru_cache(maxsize=1)
 def find_deno() -> str | None:
+    if getattr(sys, "frozen", False):  # bundled into the .exe by newstrader.spec
+        from pathlib import Path
+
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "deno_bin"
+        for name in ("deno.exe", "deno"):
+            if (base / name).is_file():
+                return str(base / name)
     path = shutil.which("deno")
     if path:
         return path

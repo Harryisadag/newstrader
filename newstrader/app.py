@@ -65,7 +65,16 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _ensure_std_streams() -> None:
+    """The windowed .exe has no console, so sys.stdout/stderr are None; some libraries expect real files."""
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w")  # noqa: SIM115
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w")  # noqa: SIM115
+
+
 def main(argv: list[str] | None = None) -> int:
+    _ensure_std_streams()
     parser = argparse.ArgumentParser(prog="newstrader", description=f"{APP_NAME} {__version__}")
     parser.add_argument("--browser", action="store_true", help="open the dashboard in your web browser")
     parser.add_argument("--headless", action="store_true", help="run the server only and print the URL")
@@ -97,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
 
     port = args.port or _free_port()
     app = create_app(ctx)
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning",
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", log_config=None,
                                            access_log=False, lifespan="on", ws="auto"))
     thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)
     thread.start()
@@ -136,6 +145,7 @@ def _run_window(url: str) -> None:
     import webview
 
     webview.settings["ALLOW_DOWNLOADS"] = True
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True  # news links open in your normal browser
     webview.create_window(
         f"{APP_NAME} {__version__}",
         url,
@@ -144,6 +154,7 @@ def _run_window(url: str) -> None:
         min_size=(1024, 680),
         background_color="#0b0e14",
         text_select=True,
+        confirm_close=True,  # closing the window stops the engine (and trading)
     )
     storage = paths.data_dir() / "webview"
     storage.mkdir(exist_ok=True)

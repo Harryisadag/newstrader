@@ -94,6 +94,11 @@ document.addEventListener("alpine:init", () => {
       return Math.min(100, (100 * Number(this.s.spend_today || 0)) / cap);
     },
 
+    goto(tab, section = null) {
+      this.store.setTab(tab);
+      if (section) window.dispatchEvent(new CustomEvent("nt:settings-section", { detail: section }));
+    },
+
     get problemCount() {
       return (this.s.components || []).filter((c) => c.level === "error").length;
     },

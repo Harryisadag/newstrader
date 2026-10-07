@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import queue
+import sys
 import threading
 from datetime import timedelta
 
@@ -77,10 +78,11 @@ def setup_file_logging(log_dir, level: int = logging.INFO) -> None:
     fh.setFormatter(logging.Formatter(LOG_FORMAT))
     fh._newstrader = True  # type: ignore[attr-defined]
     root.addHandler(fh)
-    sh = logging.StreamHandler()
-    sh.setFormatter(logging.Formatter(LOG_FORMAT))
-    sh._newstrader = True  # type: ignore[attr-defined]
-    root.addHandler(sh)
+    if sys.stderr is not None and not getattr(sys, "frozen", False):  # console output in dev mode only
+        sh = logging.StreamHandler()
+        sh.setFormatter(logging.Formatter(LOG_FORMAT))
+        sh._newstrader = True  # type: ignore[attr-defined]
+        root.addHandler(sh)
     # Quieten noisy libraries
     for name in ("httpx", "httpcore", "httpx2", "urllib3", "websockets", "uvicorn.access", "faster_whisper",
                  "anthropic"):

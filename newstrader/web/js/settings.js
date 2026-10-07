@@ -105,6 +105,7 @@ document.addEventListener("alpine:init", () => {
     },
 
     async init() {
+      window.addEventListener("nt:settings-section", (e) => { this.section = e.detail; });
       await this.load();
       window.addEventListener("nt:settings_changed", () => { if (!this.dirty) this.load(); });
     },

@@ -119,6 +119,18 @@
 <main>
   <!-- ===================== LIVE ===================== -->
   <section x-show="store.tab === 'live'" class="tab-page" x-data="liveTab">
+    <div class="card welcome" x-show="s.keys && !(s.keys.alpaca_paper && s.keys.anthropic)">
+      <h2>Welcome to NewsTrader</h2>
+      <p class="muted">Three quick steps and it starts watching the news (in PAPER mode - no real money):</p>
+      <ol>
+        <li><b>Add your keys</b> - Alpaca <i>paper</i> key + secret, and your Anthropic (Claude) key.
+          <button class="btn primary small" @click="goto('settings', 'keys')">Open API keys</button></li>
+        <li><b>Check everything works</b> - Logs → Run diagnostics. Each red line says how to fix it.
+          <button class="btn ghost small" @click="goto('logs')">Open Logs</button></li>
+        <li><b>Let it run.</b> Headlines and TV transcripts show up here, AI calls in <b>Signals</b>, paper trades in
+          <b>Portfolio</b>, and whether the AI is right in <b>Performance</b>.</li>
+      </ol>
+    </div>
     <div class="card" x-data="streamsPanel">
       <div class="card-head">
         <h2>Live TV streams</h2>
