@@ -31,3 +31,6 @@ Thumbs.db
 # CI temp files
 requirements-ci.txt
 requirements-dev-ci.txt
+
+# Temporary agent worktrees
+.claude/worktrees/
