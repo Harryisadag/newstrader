@@ -96,7 +96,7 @@ def readings_for(item: NewsItem, targets: list[tuple[Candidate, Target]], table:
     spans = {i: find_spans(folded, c.symbol, terms[i]) for i, (c, _t) in enumerate(targets)}
     if len(targets) == 1 and not spans[0] and targets[0][0].why == "tagged by source":
         spans[0] = [(0, 0)]  # the source says the item is about this company: read it as the subject
-    actors = {i: ("analyst", "target") if c.symbol in BROKERS else ("mna",) if c.symbol in PRIVATE_EQUITY else ()
+    actors = {i: ("analyst", "target", "guidance") if c.symbol in BROKERS else ("mna",) if c.symbol in PRIVATE_EQUITY else ()
               for i, (c, _t) in enumerate(targets)}
     readings = read_events(folded, spans, url=item.url, actors=actors)
     out = []
@@ -309,6 +309,8 @@ class LocalMLEngine:
                     why_neutral = rd.neutral_reason or "not fresh news"
                 elif not rd.events and others_have_news(readings, i):
                     why_neutral = "the news is about another company named in it"
+                elif cand.symbol in BROKERS and not rd.direction:
+                    why_neutral = "a bank or broker commenting - not news about the bank itself"
                 if why_neutral:
                     direction = "neutral"
                 if "country" in rd.flags and not rd.direction and not why_neutral:

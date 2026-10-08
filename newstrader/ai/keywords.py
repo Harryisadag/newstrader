@@ -194,6 +194,7 @@ COMPANY_CONTEXT_AFTER: set[str] = {
     "motor", "motors", "air", "airlines", "lines", "cruise", "cruises", "stores", "store", "investors",
     "executives", "employees", "workers", "dividend", "buyback", "inc's", "corp's",
     "moving", "trading",
+    "earned", "reported", "posted",
 }
 # A euro-area country's news also counts for the euro-area fund
 EUROZONE_ETF = "EZU"

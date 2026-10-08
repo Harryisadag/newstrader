@@ -254,3 +254,47 @@ def test_legal_outcomes_and_denied_deals():
     r = read("Comcast tops Paramount Skydance offer for Warner Bros Discovery with $32-a-share bid",
              ("CMCSA", "Comcast"), ("PSKY", "Paramount Skydance"), ("WBD", "Warner Bros Discovery"))
     assert r["WBD"].direction == 1 and r["CMCSA"].direction == 0 and r["PSKY"].direction == 0
+
+
+@pytest.mark.parametrize("title,companies,expected", [
+    # advice is not a takeover
+    ("UBS tells clients it's too early to buy Nvidia", [("NVDA", "Nvidia")], {"NVDA": 0}),
+    ("Morgan Stanley warns clients against rushing to buy Apple", [("AAPL", "Apple")], {"AAPL": 0}),
+    ("Lowe's to buy Floor & Decor for $10.5 billion", [("LOW", "Lowe's"), ("FND", "Floor & Decor")],
+     {"FND": 1, "LOW": 0}),
+    # numbers belong to the company that reported them
+    ("Apple supplier Qualcomm Q3 EPS $2.80 vs $2.50 est", [("AAPL", "Apple"), ("QCOM", "Qualcomm")],
+     {"QCOM": 1, "AAPL": 0}),
+    ("Walmart rival Target Q2 comps -1.9% vs -1.5% est", [("WMT", "Walmart"), ("TGT", "Target")],
+     {"TGT": -1, "WMT": 0}),
+    # units and losses
+    ("Coca-Cola earned $1.05 per share, above analysts' average estimate of 98 cents", [("KO", "Coca-Cola")],
+     {"KO": 1}),
+    ("Snowflake sees Q3 revenue $950M-$1.05B vs $1.0B est", [("SNOW", "Snowflake")], {"SNOW": 0}),
+    ("Rivian Q2 loss per share $0.97 vs $1.20 expected", [("RIVN", "Rivian")], {"RIVN": 1}),
+    ("Rivian lost $0.97 a share, versus the $1.20 loss analysts expected", [("RIVN", "Rivian")], {"RIVN": 1}),
+    # negated or undone bad news
+    ("Intel says it will not cut its dividend", [("INTC", "Intel")], {"INTC": 0}),
+    ("FDA removes clinical hold on Intellia gene-editing study", [("NTLA", "Intellia")], {"NTLA": 1}),
+    ("Hertz emerges from Chapter 11 protection", [("HTZ", "Hertz")], {"HTZ": 0}),
+    ("Novo Nordisk stops kidney trial early due to efficacy", [("NVO", "Novo Nordisk")], {"NVO": 1}),
+    # only the real subject gets the news
+    ("Samsung, Apple's main rival, cuts profit forecast", [("AAPL", "Apple")], {"AAPL": 0}),
+    ("Unlike Walmart, Target cuts forecast", [("WMT", "Walmart"), ("TGT", "Target")], {"WMT": 0, "TGT": -1}),
+    ("Walgreens, CVS gain as Rite Aid files for bankruptcy", [("WBA", "Walgreens"), ("CVS", "CVS")],
+     {"WBA": 0, "CVS": 0}),
+    ("Super Micro shares drop as revenue forecast falls short despite profit beat", [("SMCI", "Super Micro")],
+     {"SMCI": -1}),
+    ("Court blocks Trump tariffs, boosting Apple and Nike", [("AAPL", "Apple"), ("NKE", "Nike")],
+     {"AAPL": 0, "NKE": 0}),
+])
+def test_review_findings_stay_fixed(title, companies, expected):
+    actors = {i: ("analyst", "target", "guidance") for i, (sym, _n) in enumerate(companies) if sym in {"GS", "MS"}}
+    r = read(title, *companies, actors=actors)
+    assert {sym: r[sym].direction for sym in expected} == expected, {s: (r[s].direction, r[s].label) for s in r}
+
+
+def test_bank_forecasts_are_not_company_guidance():
+    for title in ("Goldman Sachs raises gold forecast to $4,000", "Goldman Sachs lowers US GDP forecast on tariffs"):
+        r = read(title, ("GS", "Goldman Sachs"), actors={0: ("analyst", "target", "guidance")})
+        assert r["GS"].direction == 0, title

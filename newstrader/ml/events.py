@@ -57,6 +57,7 @@ class Event:
     horizon: str = "hours"
     priority: int = 0   # guidance (2) beats earnings (1) when one headline has both
     weight: float = 1.0  # "X, but Y": Y counts more; "Y despite X": X counts less
+    pos: int = -1        # where in the text the numbers were (they belong to the company named just before)
 
 
 @dataclass
@@ -119,7 +120,10 @@ RULES: list[tuple] = [
      r"\b(?:deal|merger|talks|takeover|acquisition|bid) (?:(?!(?:that|which|would|will|to|could)\b)[\w&'.-]+ ){0,7}?"
      r"(?:collapses?|collapsed|falls? (?:apart|"
      r"through)|fell (?:apart|through)|terminated|blocked|scrapped|called off|ends?|ended)\b|\b(?:ftc|doj|regulators?|"
-     r"court|judge) (?:[\w-]+ ){0,3}(?:blocks?|blocked|sues? to block)\b|\bsues? to block\b", 0, "immediate"),
+     r"court|judge) (?:[\w-]+ ){0,3}(?:blocks?|blocked|sues? to block) (?!(?:the |an? )?(?:ftc|doj|government|"
+     r"regulators?)'?s? (?:bid|attempt|effort|request|push|move))(?:[\w&'.-]+ ){0,4}?(?:merger|deal|acquisition|"
+     r"takeover|buyout|purchase|tie-up)\b|\bsues? to block (?:[\w&'.-]+ ){0,4}?(?:merger|deal|acquisition|takeover|"
+     r"buyout|purchase|tie-up)\b", 0, "immediate"),
     ("divestiture", "Selling a business", +1, 0.6, "subject",
      r"\b(?:to sell|sells?|selling|spin(?:s|ning)? off|spin-off of|carve[- ]out|divest\w*|explor\w+ (?:a )?sale of)"
      r" (?:its |the |a )?(?:[\w-]+ ){0,3}(?:unit|business|division|arm|segment|subsidiary)\b", 0, "hours"),
@@ -172,8 +176,8 @@ RULES: list[tuple] = [
     ("guidance_raise", "Raised its forecast", +1, 0.82, "subject",
      r"\b(?:raises?|raised|lifts?|lifted|boosts?|boosted|hikes?|hiked|increases?|increased|ups|upped|betters|"
      r"improves?) (?:its |the )?(?:full[- ]year |annual |fy\d* |fiscal(?:[- ]year)? |\d{4} |quarterly |q\d )*"
-     r"(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations)\b)[\w&-]+ ){0,4}?"
-     r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:above|ahead of|higher)|"
+     r"(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations|gold|silver|oil|crude|brent|copper|gdp|inflation|economic|economy|recession|rates?|fed|market|s&p|index|global|world|china|u\.?s\.?|euro|yen|dollar|treasury|yield|consumer|industry|sector|its estimates)\b)[\w&-]+ ){0,4}?"
+     r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price))\b|\bguides? (?:above|ahead of|higher)|"
      r"(?:outlook|forecast|guidance) (?:above|tops|beats|ahead of) (?:estimates|expectations|consensus)|"
      r"\bbeats? and raises\b|"
      r"(?:strong|upbeat|bullish|rosy|robust|better-than-expected|raised) (?:[\w-]+ ){0,2}(?:guidance|outlook|forecast)",
@@ -181,8 +185,8 @@ RULES: list[tuple] = [
     ("guidance_cut", "Cut its forecast", -1, 0.86, "subject",
      r"\b(?:cuts?|lowers?|lowered|slashes?|slashed|trims?|trimmed|reduces?|reduced|downgrades? its|pares?|"
      r"warns? on|lowballs?) (?:its |the )?(?:full[- ]year |annual |fy\d* |fiscal(?:[- ]year)? |\d{4} |quarterly |"
-     r"q\d |holiday[- ]quarter )*(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations)\b)[\w&-]+ ){0,4}?"
-     r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:below|lower|under)|"
+     r"q\d |holiday[- ]quarter )*(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations|gold|silver|oil|crude|brent|copper|gdp|inflation|economic|economy|recession|rates?|fed|market|s&p|index|global|world|china|u\.?s\.?|euro|yen|dollar|treasury|yield|consumer|industry|sector|its estimates)\b)[\w&-]+ ){0,4}?"
+     r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price))\b|\bguides? (?:below|lower|under)|"
      r"(?:guidance|outlook|forecast) (?:is |was |came in |looks )?(?:light|weak|soft|below|disappointing)\b|"
      r"(?:outlook|forecast|guidance) (?:below|misses|missed|short of|falls short|fell short|trails|lags|disappoints|"
      r"underwhelms)|"
@@ -317,7 +321,7 @@ RULES: list[tuple] = [
      r"overlooked) (?:again )?(?:for|of) (?:[\w&]+ ){0,3}(?:inclusion|index)|\b(?:snubbed|passed over|overlooked|"
      r"left out)\b(?=.{0,60}\b(?:s&p|index|nasdaq-100|rebalanc))", 0, "hours"),
     # ---- trouble ----
-    ("bankruptcy", "Bankruptcy / default risk", -1, 0.92, "any",
+    ("bankruptcy", "Bankruptcy / default risk", -1, 0.92, "subject",
      r"\b(?:files? for|filed for|filing for|prepares? (?:to file )?for|nears?|considers?) (?:chapter 11|"
      r"bankruptcy)|\bchapter 11\b|\bgoing[- ]concern\b|\bdefaults? on\b|\bmissed (?:a |an )?(?:interest |"
      r"debt |bond )?payment\b|\brestructuring advis[eo]rs?\b|\bdelisting (?:notice|warning)\b|"
@@ -537,16 +541,20 @@ def guidance_surprise(text: str) -> Event | None:
     lo, hi, est = _num(m.group(1)), _num(m.group(3)) if m.group(3) else None, _num(m.group(5))
     if lo is None or est is None or est == 0:
         return None
-    unit = m.group(2) or m.group(4)
-    mid = (lo + (hi if hi is not None else lo)) / 2 * _scale(unit)
-    est_v = est * _scale(m.group(6) or unit)
-    sc = (mid - est_v) / abs(est_v)
+    lo_unit, hi_unit = m.group(2) or m.group(4), m.group(4) or m.group(2)  # "$950M-$1.05B": each end its own unit
+    lo_v = lo * _scale(lo_unit)
+    hi_v = hi * _scale(hi_unit) if hi is not None else lo_v
+    est_v = est * _scale(m.group(6) or hi_unit)
+    sc = ((lo_v + hi_v) / 2 - est_v) / abs(est_v)
+    if abs(sc) > 0.6:  # more likely a misread unit than a 60% guidance gap
+        return None
     if abs(sc) < 0.01:
-        return Event("guidance_inline", "Forecast in line", 0, 0.0, "subject", m.group(0), "", "immediate", 2)
+        return Event("guidance_inline", "Forecast in line", 0, 0.0, "subject", m.group(0), "", "immediate", 2,
+                     pos=m.start())
     up = sc > 0
     return Event("guidance_raise" if up else "guidance_cut", "Forecast above estimates" if up else
                  "Forecast below estimates", 1 if up else -1, min(0.9, 0.76 + 2.0 * abs(sc)), "subject", m.group(0),
-                 f"forecast midpoint {sc:+.1%} vs estimates", "immediate", 2)
+                 f"forecast midpoint {sc:+.1%} vs estimates", "immediate", 2, pos=m.start())
 
 
 def _num(text: str) -> float | None:
@@ -572,28 +580,27 @@ def number_surprise(text: str) -> Event | None:
     g = _GUIDE_VS.search(t)
     if g:  # the forecast numbers are read by guidance_surprise, not as this quarter's results
         t = t[:g.start()] + " " * (g.end() - g.start()) + t[g.end():]
-    parts, details = [], []
+    parts, details, pos = [], [], []
     m = _EPS_VS.search(t)
+    if m is None:
+        m = _PER_SHARE_FORECAST.search(t)
     if m:
-        a, e = _num(m.group(1)), _num(m.group(2))
-        if a is not None and e is not None and e != 0:
+        a, e = _per_share(t, m, 1), _per_share(t, m, 2)
+        if a is not None and e is not None and e != 0 and _plausible(a, e):
+            if _is_loss(t, m):  # "loss per share $0.97 vs $1.20 expected": a smaller loss is a beat
+                a, e = -abs(a) if a > 0 else a, -abs(e) if e > 0 else e
             s = (a - e) / abs(e)
             parts.append((0.6, s))
+            pos.append(m.start())
             details.append(f"EPS {m.group(1).strip()} vs {m.group(2).strip()} expected ({s:+.0%})")
-    else:
-        m = _PER_SHARE_FORECAST.search(t)
-        if m:
-            a, e = _num(m.group(1)), _num(m.group(2))
-            if a is not None and e is not None and e != 0:
-                s = (a - e) / abs(e)
-                parts.append((0.6, s))
-                details.append(f"EPS {m.group(1)} vs {m.group(2)} expected ({s:+.0%})")
     m = _REV_VS.search(t)
     if m:
         a, e = _num(m.group(1)), _num(m.group(3))
         if a is not None and e is not None and e != 0:
             a, e = a * _scale(m.group(2)), e * _scale(m.group(4) or m.group(2))
             s = (a - e) / abs(e)
+        if a is not None and e and _plausible(a, e):
+            pos.append(m.start())
             parts.append((0.4, s))
             details.append(f"revenue {m.group(1).strip()}{m.group(2) or ''} vs {m.group(3).strip()}"
                            f"{m.group(4) or m.group(2) or ''} expected ({s:+.1%})")
@@ -602,22 +609,52 @@ def number_surprise(text: str) -> Event | None:
         a, e = float(m.group(1)), float(m.group(2))
         s = (a - e) / (abs(e) + 2.0)  # percentage points, scaled so a 1-point miss on a small number counts
         parts.append((0.6, s))
+        pos.append(m.start())
         details.append(f"same-store/organic sales {a:+g}% vs {e:+g}% expected")
     if not parts:
         m = _BY.search(t)
         if m:
             beat = m.group(1).lower().startswith(("beat", "top"))
             return Event("earnings_beat" if beat else "earnings_miss", "Beat estimates" if beat else "Missed estimates",
-                         1 if beat else -1, 0.78, "any", m.group(0), "", "immediate", 1)
+                         1 if beat else -1, 0.78, "any", m.group(0), "", "immediate", 1, pos=m.start())
         return None
     score = sum(w * max(-0.5, min(0.5, s)) for w, s in parts) / sum(w for w, _ in parts)
     if abs(score) < 0.005:
-        return Event("earnings_inline", "In line with estimates", 0, 0.0, "any", "", "; ".join(details), "immediate", 1)
+        return Event("earnings_inline", "In line with estimates", 0, 0.0, "any", "", "; ".join(details), "immediate", 1,
+                     pos=min(pos))
     direction = 1 if score > 0 else -1
     strength = min(0.88, 0.74 + 2.0 * abs(score))
     return Event("earnings_beat" if direction > 0 else "earnings_miss",
                  "Beat estimates" if direction > 0 else "Missed estimates", direction, strength, "any", "",
-                 "; ".join(details), "immediate", 1)
+                 "; ".join(details), "immediate", 1, pos=min(pos))
+
+
+_CENTS_AFTER = re.compile(r"\s*(?:cents?|c\b)", re.I)
+_LOSS = re.compile(r"\b(?:loss|losses|lost)\b", re.I)
+
+
+def _per_share(t: str, m: re.Match, group: int) -> float | None:
+    """A per-share figure; "98 cents" is $0.98."""
+    v = _num(m.group(group))
+    if v is not None and "$" not in m.group(group) and _CENTS_AFTER.match(t, m.end(group)):
+        v /= 100
+    return v
+
+
+def _is_loss(t: str, m: re.Match) -> bool:
+    """'loss per share $0.97 vs $1.20', 'lost $0.97 a share, versus the $1.20 loss expected' (numbers that already
+    carry a minus sign or brackets are left alone)."""
+    if m.group(1).strip().startswith(("-", "(")) or m.group(2).strip().startswith(("-", "(")):
+        return False
+    return bool(_LOSS.search(t, max(0, m.start() - 40), m.end()))
+
+
+def _plausible(a: float, e: float) -> bool:
+    """Two numbers more than 10x apart are a misread unit (cents vs dollars, millions vs billions), not news."""
+    if a == 0 or e == 0:
+        return True
+    ratio = abs(a / e)
+    return 0.1 <= ratio <= 10
 
 
 # --------------------------------------------------------------------------------------------- reading
@@ -663,13 +700,19 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
         present = sorted((i for i, ps in here.items() if ps), key=lambda i: first_span[i])
         denial = bool(_DENIAL.search(ctext))
         found_any = False
+        lm0 = _LOSER.search(ctext)  # "Northrop beats Boeing to win": Boeing isn't the one winning
+        losers = {i for i in present if lm0 and 0 <= first_span[i][0] - (c_start + lm0.end()) <= 2}
         for kind, label, d, s, role, rx, pri, hz in _COMPILED:
             forced = [i for i in present if not kind.endswith("_passive")
                       and any(kind.startswith(k) for k in actors.get(i, ()))]
             others = [i for i in present if i not in forced]
             for m in rx.finditer(ctext):
-                # "fails to improve survival", "is not in talks to acquire": read as the opposite
-                neg = denial or bool(d > 0 and _NEGATED_BEFORE.search(ctext[:m.start()]))
+                # "fails to improve survival", "is not in talks to acquire": read as the opposite;
+                # "will not cut its dividend": the bad news is ruled out (neutral, see below)
+                neg = denial or bool(d and _NEGATED_BEFORE.search(ctext[:m.start()]))
+                if kind == "mna_target" and re.match(r"to (?:buy|purchase|acquire)\b", m.group(0), re.I) and \
+                        _ADVICE_BEFORE.search(ctext[:m.start()]):
+                    continue  # "too early to buy Nvidia" is advice; "Lowe's to buy Floor & Decor" is a deal
                 if kind == "mna_target" and m.group(0).lower().strip() == "to buy" and _RATING_BEFORE.search(
                         ctext[:m.start()]):
                     continue  # "upgrades Coinbase to Buy" is a rating, not a takeover
@@ -689,8 +732,12 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
                     if role == "any":
                         applies = {i: "any" for i in others}
                     elif role == "subject":
-                        if before:
-                            applies = {i: "subject" for i in before}
+                        subj = _subjects([i for i in before if i not in losers], first_span, folded,
+                                         c_start + m.start(), c_start, c_end)
+                        if subj:
+                            applies = {i: "subject" for i in subj}
+                        elif before:
+                            applies = {}  # "Walgreens, CVS gain as Rite Aid files for bankruptcy": not their news
                         elif not lead_words and last_subjects:  # "..., but forecast disappoints as Apple ..."
                             applies = {i: "subject" for i in last_subjects if i not in forced}
                         elif not lead_words:
@@ -719,6 +766,7 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
                                 applies[before[-1]] = "object"
                 for i in forced:
                     applies[i] = "actor"
+                undone = _undone(kind, ctext, m)
                 for i, r_role in applies.items():
                     if r_role == "actor":
                         ev = Event(kind, label, 0, 0.0, "actor", m.group(0), "", hz, pri)
@@ -728,6 +776,10 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
                                    m.group(0), "", hz, pri)
                     if neg and d:
                         ev.label = f"Denied: {label.lower()}"
+                        if d < 0:  # "won't cut its dividend": no bad news, but no good news either
+                            ev.direction, ev.strength, ev.label = 0, 0.0, f"Ruled out: {label.lower()}"
+                    if undone is not None:
+                        ev.direction, ev.strength, ev.label = undone
                     if kind == "dividend_raise" and _ROUTINE_DIVIDEND.search(ctext):
                         ev.direction, ev.strength, ev.label = 0, 0.0, "Regular dividend increase"
                     if kind == "recall" and _SOFTWARE_FIX.search(folded[:800]):
@@ -775,21 +827,39 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
             last_subjects = [others[0]]
 
     # numbers: "EPS $1.20 vs $1.35 est" (applies to the companies named in that sentence, or the only one)
-    named = sorted((min(a for a, _ in sp), i) for i, sp in target_spans.items() if sp)
     for num in (number_surprise(folded), guidance_surprise(folded)):
-        if num is not None and named:  # the numbers belong to the company named first (the one reporting)
-            out[named[0][1]].events.insert(0, num)
+        owner = _numbers_owner(folded, target_spans, actors, num.pos) if num is not None else None
+        if owner is not None:
+            out[owner].events.insert(0, num)
 
     for r in out.values():
         _decide(r)
     return out
 
 
-_DESCRIPTOR = re.compile(r"(?:'s)?[\s-]+(?:partner|supplier|customer|client|rival|peer|competitor|investor|"
+_DESCRIPTOR = re.compile(r"(?:'s)?[\s-]+(?:(?:main|biggest|largest|top|key|chief|major|smaller|bigger|closest|"
+                         r"former|longtime|long-time|new|chip|contract|software|cloud|ai)[\s-]+){0,2}(?:partner|supplier|"
+                         r"customer|client|rival|peer|competitor|investor|"
                          r"backed|vendor|contractor|affiliate|spinoff|spin-off)\b(?!\s+(?:says|said|with|to|in|on|of)\b)",
                          re.I)
-_NEGATED_BEFORE = re.compile(r"\b(?:fails?|failed|did not|didn't|does not|doesn't|unable|not|never|no longer)"
-                             r"(?: to)?\s*$", re.I)
+_NEGATED_BEFORE = re.compile(r"\b(?:fails?|failed|did not|didn't|does not|doesn't|unable|not|never|no longer|won't|"
+                             r"wouldn't|rules? out|ruled out|no plans? to|no intention (?:to|of))(?: to)?\s*$", re.I)
+# bad news that is being undone: "lifts clinical hold", "emerges from Chapter 11", "stopped early for efficacy"
+_RESOLVED = [
+    ("fda_rejection", re.compile(r"\b(?:lifts?|lifted|removes?|removed|clears?|cleared|ends?|ended|releases?|released)"
+                                 r" (?:the |a |its )?(?:partial |full )?$", re.I), None, +1, 0.72, "Clinical hold lifted"),
+    ("bankruptcy", re.compile(r"\b(?:emerges?|emerged|exits?|exited|emerging|exiting) (?:from )?$", re.I), None, 0, 0.0,
+     "Leaving bankruptcy"),
+    ("bankruptcy", None, re.compile(r"^(?:\s+(?:doubt|warning|language|qualification))?\s+(?:removed|lifted|resolved|"
+                                    r"eliminated|alleviated|dropped)", re.I), +1, 0.6, "Going-concern doubt removed"),
+    ("trial_fail", None, re.compile(r"^.{0,30}\b(?:due to|for|because of|on|after|showing) (?:overwhelming |strong |clear |"
+                                    r"positive )?(?:efficacy|benefit|success)", re.I), +1, 0.85,
+     "Trial stopped early for success"),
+]
+# "too early to buy Nvidia", "no reason to buy Intel": advice, not a takeover
+_ADVICE_BEFORE = re.compile(r"\b(?:early|late|reason|time|rush\w*|tells?|told|urges?|urged|advises?|advised|warns?|warned|"
+                            r"recommends?|clients|investors|traders|should|whether|how|when|why|where|good|bad|best|right|"
+                            r"chance|opportunity|cheap|expensive|worth|wait|hurry|not)\b[^.;]{0,30}$", re.I)
 # "... in a case brought by Spotify": the company that complained isn't the one in trouble
 _COMPLAINANT = re.compile(r"\b(?:brought|filed|lodged|launched) by|\bcomplaint (?:from|by)|\bat the request of|"
                           r"\bafter a complaint (?:from|by)|\bfollowing a complaint (?:from|by)", re.I)
@@ -827,6 +897,81 @@ _NOT_ABBREV = "".join(rf"(?<!\b{a})" for a in (r"U\.S\.", r"U\.K\.", r"E\.U\.", 
 
 _CONTRAST = {"but": 1.3, "however": 1.3, "yet": 1.3, "although": 0.7, "though": 0.7, "despite": 0.7,
              "even as": 0.7, "while": 0.85, "whereas": 0.85}
+
+
+_LEADIN = re.compile(r"\b(?:unlike|like|following|after|before|as|while|with|amid|despite|including|versus|vs\.?|"
+                     r"than|beside|besides)\s+$", re.I)
+_SUBORDINATE = re.compile(r"\b(?:as|after|while|when|because|since|amid|following|with|whereas)\b", re.I)
+
+
+def _subjects(before: list[int], first_span: dict[int, tuple[int, int]], text: str, verb_at: int,
+              c_start: int = 0, c_end: int | None = None) -> list[int]:
+    """The grammatical subject(s) of a verb: the company named nearest before it, plus companies joined to that one
+    by "and" / commas - but not one introduced by "unlike" / "following", and not when another clause with its own
+    named subject sits between ("CVS gains as Rite Aid files ...")."""
+    usable = [i for i in before if not _LEADIN.search(text[max(0, first_span[i][0] - 15):first_span[i][0]])]
+    if not usable:
+        return []
+    nearest = max(usable, key=lambda i: first_span[i][0])
+    gap = text[first_span[nearest][1]:verb_at]
+    sub = _SUBORDINATE.search(gap)
+    if sub and _named_subject(gap[sub.end():], text[c_start:c_end if c_end is not None else len(text)]):
+        return []
+    out = [nearest]
+    for i in sorted((j for j in usable if j != nearest), key=lambda j: -first_span[j][0]):
+        if _JOIN.fullmatch(text[first_span[i][1]:first_span[out[-1]][0]]):
+            out.append(i)
+        else:
+            break
+    return out
+
+
+_TITLE_WORD = re.compile(r"\b[A-Z][a-z][\w&'.-]*")
+
+
+def _named_subject(words: str, clause: str) -> bool:
+    """Do the words just before the verb name someone ("as Rite Aid files")? Only readable in sentence-case text:
+    in Title Case headlines and lower-case transcripts every word looks the same."""
+    letters = [w for w in re.findall(r"[A-Za-z][\w'-]*", clause)]
+    if not letters or not any(ch.isupper() for ch in clause):
+        return False
+    title = sum(1 for w in letters if w[0].isupper())
+    if title / len(letters) > 0.5:  # Title Case headline
+        return False
+    return bool(_TITLE_WORD.search(words))
+
+
+def _undone(kind: str, ctext: str, m: re.Match) -> tuple[int, float, str] | None:
+    """(direction, strength, label) when the matched bad news is being undone, else None."""
+    for k, before, after, d, s, label in _RESOLVED:
+        if k != kind:
+            continue
+        if before is not None and before.search(ctext[:m.start()]):
+            return d, s, label
+        if after is not None and after.search(ctext[m.end():]):
+            return d, s, label
+    return None
+
+
+def _numbers_owner(folded: str, spans: dict[int, list[tuple[int, int]]], actors: dict[int, tuple[str, ...]],
+                   pos: int) -> int | None:
+    """Which company reported the numbers: the one named nearest before them, leaving out descriptions ("Apple
+    supplier Qualcomm" -> Qualcomm) and analyst houses ("Morgan Stanley: Apple EPS ..." -> Apple)."""
+    cands = []
+    for i, sp in spans.items():
+        if "analyst" in actors.get(i, ()):
+            continue
+        usable = [(a, b) for a, b in sp if not _DESCRIPTOR.match(folded, b)]
+        if usable:
+            cands.append((i, usable))
+    if not cands:
+        return None
+    if len(cands) == 1:
+        return cands[0][0]
+    before = [(max(a for a, _b in sp if a <= pos), i) for i, sp in cands if any(a <= pos for a, _b in sp)]
+    if before:
+        return max(before)[1]
+    return min((min(a for a, _b in sp), i) for i, sp in cands)[1]
 
 
 def _clause_spans(text: str) -> list[tuple[int, int, float]]:
