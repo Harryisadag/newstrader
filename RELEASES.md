@@ -4,8 +4,6 @@ Ready-made apps, so you don't need to install Python. Download them from the
 **[Releases page](https://github.com/Harryisadag/newstrader/releases)**: open the newest release, then look
 under **Assets**.
 
-> The repository is private, so the Releases page only works while you're signed in to GitHub with access to it.
-
 ## Which file do I need?
 
 | Your computer | Download | Needs |
@@ -56,7 +54,7 @@ To open it: on Windows, paste `%LOCALAPPDATA%\NewsTrader` into the File Explorer
 - `.env` from your NewsTrader folder
 - `config.json`, `newstrader.db` and the `models` folder from its `data` folder
 
-**Updating:** download the newest release and replace the app. Your settings stay.
+**Updating:** from v0.3.0 the app checks for a newer release once a day and shows a banner with a link (it never installs anything by itself). Download the newest release and replace the app. Your settings stay.
 - Windows: delete the old `NewsTrader` folder, then extract the new one in its place.
 - Mac: drag the new NewsTrader.app into Applications and choose **Replace**.
 
@@ -66,10 +64,35 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 
 ## Versions
 
-## v0.3.0 — in progress
+## v0.3.0 — 8 October 2026
 
-Market alerts and sudden-spike detection, more news networks (including international ones), and better
-good/bad news detection. Full notes are written when it is released.
+**New: market alerts and the Market tab**
+- Sudden spikes: a watched stock moving 3%+ within 5 minutes on unusual volume, with the news behind it. Watched = your positions, stocks with recent signals, your watchlist and today's top movers.
+- Big moves in the whole market (S&P 500, Nasdaq 100, Russell 2000, Dow) and world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea).
+- Alerts for both (desktop and Discord), each with its own on/off switch.
+- "Don't chase": if a stock already ran more than 3% in the signal's direction since the news, the signal goes to manual review instead of auto-trading.
+
+**New: many more news sources (about 120 ready-made, 25 on by default)**
+- More US TV and live-event channels: the White House (briefings, Trump remarks), the Fed's press conferences, C-SPAN, Fox News / Fox Business live events, rallies and interviews. Live-event channels only use a transcription slot while they're live.
+- Trump interviews and White House announcements news feeds, plus Reuters, Bloomberg, Fox Business, BBC, FDA and Fed feeds, tariff news and more.
+- International TV and news from Europe, the UK, Asia, India, the Middle East, Canada, Latin America and Australia. Non-English TV is translated to English while it's transcribed.
+- A new sources screen: search, filters by region and kind, turn whole groups on/off, and edit any source.
+- Two default feeds that had stopped working (Yahoo Finance and MarketWatch real-time) were replaced automatically.
+
+**Better news detection (local engine)**
+- Recognises about 55 kinds of market-moving news (earnings and the numbers behind them, forecasts, buyouts, analyst actions, FDA and trial results, offerings, lawsuits, recalls…) and works out which company each one is good or bad for (the target vs the buyer, the rated stock vs the analyst firm, the winner vs the company it replaced).
+- Recaps of moves that already happened, opinion pieces, round-ups and law-firm adverts come out neutral. Reports and rumours get lower confidence; denials turn the event around.
+- Signals scored on wording alone (no recognised event) now always go to manual review.
+- International macro news can give a signal for that country's fund (always manual review).
+- Better company-name matching (short names like "Sarepta", everyday-word names like "Target" only when used as the company, CEO names, lower-case TV transcripts).
+- On 280 labelled test headlines kept aside while the rules were written, the right call went from 57% to 80% at the first test.
+- The Signals screen shows the news event behind each call, and the Test box explains why a company came out neutral.
+- If you trained a price model with v0.2, retrain it once (Backtest tab): it now also learns from the news event.
+
+**Other**
+- Update check: a banner when a newer version is out (Settings → Display).
+- Times follow your choice of this computer's time zone, New York time or UTC.
+- Logs → System status hides turned-off and off-air sources unless you ask for them.
 
 ## v0.2.1 — 7 October 2026
 

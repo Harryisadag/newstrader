@@ -152,7 +152,7 @@ def main() -> int:
     args = ap.parse_args()
 
     items = load_items(args.set)
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # Windows: the db is still open
         table = make_table(Path(tmp))
         sentiment = SentimentService(Path(tmp) / "models" if args.sentiment == "lexicon" else
                                      ROOT / "data" / "models")

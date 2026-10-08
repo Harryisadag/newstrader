@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -167,14 +166,13 @@ def _eval_module():
 
 
 @pytest.mark.parametrize("which,min_accuracy", [("dev", 95), ("set2", 94)])
-def test_detection_quality_does_not_slip(which, min_accuracy):
+def test_detection_quality_does_not_slip(which, min_accuracy, tmp_path):
     """The labelled headline sets (offline, word-list sentiment). Guards against a rule change breaking others."""
     ev = _eval_module()
-    with tempfile.TemporaryDirectory() as tmp:
-        table = ev.make_table(Path(tmp))
-        sentiment = SentimentService(Path(tmp) / "models")
-        sentiment.load("lexicon")
-        res = ev.evaluate(ev.load_items(which), ev.make_engine(table, sentiment, True), table)
+    table = ev.make_table(tmp_path)  # tmp_path, not a TemporaryDirectory: Windows can't delete the open database
+    sentiment = SentimentService(tmp_path / "models")
+    sentiment.load("lexicon")
+    res = ev.evaluate(ev.load_items(which), ev.make_engine(table, sentiment, True), table)
     assert res["accuracy_pct"] >= min_accuracy, res["mistakes"][:10]
     assert res["opposite_direction"] <= 1
     assert res["auto_trades_wrong"] <= 1

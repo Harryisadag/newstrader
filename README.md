@@ -2,10 +2,10 @@
 
 NewsTrader is a desktop app for **Windows and Mac** that:
 
-1. **Watches live news**:
-   - TV livestreams (Bloomberg, Yahoo Finance, Schwab Network, …)
-   - Alpaca/Benzinga real-time news
-   - RSS feeds (CNBC, MarketWatch, WSJ, …)
+1. **Watches live news** (about 120 ready-made sources, 25 on by default; turn any on/off in Settings):
+   - TV livestreams (Bloomberg, Yahoo Finance, Schwab Network, LiveNOW from FOX, …) and international channels (DW, France 24, NHK World, CNBC-TV18, …). Non-English TV is translated to English as it's transcribed.
+   - Live events: White House briefings and Trump remarks, Fed press conferences, C-SPAN, Trump interviews and rallies. These channels only take a transcription slot while they're live.
+   - Alpaca/Benzinga real-time news, and RSS feeds (CNBC, MarketWatch, WSJ, Reuters, BBC, FDA, Fed, international business news, …)
    - Social posts (Truth Social)
 2. **Transcribes TV audio in real time**. It uses your NVIDIA GPU on Windows, or the Apple GPU on a Mac with an M-series chip.
 3. **Decides whether each story is good or bad for a specific stock**, using machine learning that runs free on your own computer:
@@ -14,6 +14,7 @@ NewsTrader is a desktop app for **Windows and Mac** that:
    - Optional: switch the engine to **Claude** (paid, needs an Anthropic key). Claude reads context better and argues the bull and bear case before deciding.
 4. **Places PAPER trades on Alpaca** when confidence is high enough. Every buy has a stop-loss and take-profit, and strict risk limits apply.
 5. **Tracks whether the AI is actually right.** It checks the price 5 minutes, 1 hour and 1 trading day after every call. It can also **backtest** on historical news.
+6. **Watches the market**: sudden price spikes on unusual volume, big moves in the whole market or world markets, and today's top movers, with the news behind them (Market tab and alerts).
 
 > ⚠️ **Paper trading only by default.** NewsTrader always starts in **PAPER** mode (fake money). Real-money trading is locked in the code. Unlocking it takes all three of these:
 > - separate live keys
@@ -27,7 +28,7 @@ NewsTrader is a desktop app for **Windows and Mac** that:
 ## Download the ready-made app (easiest)
 
 You don't need Python to use a release:
-1. Sign in to GitHub (the repository is private), then download the zip for your computer from the **[Releases page](https://github.com/Harryisadag/newstrader/releases)**:
+1. Download the zip for your computer from the **[Releases page](https://github.com/Harryisadag/newstrader/releases)**:
    - Windows 10 / 11: `windows-x64`
    - Mac with an M-series chip, macOS 15 Sequoia or newer: `mac-apple-silicon`
    - Intel Mac, macOS 15 Sequoia or newer: `mac-intel`
@@ -163,13 +164,14 @@ The header always shows:
 
 | Tab | What it shows |
 |---|---|
-| **Live** | One pane per TV stream with the live transcript (on/off switch on each). Headlines from every text source scroll below, tagged with the tickers found and what happened (not relevant, same story, analysed, signal…). |
-| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says (never trades). |
+| **Live** | One pane per TV stream with the live transcript (on/off switch on each, and a language badge such as DE → EN when it's translated). Live-event channels that are off air wait in a compact row and get a pane when they go live. Headlines from every text source scroll below, tagged with the tickers found and what happened (not relevant, same story, analysed, signal…). |
+| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
+| **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
 | **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L. **Export CSV** saves it to the exports folder. |
 | **Performance** | **Is the AI right?** Win rate by confidence level and by source, at +5 min / +1 hour / +1 trading day, for every signal (traded or not). |
 | **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw. **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
-| **Settings** | Everything below, plus news sources (add any YouTube `/live` link, RSS feed, …), API keys and the live-trading lock. |
+| **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
 | **Logs** | System status (GPU, Alpaca, AI engine, every stream/feed), **Run diagnostics**, the full log, and **Rejected AI responses** (anything that failed validation). |
 
 ---
@@ -182,14 +184,25 @@ Pick it in **Settings → AI engine**. The default is **Local machine learning**
 It runs on your computer, needs no API key, and keeps working offline after the first download. For every company named in a story:
 
 1. It picks out the **headline plus the sentences about that company**. In "Apple sues Samsung", Apple and Samsung each get their own read.
-2. **FinBERT** scores that wording, for example "92% positive / 3% negative / 5% neutral".
-   - Without a trained price model, **confidence = how positive or negative the wording is**.
-   - It is a bit lower when the company is only mentioned in the article, not the headline.
-3. If you've trained the **price model** (below), it takes over the decision for written news. It answers: "after headlines like this, how often did the stock beat the S&P 500 over the next hour?" Confidence is then that tested probability. TV transcripts are always scored on wording only, because the price model learned from written articles.
+2. **News-event rules** look for the kind of news that actually moves stocks: earnings beats and misses (including the numbers, e.g. "EPS $1.20 vs $1.35 est"), raised or cut forecasts, buyouts, analyst up/downgrades and price targets, FDA decisions and trial results, share offerings, buybacks, dividend changes, index changes, lawsuits and fines, recalls, hacks, strikes, contract wins, bankruptcy risk and more (about 55 kinds). They also work out **who** the news is for:
+   - the company being bought goes up, the buyer is neutral
+   - the analyst firm is neutral, the stock it rated gets the call
+   - the winner of a contract goes up, the company it replaced goes down; a company only named in passing gets nothing
+   - a forecast cut beats an earnings beat in the same headline ("beats estimates but cuts outlook" is bearish)
+   - "denies", "no plans to", "fails to" turn the event around; "reportedly" / "sources say" lowers confidence
+   - stories about a move that already happened ("Why Nvidia stock jumped"), opinion pieces, round-ups of many stocks and law-firm adverts come out neutral
+3. **FinBERT** scores the wording, for example "92% positive / 3% negative / 5% neutral".
+   - With a recognised event, the event sets the direction, and FinBERT agreeing or disagreeing moves the confidence up or down a little.
+   - With **no** recognised event, the wording alone decides, but those signals are always sent to **manual review**, never auto-bought.
+   - Confidence is a bit lower when the company is only mentioned in the article, not the headline.
+4. If you've trained the **price model** (below), it takes over the decision for written news (it also learns from the event the rules found). If the model and the event point opposite ways, the signal goes to manual review. It answers: "after headlines like this, how often did the stock beat the S&P 500 over the next hour?" Confidence is then that tested probability. TV transcripts are always scored on wording only, because the price model learned from written articles.
 
 What it can't do (Claude can):
 - understand context, such as whether news was already expected, or who is speaking
-- handle macro news that names no company ("Fed cuts rates"). The local engine skips those stories.
+- handle US macro news that names no company ("Fed cuts rates"). The local engine skips those stories. International macro news ("Bank of Japan raises rates") can give a signal for that country's US-listed fund (EWJ, FXI, EWG…), always for manual review.
+- read news that isn't in English. Non-English text feeds are skipped by the local engine (TV is translated, so that works). Claude reads any language.
+
+How good is it? On 280 labelled test headlines kept aside while the rules were written, the right call (good / bad / neutral for each company) went from 57% to 80% at the first test, then higher after fixing the general gaps that test showed. You can run the tests yourself: `python scripts/eval_detection.py --compare`.
 
 ### Training the price model (recommended)
 Go to **Backtest → Local ML model → Train the price model**. It's free and runs in the background while trading continues.
@@ -233,6 +246,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Stop-loss / Take-profit | 2% / 4% | Every buy is a bracket order with these exits. |
 | Sell on bearish | on | A strong bearish signal sells a position you already hold. |
 | Allow short selling | off | Strong bearish signals open a short when you don't hold the stock. |
+| Don't chase | 3% | If the price already moved this much in the signal's direction since the news came out, the signal goes to manual review instead of auto-trading. 0 = off. |
 
 **Risk controls**
 | Setting | Default | Meaning |
@@ -259,6 +273,8 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Claude model / effort / daily spend cap | Sonnet 5.5 / low / $5 | Only when Claude is the engine. |
 | Same-story / same-signal window | 15 min | The same headline from several outlets is analysed once. The same ticker + direction is one signal, traded once. |
 | Max stocks per story | 3 | |
+| Recognise news events | on | The event rules above. Off = the v0.2 behaviour (wording score only). |
+| Country funds for world news | on | International macro news can create signals for country ETFs (always manual review). |
 
 **Transcription**
 | Setting | Default | Meaning |
@@ -269,6 +285,22 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Chunk length / context | 10 s / 60 s | How audio is cut, and how much recent transcript is analysed. |
 | YouTube cookies from browser | none | Only needed if YouTube asks to "sign in to confirm you're not a bot". Chrome, Edge, Firefox, Brave or Safari. |
 
+**News sources:** each source has a region, a kind (TV, news, social, live events), a language and, for TV, a **Translate to English** switch. Live-event channels (White House, Fed…) only use one of the "max streams at once" slots while they're live, and take one from the lowest-priority always-on stream if needed.
+
+**Market monitor**
+| Setting | Default | Meaning |
+|---|---|---|
+| Market monitor | on | Scans every 60 seconds during market hours (pre/after-market scanning is optional, the data there is thin). |
+| What to watch | positions, stocks with signals in the last 2 hours, your watchlist, today's top 20 movers | Up to 100 stocks. |
+| Sudden spike | 3% within 5 minutes, on 3x normal volume | Stocks under $2 are skipped. |
+| Market-wide move | 1% within 15 minutes, or each 1% step in the day's change | For the S&P 500, Nasdaq 100, Russell 2000 and Dow ETFs. |
+| Look up the news behind a spike | on | Shows the latest Benzinga headlines for that stock. |
+| Alert cooldown | 30 min per stock | Plus at most 3 spike alerts per scan. |
+
+The free Alpaca data plan (IEX) sees part of the market's trading, so volume numbers are lower than the full market's. Spike detection compares a stock with its own normal volume, so it still works.
+
+**Display:** times in the app can follow this computer's time zone, New York (market) time, or UTC. **Check for updates** (on) looks at GitHub once a day and shows a banner when a newer NewsTrader is out. It never installs anything by itself.
+
 **Alerts:** desktop pop-ups (Windows or Mac) and Discord, each on/off. You can also turn each alert type on/off:
 - trade placed
 - trade filled/closed
@@ -277,6 +309,8 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 - daily loss limit hit
 - spend cap hit
 - kill switch
+- sudden spike in a watched stock
+- big move in the whole market
 
 Use **Send a test alert** to check they work.
 
@@ -290,12 +324,14 @@ News item ──► Stage 1: local pre-filter (free)
               (e.g. "Jensen Huang" → NVDA)?                               no → ignored
           ──► Same story already seen from another outlet?               yes → counted, not re-analysed
           ──► Stage 2: AI engine
-              Local ML: FinBERT reads the sentences about each company (+ the trained price model)
+              Local ML: news-event rules + FinBERT read the sentences about each company
+                        (+ the trained price model)
               Claude:   bull case → bear case → direction, confidence 0-100
           ──► Validation: real tradable US ticker, confidence 0-100, allowed values
               (anything else is rejected and listed in Logs → Rejected AI responses)
           ──► Same ticker + direction in the last 15 min? → merged into one signal
-          ──► Bullish ≥ buy threshold   → risk checks → bracket BUY (stop-loss + take-profit)
+          ──► Bullish ≥ buy threshold   → risk checks → price already ran > 3%? → review
+                                          → bracket BUY (stop-loss + take-profit)
               between the thresholds    → "manual review" alert (Approve/Dismiss in Signals)
               Bearish ≥ buy threshold   → sell if you hold it (or short, if you turned that on)
 ```
@@ -366,6 +402,8 @@ The app keeps its settings, database and keys in `~/Library/Application Support/
 ---
 
 ## Updating
+The app checks GitHub once a day and shows a banner at the top when a newer version is out, with a link to it (turn this off in Settings → Display). Nothing is downloaded or installed by itself.
+
 Using a downloaded release? Download the newest one instead (see "Updating" in [RELEASES.md](RELEASES.md)).
 
 From the source code: double-click **`update.bat`** (Windows) or **`update.command`** (Mac). It:
@@ -394,6 +432,8 @@ If you use the built app, run `build_exe.bat` / `build_app.command` again after 
 | Mac: "Apple-GPU speech engine isn't installed" | Run `run.command` again (it needs macOS 14+ on an M-series Mac). |
 | "Transcription falling behind" | Turn off a stream, or switch to `large-v3-turbo` (or `small` on an Intel Mac). |
 | An RSS feed shows a red dot | That site blocked or changed its feed. Turn it off or remove it in Settings → News sources. |
+| Headlines say "not in English - the local engine reads English only" | That feed is in another language. Turn it off, or switch Settings → AI engine to Claude. For TV, turn on **Translate to English** for that stream. |
+| The Market tab is empty | It needs your Alpaca keys and only scans during market hours (unless pre/after-market scanning is on). |
 | No signals at all | Check Logs → System status. Is the ticker list loaded (needs Alpaca keys)? Is the AI engine OK? With Claude: is the key OK and the spend cap not reached? |
 | Nothing trades | Signals → look at the **Outcome** column. The reason (market closed, cooldown, max positions, confidence below threshold…) is there. |
 | Desktop pop-ups don't appear | Turn off "Do not disturb" / Focus. On a Mac, allow notifications for **Script Editor**. Use Settings → Alerts → Send a test alert. |
@@ -405,6 +445,10 @@ For anything else, look at **Logs**. Logs → Open log files shows the log folde
 ## Truth Social and X (Twitter)
 
 **Truth Social** has no official API. NewsTrader comes with Donald Trump's posts preloaded through the free public archive feed at trumpstruth.org. Free feeds can lag a bit behind the real posts.
+
+**Trump interviews and remarks** come in through:
+- live TV: The White House channel (briefings and remarks, on by default), Fox News and Fox Business live events, Right Side Broadcasting (rallies and speeches), Forbes Breaking News, PBS NewsHour, C-SPAN. These are "live event" channels: they only use a transcription slot while they're live.
+- news: a "Trump interviews" Google News feed (on by default) and White House announcements.
 
 **X / Twitter** has no free, legal way to read posts automatically (the free API can only post). Your options:
 1. **Buy X API access** (Basic tier, about $200/month). Paste the bearer token in Settings → API keys (`X_BEARER_TOKEN`). Then add an **X account (API)** source with the username. The adapter is already built in.
