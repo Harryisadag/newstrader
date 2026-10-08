@@ -311,6 +311,9 @@ class LocalMLEngine:
                     why_neutral = "the news is about another company named in it"
                 if why_neutral:
                     direction = "neutral"
+                if "country" in rd.flags and not rd.direction and not why_neutral:
+                    why_neutral = rd.neutral_reason or "no clear market-moving news for that country"
+                    direction = "neutral"
                 if "country" in rd.flags and direction != "neutral":
                     review = "signals for a whole country's fund are always reviewed by you"
             conf = int(min(MAX_CONFIDENCE, max(0, conf)))

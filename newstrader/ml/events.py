@@ -56,6 +56,7 @@ class Event:
     detail: str = ""    # e.g. "EPS $1.20 vs $1.35 expected (-11%)"
     horizon: str = "hours"
     priority: int = 0   # guidance (2) beats earnings (1) when one headline has both
+    weight: float = 1.0  # "X, but Y": Y counts more; "Y despite X": X counts less
 
 
 @dataclass
@@ -93,22 +94,27 @@ RULES: list[tuple] = [
      r"purchase|take over)|buys|acquires|acquiring|(?:makes?|made|launches?|launched|submits?|sweetens?|raises?) "
      r"(?:an? |its )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|b|m)? )?(?:takeover |buyout |acquisition |cash |"
      r"all-cash |hostile |unsolicited )*(?:offer|bid|approach|proposal) for|bids? for|approached .{0,20}about a "
-     r"(?:takeover|deal|merger)|takeover of|to take (?!it\b|the company\b)(?:[\w&'.-]+ ){1,5}?private)\b", 0,
+     r"(?:takeover|deal|merger)|takeover of|to take (?!it\b|the company\b)(?:[\w&'.-]+ ){1,5}?private|(?:offer|bid|"
+     r"approach|proposal) (?:of \$?[\d.,]+ (?:a|per) share )?for)\b", 0,
      "immediate"),
     ("mna_target_it", "Buyout offer (target)", +1, 0.92, "subject",
      r"\b(?:to |plans? to |offer to )?(?:take|taking) (?:it|the company) private\b|\b(?:to|offer to) (?:buy|acquire) "
      r"(?:it|the company)\b", 0, "immediate"),
     ("mna_target_passive", "Buyout offer (target)", +1, 0.92, "subject",
      r"\b(?:to be (?:acquired|bought|taken private|taken over)|agrees? to be (?:acquired|bought|sold)|"
-     r"(?:receives?|received|gets?|got|rejects?|rejected|weighs?|considers?) (?:an? |a new |a sweetened |another )?"
-     r"(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|b|m)? )?(?:takeover|buyout|acquisition|purchase|cash) "
-     r"(?:offer|bid|approach|proposal|interest)|explores? (?:a )?(?:sale|strategic alternatives|options including "
+     r"(?:receives?|received|gets?|got|rejects?|rejected|weighs?|considers?) (?:an? |any |a new |a sweetened |another )?"
+     r"(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|b|m)? )?(?:(?:takeover|buyout|acquisition|purchase|cash|"
+     r"all-cash|unsolicited|rival|higher) )?(?:offer|bid|approach|proposal)|explores? (?:a )?(?:sale|strategic alternatives|options including "
      r"a sale)|exploring (?:a )?sale|puts? itself up for sale|(?:shares? )?(?:jump|soar|surge)s? on (?:takeover|"
-     r"buyout|deal) (?:talk|report)s?|takeover target|sells? itself)\b", 0, "immediate"),
+     r"buyout|deal) (?:talk|report)s?|takeover target|sells? itself|in (?:buyout|takeover|sale|merger|acquisition) "
+     r"talks|(?:interest|proposal|offer|bid) from)\b", 0, "immediate"),
+    ("mna_interest", "Takeover interest", +1, 0.85, "object",
+     r"\b(?:kick(?:s|ing|ed)? the tires on|takeover interest in|(?:has|have|showed|shows|expressed) interest in "
+     r"(?:buying|acquiring)|(?:is|are) (?:circling|eyeing|stalking))\b", 0, "immediate"),
     ("mna_collapse_active", "Deal fell apart", -1, 0.85, "actor_neutral",
      r"\b(?:terminates?|terminated|scraps?|scrapped|abandons?|abandoned|walks? away from|calls? off|called off|"
-     r"pulls? out of|drops?|dropped|withdraws?|withdrew|ends?) (?:its |the |a )?(?:[\w$.,'&-]+\s+){0,4}?(?:merger|deal|acquisition|takeover|buyout|"
-     r"bid|offer)\b", 0, "immediate"),
+     r"pulls? out of|drops?|dropped|withdraws?|withdrew|ends?) (?:its |the |a )?(?:[\w$.,'&-]+\s+){0,4}?(?:merger|deal|"
+     r"acquisition|takeover|buyout|bid|offer|pursuit|approach|talks)\b", 0, "immediate"),
     ("mna_collapse", "Deal fell apart", -1, 0.85, "last",
      r"\b(?:deal|merger|talks|takeover|acquisition|bid) (?:(?!(?:that|which|would|will|to|could)\b)[\w&'.-]+ ){0,7}?"
      r"(?:collapses?|collapsed|falls? (?:apart|"
@@ -121,21 +127,30 @@ RULES: list[tuple] = [
      r"\b(?:licens(?:e|es|ing) (?:its |the )?(?:[\w-]+ ){0,3}to|royalty deal|licensing (?:deal|agreement))\b", 0,
      "hours"),
     ("stake", "New stake / investment", +1, 0.68, "object",
-     r"\b(?:to invest|invests?|invested|investing|takes? (?:an? )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|million)? )?"
-     r"stake|(?:discloses?|disclosed|reveals?|revealed|builds?|built) (?:an? )?(?:new )?(?:\$?[\d.,]+ ?(?:bln|"
-     r"billion|mln|million)? )?(?:stake|position))\b", 0, "hours"),
+     r"\b(?:to invest|invests?|invested|investing|takes? (?:an? )?(?:(?:~|about |nearly |roughly |almost |around |over |more than |up to )?\$?[\d.,]+%? ?(?:bln|billion|mln|million|bn|b|m)? )?(?:new )?stake|(?:discloses?|"
+     r"disclosed|reveals?|revealed|builds?|built|amass(?:es|ed)?) (?:an? )?(?:new )?(?:(?:~|about |nearly |roughly |almost |around |over |more than |up to )?\$?[\d.,]+%? ?(?:bln|billion|mln|million|bn|b|m)? )?(?:stake|position))\b",
+     0, "hours"),
+    ("stake_sale", "Big holder selling shares", -1, 0.7, "object",
+     r"\b(?:sells?|sold|selling|offloads?|offloaded|dumps?|dumped|unloads?|unloaded|cuts?|trims?|trimmed) (?:its |"
+     r"a |part of its |more )?(?:(?:~|about |nearly |roughly |almost |around |over |more than |up to )?\$?[\d.,]+%? ?(?:bln|billion|mln|million|bn|b|m)? )?(?:worth )?(?:of |in )?(?:[\w&.'-]+ ){0,4}?(?:shares|stake|holding)\b|"
+     r"\bblock trade\b", 0, "hours"),
     # ---- analysts (the firm doing the rating is neutral; the rated company gets the direction) ----
     ("analyst_upgrade", "Analyst upgrade", +1, 0.72, "actor_neutral",
-     r"\b(?:upgrades?|(?:raises?|lifts?|moves?|bumps?|ups) .{0,40}? to (?:buy|outperform|overweight|strong buy|"
+     r"\b(?:upgrades?|upgrading|(?:raises?|raising|lifts?|lifting|moves?|bumps?|ups) .{0,40}? to (?:buy|outperform|"
+     r"overweight|strong buy|"
      r"positive|accumulate|add)|"
      r"initiates? .{0,40}?(?:with|at) (?:an? )?(?:buy|outperform|overweight|strong buy)|starts? .{0,30}?"
      r"(?:at|with) (?:buy|outperform|overweight)|adds? .{0,40}? to (?:its |the )?(?:conviction|top pick|"
      r"tactical outperform|outperform|focus)\w* list)\b", 0, "hours"),
     ("analyst_downgrade", "Analyst downgrade", -1, 0.74, "actor_neutral",
-     r"\b(?:downgrades?|(?:cuts?|moves?|takes?|drops?) .{0,40}? to (?:sell|underperform|underweight|neutral|hold|"
+     r"\b(?:downgrades?|downgrading|(?:cuts?|cutting|moves?|takes?|drops?) .{0,40}? to (?:sell|underperform|"
+     r"underweight|neutral|hold|"
      r"market perform|equal[- ]weight|"
      r"reduce)|lowers? .{0,40}? to (?:sell|underperform|underweight|neutral|hold)|initiates? .{0,40}?(?:with|at) "
      r"(?:an? )?(?:sell|underperform|underweight)|removes? .{0,40}? from (?:its |the )?\w* ?list)\b", 0, "hours"),
+    ("analyst_reiterate", "Analyst kept its rating", 0, 0.0, "actor_neutral",
+     r"\b(?:reiterat\w+|maintains?|maintained|keeps?|kept) (?:[\w&.'-]+ ){0,4}(?:as (?:a |its )?top pick|rating|"
+     r"buy|overweight|outperform|neutral|hold|equal[- ]weight)\b", 0, "hours"),
     ("analyst_upgrade_passive", "Analyst upgrade", +1, 0.72, "subject",
      r"\b(?:upgraded|raised to (?:buy|outperform|overweight)|initiated (?:at|with) (?:buy|outperform|overweight))\b",
      0, "hours"),
@@ -160,6 +175,7 @@ RULES: list[tuple] = [
      r"(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations)\b)[\w&-]+ ){0,4}?"
      r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:above|ahead of|higher)|"
      r"(?:outlook|forecast|guidance) (?:above|tops|beats|ahead of) (?:estimates|expectations|consensus)|"
+     r"\bbeats? and raises\b|"
      r"(?:strong|upbeat|bullish|rosy|robust|better-than-expected|raised) (?:[\w-]+ ){0,2}(?:guidance|outlook|forecast)",
      2, "immediate"),
     ("guidance_cut", "Cut its forecast", -1, 0.86, "subject",
@@ -168,7 +184,8 @@ RULES: list[tuple] = [
      r"q\d |holiday[- ]quarter )*(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations)\b)[\w&-]+ ){0,4}?"
      r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:below|lower|under)|"
      r"(?:guidance|outlook|forecast) (?:is |was |came in |looks )?(?:light|weak|soft|below|disappointing)\b|"
-     r"(?:outlook|forecast|guidance) (?:below|misses|short of|disappoints|underwhelms)|"
+     r"(?:outlook|forecast|guidance) (?:below|misses|missed|short of|falls short|fell short|trails|lags|disappoints|"
+     r"underwhelms)|"
      r"(?:weak|soft|disappointing|downbeat|gloomy|cautious|bleak|lower[- ]than[- ]expected|tepid) (?:[\w-]+ ){0,2}"
      r"(?:guidance|outlook|forecast)|profit warning|warns? (?:of|on) (?:lower|weaker|slowing|falling)", 2,
      "immediate"),
@@ -185,7 +202,9 @@ RULES: list[tuple] = [
      r"(?:above|ahead of|top|tops|beat|beats|surpass\w*) (?:consensus|estimates|expectations)\b|"
      r"\bbetter[- ]than[- ]expected (?:[\w-]+ ){0,2}(?:results|earnings|profit|revenue|sales|quarter)|"
      r"\brecord (?:quarterly |annual )?(?:revenue|sales|profit|earnings|deliveries|quarter)\b|"
-     r"\b(?:beats?|tops?) on (?:the )?(?:[\w-]+ ){0,2}(?:profit|revenue|sales|earnings|eps|top|bottom|growth|margins?)\b",
+     r"\b(?:beats?|tops?) on (?:the )?(?:[\w-]+ ){0,2}(?:profit|revenue|sales|earnings|eps|top|bottom|growth|margins?)\b|"
+     r"\b(?:well )?(?:ahead of|above|better than|more than|topping) (?:what )?(?:[\w-]+ ){0,8}?(?:the street|wall street|"
+     r"analysts|consensus) (?:was |were |had )?(?:looking for|expecting|expected|forecast|estimated|modeled)",
      1, "immediate"),
     ("earnings_miss", "Missed estimates", -1, 0.80, "subject",
      r"\b(?:miss(?:es|ed)?|falls? short of|fell short of|lags?|lagged|trails?|trailed|below|under|"
@@ -196,18 +215,32 @@ RULES: list[tuple] = [
      r"\b(?:profit|sales|revenue|earnings|deliveries) (?:falls?|fell|drops?|dropped|slumps?|slumped|plunges?|"
      r"plunged|declines?|declined|shrinks?|shrank|tumbles?|tumbled) (?:short|more than expected)|"
      r"\bmiss(?:es|ed)? on (?:the )?(?:[\w-]+ ){0,3}(?:profit|revenue|sales|earnings|eps|growth|margins?|subscribers|"
-     r"deliveries|bookings)\b", 1, "immediate"),
+     r"deliveries|bookings)\b|\b(?:well )?(?:below|short of|less than|lower than|missing) (?:what )?(?:[\w-]+ ){0,8}?"
+     r"(?:the street|wall street|analysts|consensus) (?:was |were |had )?(?:looking for|expecting|expected|forecast|"
+     r"estimated|modeled)", 1, "immediate"),
     ("results_up", "Strong results", +1, 0.62, "subject",
      r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:[\w-]+ ){0,2}(?:jumps?|jumped|surges?|surged|"
      r"soars?|soared|rises?|rose|grows?|grew|climbs?|climbed|more than doubles?|doubles?) (?:by )?\d+(?:\.\d+)?%|"
-     r"\b(?:revenue|sales|profit|earnings) (?:[\w-]+ ){0,2}more than doubles?\b", 1, "hours"),
+     r"\b(?:revenue|sales|profit|earnings) (?:[\w-]+ ){0,2}more than doubles?\b|\b(?:same-store|comparable|comp) "
+     r"(?:store )?(?:sales|traffic) (?:[\w-]+ ){0,2}(?:turned positive|rose|grew|increased|climbed|jumped|up)\b",
+     1, "hours"),
     ("results_down", "Weak results", -1, 0.62, "subject",
      r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:[\w-]+ ){0,2}(?:falls?|fell|drops?|dropped|"
      r"declines?|declined|slumps?|slumped|plunges?|plunged|sinks?|sank|shrinks?|shrank|tumbles?|tumbled) (?:by )?"
      r"\d+(?:\.\d+)?%", 1, "hours"),
     ("slowdown", "Growth slowing", -1, 0.66, "subject",
      r"\b(?:growth|sales|demand|revenue|backlog|bookings|subscriber growth|user growth) (?:[\w-]+ ){0,2}(?:slows?|slowed|"
-     r"slowing|decelerat\w+|weakens?|weakened|stalls?|stalled)\b", 1, "immediate"),
+     r"slowing|decelerat\w+|weakens?|weakened|stalls?|stalled|cools?|cooled|cooling|softens?|softened)\b",
+     1, "immediate"),
+    ("cost_savings", "Cost savings plan", +1, 0.55, "subject",
+     r"\b(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|m)? (?:in )?(?:annual |annualized |yearly )?(?:cost )?savings|"
+     r"cost[- ]cutting plan|cut costs by)\b", 0, "hours"),
+    ("ahead_of_schedule", "Ahead of schedule", +1, 0.6, "subject",
+     r"\b(?:ahead of schedule|earlier than (?:expected|planned)|in full production|full-scale production)\b", 0,
+     "hours"),
+    ("production_up", "Raising production", +1, 0.62, "any",
+     r"\b(?:raises?|raise|increases?|increase|boosts?|boost|lifts?|lift|ramps? up) (?:[\w-]+ ){0,5}(?:production|output|"
+     r"build rate)\b", 0, "hours"),
     # ---- FDA / clinical ----
     ("fda_approval", "FDA approval", +1, 0.75, "any",
      r"\b(?:fda|ema|regulators?|health canada|mhra|european commission)\b.{0,30}\b(?:approves?|approved|clears?|"
@@ -225,7 +258,12 @@ RULES: list[tuple] = [
      r"\b|\bdisappoints? (?:on|in) (?:[\w-]+ ){0,3}(?:trial|study|phase|tolerability|efficacy|safety|data)\b|\b(?:fails?|failed|misses|missed|did not meet|didn't meet|does not meet|falls? short on) (?:its |the |a )?"
      r"(?:[\w-]+ ){0,2}(?:primary |main |key )?(?:endpoint|goal|trial|study)\b|\b(?:halts?|halted|stops?|stopped|"
      r"pauses?|paused|discontinues?|discontinued|terminates?|terminated) (?:its |the |a )?(?:\w+[- ]?){0,3}"
-     r"(?:trial|study|program|development)\b|\bpatient death\b", 0, "immediate"),
+     r"(?:trials?|study|studies|program|development)\b|\bpatient deaths?\b|\b(?:liver |cardiac |serious )?toxicity\b|"
+     r"\bserious adverse\b|\b(?:high |higher )?(?:dropout|discontinuation) rates?\b|\bsafety concerns?\b|"
+     r"\brattles? investors\b|\bfalls? short in (?:a |the |its )?(?:[\w-]+ ){0,2}trial\b", 0, "immediate"),
+    ("head_to_head", "Beat a rival in a trial", +1, 0.8, "subject",
+     r"\b(?:beats?|tops?|bests?|outperforms?|trounces?) (?:[\w&.'-]+ ){1,4}in (?:a |the )?(?:[\w-]+ )?head-to-head\b",
+     0, "immediate"),
     ("trial_success", "Trial success", +1, 0.80, "any",
      r"\b(?:meets?|met|hits?|achieves?|achieved|succeeds? on|reaches?|reached) (?:its |the |all |both )?"
      r"(?:[\w-]+ ){0,2}(?:primary |main |key )?(?:endpoints?|goals?)\b|\bpositive (?:topline |top-line |pivotal |"
@@ -260,15 +298,24 @@ RULES: list[tuple] = [
      "hours"),
     ("split", "Stock split", +1, 0.6, "any", r"\b\d+[- ]for[- ]\d+ (?:forward )?stock split\b|\bannounces? (?:a )?"
      r"stock split\b", 0, "hours"),
+    ("split_effective", "Split taking effect (already known)", 0, 0.0, "any",
+     r"\bsplit-adjusted\b|\bpost-split\b|\bsplit (?:takes|took) effect\b|\bbegins? trading (?:on a )?split", 0,
+     "hours"),
     ("reverse_split", "Reverse stock split", -1, 0.7, "any", r"\breverse (?:stock )?split\b", 0, "hours"),
     # ---- index membership ----
     ("index_add", "Joining a major index", +1, 0.72, "subject",
      r"\b(?:to join|joins?|joining|added to|to be added to|set to join|will join|enters?|to enter) (?:the )?"
-     r"(?:s&p 500|s&p500|nasdaq[- ]100|dow jones industrial average|dow|russell 1000|s&p midcap 400)\b", 0, "hours"),
+     r"(?:s&p 500|s&p500|nasdaq[- ]100|dow jones industrial average|dow|russell 1000|s&p midcap 400)\b|"
+     r"\b(?:to replace|replaces|will replace|replacing) (?:[\w&.'-]+ ){1,3}(?:in|on) (?:the )?(?:s&p 500|s&p500|s&p dow jones indices|nasdaq[- ]100|dow jones industrial average|the dow|dow|russell 1000|s&p midcap 400)\b",
+     0, "hours"),
+    ("index_add_object", "Joining a major index", +1, 0.72, "object",
+     r"\b(?:s&p 500|s&p500|s&p dow jones indices|nasdaq[- ]100|dow jones industrial average|the dow|dow|russell 1000|s&p midcap 400) (?:to add|adds|will add|is adding|added)\b", 0, "hours"),
     ("index_remove", "Removed from a major index", -1, 0.72, "subject",
-     r"\b(?:removed from|to be removed from|dropped from|to leave|leaves|deleted from|kicked out of) (?:the )?"
+     r"\b(?:removed from|to be removed from|dropped from|to leave|leaves|deleted from|kicked out of|to exit|exits|"
+     r"exiting|will exit) (?:the )?"
      r"(?:s&p 500|s&p500|nasdaq[- ]100|dow jones industrial average|dow)\b|\b(?:passed over|snubbed|left out|"
-     r"overlooked) (?:again )?(?:for|of) (?:[\w&]+ ){0,3}(?:inclusion|index)", 0, "hours"),
+     r"overlooked) (?:again )?(?:for|of) (?:[\w&]+ ){0,3}(?:inclusion|index)|\b(?:snubbed|passed over|overlooked|"
+     r"left out)\b(?=.{0,60}\b(?:s&p|index|nasdaq-100|rebalanc))", 0, "hours"),
     # ---- trouble ----
     ("bankruptcy", "Bankruptcy / default risk", -1, 0.92, "any",
      r"\b(?:files? for|filed for|filing for|prepares? (?:to file )?for|nears?|considers?) (?:chapter 11|"
@@ -283,7 +330,11 @@ RULES: list[tuple] = [
     ("short_report", "Short-seller report", -1, 0.78, "any",
      r"\b(?:short[- ]seller|short report|hindenburg|muddy waters|citron|spruce point|grizzly research|"
      r"wolfpack|culper|fuzzy panda|kerrisdale) (?:[\w-]+ ){0,3}(?:report|targets?|alleges?|accuses?|bets? against|"
-     r"says|discloses? short)|\bshort[- ]seller\b", 0, "immediate"),
+     r"says|discloses? short|shorts?|shorting|is short)|\bshort[- ]seller\b|\b(?:takes?|took|discloses?|disclosed) (?:a "
+     r")?short position\b", 0, "immediate"),
+    ("short_cover", "Short seller gave up", +1, 0.7, "any",
+     r"\b(?:covers?|covered|covering|closes?|closed|exits?|exited) (?:[\w&.'-]+ ){0,3}short(?: position)?\b|\bnow long\b",
+     0, "immediate"),
     ("legal", "Probe / lawsuit", -1, 0.70, "any",
      r"\b(?:probes?|probed|probing|investigat\w+|subpoena\w*|indicted|indictment|charged? with|charges against|"
      r"sues|sued|lawsuit|class action|antitrust (?:suit|lawsuit|case|probe)|fined|fines|fine of|penalty|verdict|"
@@ -291,24 +342,40 @@ RULES: list[tuple] = [
      r"jury (?:orders?|finds?|awards?)|verdict against|ordered to pay|raid(?:ed|s)? (?:\w+ )?offices?)\b|"
      r"\b(?:sec|doj|ftc|justice department|attorneys? general|prosecutors?|regulators?) (?:[\w-]+ ){0,3}"
      r"(?:probe|investigation|charges|sues|accuses)\b", 0, "hours"),
+    ("legal_win", "Legal win", +1, 0.66, "object",
+     r"\b(?:spares?|spared|sides with|sided with|rules? in favou?r of|ruled in favou?r of|clears?|cleared)\b|"
+     r"\b(?:no|avoids?|avoided|escapes?|escaped) (?:a )?(?:forced )?(?:breakup|break-up)\b", 0, "hours"),
+    ("legal_win_subject", "Legal win", +1, 0.66, "subject",
+     r"\b(?:wins?|won) (?:an? |the |its )?(?:[\w-]+ ){0,2}(?:appeal|case|lawsuit|dismissal|ruling|verdict|patent "
+     r"(?:case|fight|battle)|legal (?:fight|battle))\b|\b(?:lawsuit|case|suit|charges) (?:against \S+ )?(?:dismissed|"
+     r"thrown out)\b", 0, "hours"),
+    ("legal_loss", "Legal loss", -1, 0.68, "subject",
+     r"\b(?:loses?|lost) (?:an? |the |its )?(?:[\w-]+ ){0,2}(?:appeal|case|lawsuit|ruling|verdict|fight|battle|"
+     r"challenge|bid to)\b", 0, "hours"),
     ("ceo_exit", "CEO leaving", -1, 0.62, "any",
      r"\b(?:ceo|chief executive|cfo|chief financial officer|founder)\b (?:[\w-]+ ){0,3}(?:resigns?|resigned|steps? "
      r"down|stepping down|to step down|quits?|departs?|exits?|ousted|fired|out\b|leaves|leaving|is out)|"
      r"\b(?:ousts?|ousted|fires?|fired) (?:its |the )?(?:ceo|chief executive)\b", 0, "immediate"),
+    ("exec_poach", "Hired a rival's executive", +1, 0.6, "subject",
+     r"\b(?:poaches?|poached|lures?|lured|hires? away|hired away)\b", 0, "hours"),
     ("recall", "Recall / safety problem", -1, 0.62, "any",
      r"\b(?:recalls?|recalled|recalling|grounds?|grounded|grounding|blows? out|crash(?:es|ed)?|explosion|"
      r"fire at|contamination|outbreak|e\. ?coli|salmonella|listeria|food poisoning|safety (?:probe|investigation|"
      r"warning))\b", 0, "hours"),
     ("delay", "Launch delayed", -1, 0.62, "any",
      r"\b(?:launch|rollout|release|debut|production|deliveries|approval|start) (?:[\w-]+ ){0,2}(?:delayed|pushed back|"
-     r"postponed|slips?)\b|\bdelays? (?:the |its )?(?:[\w-]+ ){0,2}(?:launch|rollout|release|debut)\b", 0, "hours"),
+     r"postponed|slips?)\b|\b(?:delays?|delayed|pushes?|pushed|postpones?|postponed) (?:back )?(?:the |its )?"
+     r"(?:[\w-]+ ){0,3}(?:launch|rollout|release|debut|production|deliveries|start)\b", 0, "hours"),
     ("activist", "Activist investor stake", +1, 0.7, "any",
      r"\bactivist (?:investor |hedge fund |fund |shareholder )?(?:[\w-]+ ){0,3}(?:builds?|building|takes?|taking|has|"
      r"holds?|discloses?|disclosed|amass\w*|buys?|bought|acquires?|acquired) (?:an? )?(?:[\w-]+ ){0,2}(?:stake|position)|"
-     r"\bactivist stake\b", 0, "hours"),
+     r"\bactivist stake\b|\b(?:starboard|elliott|trian|icahn|pershing square|ackman|third point|jana partners|"
+     r"valueact|ancora|mantle ridge|cevian|sachem head|engine capital|legion partners|land & buildings)\b.{0,50}"
+     r"\b(?:stake|position|push(?:es|ing)? for|board seats?|strategic review)\b|\bpush(?:es|ing)? for (?:a )?(?:strategic "
+     r"review|sale|breakup|board seats?)\b", 0, "hours"),
     ("breach", "Hack / outage", -1, 0.6, "any",
-     r"\b(?:hack(?:ed|ers?)?|data breach|breach|cyberattack|cyber attack|ransomware|outage|stole|stolen|"
-     r"leaked)\b", 0, "hours"),
+     r"\b(?:hack(?:ed|ers?)?|data breach|security breach|breach (?:of|exposed) (?:customer|user|personal|patient) "
+     r"(?:data|records|information)|cyberattack|cyber attack|ransomware|outage|stole|stolen|leaked)\b", 0, "hours"),
     ("halt", "Production halt / strike", -1, 0.66, "any",
      r"\b(?:halts?|halted|halting|suspends?|suspended|stops?|stopped|pauses?|paused) (?:[\w-]+ ){0,2}"
      r"(?:production|output|operations|shipments|deliveries|sales)\b|\bproduction halt\b|\bon strike\b|"
@@ -318,16 +385,35 @@ RULES: list[tuple] = [
      r"ends|ratif(?:y|ies|ied) (?:\w+ )?(?:contract|deal))\b", 0, "hours"),
     ("trade_hit", "Tariff / export ban", -1, 0.62, "any",
      r"\b(?:export (?:ban|curbs?|controls?|restrictions?)|banned from|blacklist(?:s|ed)?|entity list|sanctions? "
-     r"on|tariffs? (?:on|hit|hits|hurt|weigh))\b", 0, "hours"),
+     r"on|tariffs? (?:on|hit|hits|hurt|weigh)|requires? (?:export )?licen[cs]es? for|licen[cs]e requirements? for|"
+     r"curbs? on (?:[\w-]+ ){0,3}(?:chips?|exports|shipments|sales)|restrict(?:s|ions)? (?:on )?(?:[\w-]+ ){0,3}"
+     r"(?:chip|chips|exports|shipments|sales))\b", 0, "hours"),
+    ("blow_to", "Hit by a new rule or rival", -1, 0.62, "object",
+     r"\b(?:a |another )?(?:blow|setback|headwind|threat) (?:to|for)\b|\b(?:direct )?challenge to\b|\brival to\b|"
+     r"\btakes? on\b|\btaking on\b|\bgoes after\b", 0, "hours"),
+    ("boost_to", "Helped by a new rule", +1, 0.6, "object",
+     r"\b(?:a |another )?(?:boost|tailwind|win|reprieve|relief) (?:to|for)\b|\bexempts?\b", 0, "hours"),
     # ---- business wins ----
     ("contract", "Contract / deal win", +1, 0.72, "subject",
      r"\b(?:wins?|won|lands?|landed|secures?|secured|awarded|gets?|receives?|signs?|signed|clinches?|bags?|nabs?|"
      r"inks?|(?:selected|chosen|picked|tapped) for) (?:an? |the |its |[\w&.-]+'s )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|"
-     r"million|bn|b|m)?[- ]?)?(?:[\w&.'-]+[- ]?){0,5}?"
+     r"million|bn|b|m)?[- ]?)?(?:[\w&.'/-]+[- ]?){0,5}?"
      r"(?:contract|order|orders|deal|award|program|programme|rights|games|account|tender|business)\b|\bnamed (?:the )?"
      r"(?:official|exclusive|preferred|primary) (?:[\w-]+ ){0,3}(?:provider|partner|supplier|sponsor)\b", 0, "hours"),
+    ("contract_loss", "Contract or order lost", -1, 0.7, "object",
+     r"\b(?:scraps?|scrapped|cancels?|cancell?ed|terminates?|terminated|pulls?|pulled|drops?|dropped) (?:an? |the |its |"
+     r"[\w&.-]+'s )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|b|m)?[- ]?)?(?:[\w&.'-]+[- ]?){0,5}?(?:contract|order|"
+     r"orders|award|program|programme)\b", 0, "hours"),
+    ("contract_lost", "Contract or order lost", -1, 0.7, "subject",
+     r"\b(?:loses?|lost) (?:an? |the |its )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|million|bn|b|m)?[- ]?)?(?:[\w&.'-]+[- ]?)"
+     r"{0,5}?(?:contract|order|orders|award|account|customer|client)\b", 0, "hours"),
+    ("customer_deal", "Big customer deal", +1, 0.72, "subject",
+     r"\b(?:agrees? to (?:deploy|use)|to deploy|will deploy|multi-?billion[- ]dollar (?:deal|agreement|"
+     r"order|contract)|(?:multi-?year|long-term) (?:supply |purchase )?(?:deal|agreement)|supply (?:deal|agreement))\b",
+     0, "hours"),
     ("chosen", "Picked by a customer", +1, 0.70, "object",
-     r"\b(?:picks?|picked|chooses?|chose|selects?|selected|taps?|tapped|hires?|hired|switches? to|switched to)\b",
+     r"\b(?:(?<!top )(?<!stock )(?<!a )(?<!as )picks?|picked|chooses?|chose|selects?|selected|taps?|tapped|hires?|"
+     r"hired|switches? to|switched to)\b",
      0, "hours"),
     ("partnership", "Partnership", +1, 0.6, "first",
      r"\b(?:partners? with|partnership|teams? up|collaborat\w+|alliance|joint venture|expand(?:s|ed)? (?:\w+ )?"
@@ -339,6 +425,9 @@ RULES: list[tuple] = [
     ("exec_named", "New executive", 0, 0.0, "any",
      r"\b(?:names?|named|appoints?|appointed|hires?|taps?) (?:[\w-]+ ){0,4}(?:as )?(?:new )?(?:ceo|cfo|chief|"
      r"president|chair\w*|director|successor)\b", 0, "hours"),
+    ("debt_offering", "Debt offering (routine)", 0, 0.0, "any",
+     r"\b(?:senior (?:unsecured |secured )?notes|notes offering|bond (?:sale|offering|deal)|debt offering|notes due "
+     r"\d{4})\b", 0, "hours"),
     ("routine", "Routine announcement", 0, 0.0, "any",
      r"\b(?:to (?:hold|host|present|participate|webcast)|will (?:hold|host|present|participate)|annual (?:general |"
      r"shareholders' |shareholder )?meeting|investor day|conference call|fireside chat|to report (?:[\w-]+ ){0,3}"
@@ -348,7 +437,9 @@ RULES: list[tuple] = [
 _COMPILED = [(k, lab, d, s, role, re.compile(p, re.I), pri, hz) for k, lab, d, s, role, p, pri, hz in RULES]
 
 # "picks AMD over Nvidia", "replacing Capital One", "outbidding Disney's ESPN"
-_LOSER = re.compile(r"\b(?:over|replacing|replaces|replaced|instead of|outbid(?:ding|s)?|beating out|beats out|"
+_LOSER = re.compile(r"\b(?:(?<!take )(?<!takes )(?<!took )(?<!taking )(?<!handed )(?<!hand )over|replacing|replaces|replaced|(?:to|will) replace|instead of|outbid(?:ding|s)?|"
+                    r"beating out|beats out|beats?(?= (?:[\w&.'-]+ ){1,4}(?:to (?:win|land|secure|grab|clinch|"
+                    r"launch|market)|in (?:a |the )?(?:[\w-]+ )?head-to-head))|poach(?:es|ed)?|lure[sd]?|hires? away|"
                     r"at the expense of|ousting|displacing|displaces|unseating|wins? (?:\w+ )?(?:from|away from))\s",
                     re.I)
 
@@ -563,7 +654,7 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
     # ---- per clause events, with roles ----
     last_subjects: list[int] = []
     for clause in _clause_spans(folded):
-        c_start, c_end = clause
+        c_start, c_end, c_weight = clause
         ctext = folded[c_start:c_end]
         here = {i: [a for a, b in sp if c_start <= a < c_end
                     and not _DESCRIPTOR.match(folded, b)]  # "Nvidia partner Super Micro": about Super Micro
@@ -573,7 +664,8 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
         denial = bool(_DENIAL.search(ctext))
         found_any = False
         for kind, label, d, s, role, rx, pri, hz in _COMPILED:
-            forced = [i for i in present if any(kind.startswith(k) for k in actors.get(i, ()))]
+            forced = [i for i in present if not kind.endswith("_passive")
+                      and any(kind.startswith(k) for k in actors.get(i, ()))]
             others = [i for i in present if i not in forced]
             for m in rx.finditer(ctext):
                 # "fails to improve survival", "is not in talks to acquire": read as the opposite
@@ -612,7 +704,8 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
                     elif role == "object":
                         applies = {i: "object" for i in near}
                         for i in before:
-                            applies.setdefault(i, "actor")
+                            gap = folded[first_span[i][1]:verb_at]
+                            applies.setdefault(i, "object" if not near and _AFTER_EVENT.search(gap) else "actor")
                     elif role == "actor_neutral":
                         if near:
                             applies = {i: "object" for i in near}
@@ -637,6 +730,9 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
                         ev.label = f"Denied: {label.lower()}"
                     if kind == "dividend_raise" and _ROUTINE_DIVIDEND.search(ctext):
                         ev.direction, ev.strength, ev.label = 0, 0.0, "Regular dividend increase"
+                    if kind == "recall" and _SOFTWARE_FIX.search(folded[:800]):
+                        ev.direction, ev.strength, ev.label = 0, 0.0, "Recall fixed by a software update"
+                    ev.weight = c_weight
                     out[i].events.append(ev)
                 found_any = found_any or bool(applies)
                 break  # one match per rule per clause is enough
@@ -646,9 +742,22 @@ def read_events(text: str, target_spans: dict[int, list[tuple[int, int]]], url: 
             loser_at = c_start + lm.end()
             for i in present:
                 if min(here[i]) >= loser_at and not any(e.direction < 0 for e in out[i].events):
-                    out[i].events = [e for e in out[i].events if e.role != "object"]
+                    out[i].events = [e for e in out[i].events if e.direction <= 0]
                     out[i].events.append(Event("lost_out", "Lost out to a rival", -1, 0.65, "loser", lm.group(0),
-                                               "", "hours"))
+                                               "", "hours", weight=c_weight))
+        # "Walmart to shift parcels from FedEx to UPS": FedEx loses a customer, UPS wins one
+        sw = _SWITCH.search(ctext)
+        if sw:
+            for i in present:
+                at = min(here[i]) - c_start
+                if sw.start("a") <= at < sw.end("a"):
+                    out[i].events = [e for e in out[i].events if e.direction <= 0]
+                    out[i].events.append(Event("lost_customer", "Lost a customer", -1, 0.7, "loser", sw.group(0), "",
+                                               "hours", weight=c_weight))
+                elif sw.start("b") <= at < sw.end("b"):
+                    out[i].events = [e for e in out[i].events if e.direction >= 0]
+                    out[i].events.append(Event("won_customer", "Won a customer", +1, 0.7, "object", sw.group(0), "",
+                                               "hours", weight=c_weight))
         if _MOVED.search(ctext) and "recap" not in flags:  # "...; shares fall" - whose shares: this clause's company
             for i in (others or last_subjects):
                 if "moved" not in out[i].flags:
@@ -686,6 +795,14 @@ _COMPLAINANT = re.compile(r"\b(?:brought|filed|lodged|launched) by|\bcomplaint (
                           r"\bafter a complaint (?:from|by)|\bfollowing a complaint (?:from|by)", re.I)
 _RATING_BEFORE = re.compile(r"(?:grades?|graded|rates?|rated|rating|initiat\w*|lifts?|raises?|moves?|bumps?|ups|cuts?|"
                             r"lowers?|reiterates?|starts?|resumes?)\b[^.;]{0,50}$", re.I)
+_AFTER_EVENT = re.compile(r"\b(?:after|as|following|when|amid|on news|on reports?)\b", re.I)
+_SOFTWARE_FIX = re.compile(r"\bover-the-air\b|\bsoftware (?:update|fix)\b|\bota\b", re.I)
+_SWITCH = re.compile(r"\b(?:shift|shifts|shifting|move|moves|moving|switch|switches|switching|transfers?|"
+                     r"transferring)\b.{0,80}?\bfrom\b(?P<a>.{1,60}?)\bto\b(?P<b>.{1,60}?)(?=$|[,;.]| next\b| in \d| by "
+                     r"\d| starting\b| from\b)", re.I)
+# a later or stronger event that cancels an earlier one for the same company
+_OVERRIDES = {"short_cover": ("short_report",), "split_effective": ("split",),
+              "mna_collapse": ("mna_target", "mna_interest"), "mna_collapse_active": ("mna_target", "mna_interest")}
 _JOIN = re.compile(r"\s*(?:,|and|&|,\s*and|/)\s*", re.I)
 
 
@@ -704,22 +821,29 @@ def _chained(after: list[int], first_span: dict[int, tuple[int, int]], text: str
 
 _NOT_ABBREV = "".join(rf"(?<!\b{a})" for a in (r"U\.S\.", r"U\.K\.", r"E\.U\.", r"Inc\.", r"Corp\.", r"Co\.",
                                                   r"Ltd\.", r"vs\.", r"No\.", r"St\.", r"Mr\.", r"Dr\.", r"adj\.",
-                                                  r"Adj\.", r"Jr\.", r"est\.", r"approx\."))
+                                                  r"Adj\.", r"Jr\.", r"est\.", r"approx\.", r"Bros\.", r"Cos\.", r"Intl\.",
+                                                  r"Hldgs\.", r"Mfg\.", r"Sr\.", r"Ms\.", r"Mrs\."))
 
 
-def _clause_spans(text: str) -> list[tuple[int, int]]:
-    """(start, end) of each clause/sentence of the text (headline first)."""
+_CONTRAST = {"but": 1.3, "however": 1.3, "yet": 1.3, "although": 0.7, "though": 0.7, "despite": 0.7,
+             "even as": 0.7, "while": 0.85, "whereas": 0.85}
+
+
+def _clause_spans(text: str) -> list[tuple[int, int, float]]:
+    """(start, end, weight) of each clause/sentence of the text (headline first). The weight is how much the
+    clause's events count when good and bad news compete: more after "but", less after "despite"."""
     spans = []
-    pos = 0
+    pos, weight = 0, 1.0
     for m in re.finditer(r"\s*;\s*|\s+[-–—]\s+|" + _NOT_ABBREV + r"(?<=[.!?])\s+(?=[A-Z0-9\"'$])|\n+|"
-                         r",?\s+\b(?:but|while|although|though|"
+                         r",?\s+\b(but|while|although|though|"
                          r"however|whereas|despite|even as|yet)\b\s+", text, re.I):
         if m.start() > pos:
-            spans.append((pos, m.start()))
+            spans.append((pos, m.start(), weight))
         pos = m.end()
+        weight = _CONTRAST.get((m.group(1) or "").lower(), 1.0)
     if pos < len(text):
-        spans.append((pos, len(text)))
-    return spans or [(0, len(text))]
+        spans.append((pos, len(text), weight))
+    return spans or [(0, len(text), 1.0)]
 
 
 def _decide(r: Reading) -> None:
@@ -732,10 +856,14 @@ def _decide(r: Reading) -> None:
                             "opinion": "an opinion piece or question, not news",
                             "roundup": "a round-up of many stocks"}[next(f for f in not_news if f in r.flags)]
         return
+    for e in [e for e in r.events if e.kind in _OVERRIDES]:  # actors too: "walks away from X" ends its own offer
+        r.events = [x for x in r.events if not x.kind.startswith(_OVERRIDES[e.kind])]
     evs = [e for e in r.events if e.role != "actor"]
-    if any(e.kind.startswith("mna_collapse") and e.direction for e in evs):  # "drops bid for X": the bid is over
-        evs = [e for e in evs if not e.kind.startswith("mna_target")]
-        r.events = [e for e in r.events if not e.kind.startswith("mna_target")]
+    for e in list(evs):  # "drops bid for X": the bid is over; "covers its short": the short report is old news
+        cancels = _OVERRIDES.get(e.kind, ())
+        if cancels:
+            evs = [x for x in evs if not x.kind.startswith(cancels)]
+            r.events = [x for x in r.events if not x.kind.startswith(cancels)]
     if not evs:
         if any(e.role == "actor" for e in r.events):
             r.neutral_reason = "this company is only the one making the move (e.g. the buyer or the analyst firm)"
@@ -744,7 +872,11 @@ def _decide(r: Reading) -> None:
         return
     if any(e.priority == 2 and e.direction for e in evs):  # the forecast is what the market trades, not the quarter
         evs = [e for e in evs if e.priority != 1]
-    score = sum(e.direction * e.strength for e in evs)
+    best: dict[tuple[str, int], float] = {}  # the same kind of news twice (headline + article) counts once
+    for e in evs:
+        key = (e.kind, e.direction)
+        best[key] = max(best.get(key, 0.0), e.strength * e.weight)
+    score = sum(d * v for (_k, d), v in best.items())
     directional = [e for e in evs if e.direction]
     if not directional:
         r.neutral_reason = f"{evs[0].label.lower()} - no clear direction for the stock"
@@ -778,6 +910,8 @@ def find_spans(folded: str, symbol: str, terms: list[tuple[str, ...]]) -> list[t
 # --------------------------------------------------------------------------------------------- country news
 _MACRO_RULES = [
     ("Stimulus / easing", +1, 0.65, r"\b(?:stimulus|easing|rate cuts?|(?:cuts?|lowers?|slashes?) (?:its |the )?"
+                                    r"(?:reserve requirements?|rrr|reserve ratio)|property support|(?:cuts?|lowers?|"
+                                    r"slashes?) (?:its |the )?"
                                     r"(?:interest |repo |policy |benchmark |key |lending )*rates?|surprise cut|"
                                     r"bond[- ]buying|rescue package|support measures|infrastructure fund|spending "
                                     r"package|loosens? (?:the )?debt brake|fiscal (?:boost|package|expansion))\b"),
@@ -786,11 +920,15 @@ _MACRO_RULES = [
                                         r"tightening|highest (?:rates )?since)\b"),
     ("Economy shrinking", -1, 0.65, r"\b(?:shrinks?|shrank|contracts?|contracted|contraction|recession|slump(?:s|ed)?|"
                                     r"deflation|unexpectedly (?:falls?|drops?|shrinks?)|weakest since)\b"),
-    ("Economy growing", +1, 0.55, r"\b(?:grows? faster|beats? (?:growth )?forecasts|stronger[- ]than[- ]expected "
+    ("Economy growing", +1, 0.55, r"\b(?:grows? faster|beats? (?:all )?(?:growth )?forecasts|beating (?:all )?"
+                                  r"(?:forecasts|estimates|expectations)|faster than (?:expected|forecast)|"
+                                  r"stronger[- ]than[- ]expected "
                                   r"(?:growth|gdp)|expands? (?:more|faster) than)\b"),
     ("Political / war risk", -1, 0.7, r"\b(?:martial law|coup|invasion|invades?|war|missile|unrest|impeach\w*|"
-                                      r"snap election|political crisis|government collapses?)\b"),
+                                      r"snap election|political crisis|government collapses?|no-confidence vote)\b"),
     ("Tariffs / sanctions on it", -1, 0.6, r"\b(?:tariffs? on|sanctions on|export ban on|trade war with)\b"),
+    ("Market-friendly election result", +1, 0.6, r"\b(?:market-friendly|pro-market|pro-business|investor-friendly|"
+                                                  r"reformist)\b.{0,40}\b(?:wins?|won|victory|elected|leads?)\b"),
     ("Trade deal / ceasefire", +1, 0.6, r"\b(?:trade deal|trade agreement|ceasefire|peace deal|tariff (?:truce|cut|"
                                         r"relief|exemption))\b"),
 ]

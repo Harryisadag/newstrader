@@ -41,7 +41,7 @@ GENERIC_TAIL = {
     "networks", "brands", "worldwide", "enterprises", "industries", "entertainment", "communications",
     "semiconductor", "semiconductors", "motors", "motor", "airlines", "athletica", "labs", "laboratories",
     "platforms", "health", "healthcare", "wellness", "oncology", "genomics", "sciences", "robotics", "devices",
-    "electronics", "micro", "incorporated", "international", "global", "energy", "resources", "cruises",
+    "electronics", "micro", "incorporated", "international", "global", "energy", "resources", "cruises", "outdoor",
 }
 _SUFFIX_RE = re.compile("|".join(_SUFFIXES), re.IGNORECASE)
 _PUNCT_RE = re.compile(r"[^a-z0-9&'\- ]+")

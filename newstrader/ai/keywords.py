@@ -120,13 +120,14 @@ ALIASES: dict[str, str] = {
     "spotify": "SPOT", "pinterest": "PINS", "reddit": "RDDT", "alibaba": "BABA",
     "at&t": "T", "verizon": "VZ", "t-mobile": "TMUS", "comcast": "CMCSA",
     "rivian": "RIVN", "lucid": "LCID", "gamestop": "GME", "bristol myers": "BMY", "bristol-myers": "BMY",
-    "e.l.f. beauty": "ELF", "elf beauty": "ELF", "delta air lines": "DAL",
+    "e.l.f. beauty": "ELF", "elf beauty": "ELF", "delta air lines": "DAL", "hoka": "DECK", "ugg": "DECK",
+    "deckers": "DECK", "keytruda": "MRK", "wegovy": "NVO",
     "s&p 500": "SPY", "nasdaq 100": "QQQ", "nasdaq-100": "QQQ", "russell 2000": "IWM",
     # more US brands, products and people
     "copilot": "MSFT", "xbox": "MSFT", "linkedin": "MSFT", "android": "GOOGL", "chrome": "GOOGL", "whole foods": "AMZN", "prime video": "AMZN", "alexa": "AMZN",
     "blackwell": "NVDA", "geforce": "NVDA", "cuda": "NVDA", "cybertruck": "TSLA", "model y": "TSLA",
-    "wegovy": "NVO", "ozempic": "NVO", "zepbound": "LLY", "mounjaro": "LLY",
-    "keytruda": "MRK", "humira": "ABBV", "chipotle": "CMG", "lululemon": "LULU", "petco": "WOOF",
+    "ozempic": "NVO", "zepbound": "LLY", "mounjaro": "LLY",
+    "humira": "ABBV", "chipotle": "CMG", "lululemon": "LULU", "petco": "WOOF",
     "peloton": "PTON", "alaska airlines": "ALK", "southwest airlines": "LUV", "american airlines": "AAL", "united airlines": "UAL", "jetblue": "JBLU", "estee lauder": "EL",
     "capital one": "COF", "synchrony": "SYF", "lowe's": "LOW", "lowes": "LOW", "kroger": "KR",
     "albertsons": "ACI", "dollar general": "DG", "dollar tree": "DLTR", "walgreens": "WBA", "cvs": "CVS",
@@ -194,16 +195,21 @@ COMPANY_CONTEXT_AFTER: set[str] = {
     "executives", "employees", "workers", "dividend", "buyback", "inc's", "corp's",
     "moving", "trading",
 }
+# A euro-area country's news also counts for the euro-area fund
+EUROZONE_ETF = "EZU"
+EUROZONE_COUNTRY_ETFS: set[str] = {"EWG", "EWQ", "EWI", "EWP"}
 # Index ETFs named after their index: "joins the S&P 500" is about the joining company, not SPY
 INDEX_ETF_ALIASES: set[str] = {"SPY", "QQQ", "IWM", "DIA"}
 INDEX_MEMBERSHIP_WORDS: set[str] = {"join", "joins", "joining", "joined", "to", "from", "enter", "enters", "entering",
                                     "into", "in", "leave", "leaves", "leaving", "for"}
+INDEX_CHANGE_WORDS_AFTER: set[str] = {"adds", "add", "removes", "remove", "drops", "drop", "inclusion", "rebalance",
+                                      "rebalancing", "reshuffle", "constituent", "constituents", "membership"}
 COMPANY_CONTEXT_BEFORE: set[str] = {
     "of", "rival", "retailer", "automaker", "carrier", "airline", "chipmaker", "lender", "insurer", "maker",
     "giant", "company", "firm", "owner", "shares", "stock", "brand", "operator", "processor",
     # verbs that take a company as their object ("Wells Fargo downgrades Target", "DOJ sues Visa")
     "upgrades", "downgrades", "upgraded", "downgraded", "initiates", "reiterates", "sues", "sued", "fines", "fined",
-    "probes", "acquire", "acquires", "buy", "buys", "versus", "vs", "against",
+    "probes", "acquire", "acquires", "buy", "buys", "versus", "vs", "against", "take", "taking",
 }
 # Short names headlines use that aren't in the official name; they still need company context when everyday words
 CONTEXT_NAMES: dict[str, str] = {"delta": "DAL", "southwest": "LUV", "royal caribbean": "RCL"}
@@ -236,5 +242,6 @@ MACRO_WORDS: set[str] = {
     "pound", "bond", "bonds", "yields", "contraction", "shrinks", "shrank", "contracts", "expands", "unemployment",
     "jobs", "exports", "imports", "trade", "budget", "deficit", "stocks", "market", "markets", "coup", "war",
     "invasion", "default", "downgrade", "easing", "tightening", "hike", "hikes", "cut", "cuts", "policy",
-    "infrastructure", "spending", "fiscal", "debt", "repo",
+    "infrastructure", "spending", "fiscal", "debt", "repo", "runoff", "presidential", "parliament", "assets",
+    "reserve", "requirement", "property", "no-confidence", "government", "lawmakers",
 }

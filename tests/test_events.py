@@ -177,3 +177,80 @@ def test_detection_quality_does_not_slip(which, min_accuracy, tmp_path):
     assert res["opposite_direction"] <= 1
     assert res["auto_trades_wrong"] <= 1
     assert res["wrong_company_hits"] <= 2
+
+
+def test_but_outweighs_and_despite_discounts():
+    r = read("Walmart beats and raises, but shares slip as margin outlook disappoints", ("WMT", "Walmart"))
+    assert r["WMT"].direction == -1
+    r = read("Super Micro shares drop as revenue forecast falls short despite profit beat", ("SMCI", "Super Micro"))
+    assert r["SMCI"].direction == -1
+
+
+def test_customers_contracts_and_rivals():
+    r = read("Walmart To Shift Bulk Of Online Parcel Volume From FedEx To UPS Next Year",
+             ("WMT", "Walmart"), ("FDX", "FedEx"), ("UPS", "UPS"))
+    assert r["FDX"].direction == -1 and r["UPS"].direction == 1
+    r = read("Northrop Grumman beats Boeing to win Navy's next-generation F/A-XX fighter contract",
+             ("NOC", "Northrop Grumman"), ("BA", "Boeing"))
+    assert r["NOC"].direction == 1 and r["BA"].direction == -1
+    r = read("Army scraps $1.2 billion AeroVironment loitering-munition order", ("AVAV", "AeroVironment"))
+    assert r["AVAV"].direction == -1
+    r = read("Lilly's obesity pill beats Novo's Rybelsus in head-to-head diabetes trial",
+             ("LLY", "Lilly"), ("NVO", "Novo"))
+    assert r["LLY"].direction == 1 and r["NVO"].direction == -1
+    r = read("OpenAI launches web browser in direct challenge to Google Chrome", ("GOOGL", "Google"))
+    assert r["GOOGL"].direction == -1
+
+
+def test_index_changes():
+    r = read("Strategy snubbed again as S&P 500 adds Affirm in quarterly rebalance",
+             ("MSTR", "Strategy"), ("AFRM", "Affirm"))
+    assert r["MSTR"].direction == -1 and r["AFRM"].direction == 1
+    r = read("Broadcom to replace 3M in the Dow Jones Industrial Average", ("AVGO", "Broadcom"), ("MMM", "3M"))
+    assert r["AVGO"].direction == 1 and r["MMM"].direction == -1
+    r = read("Enphase Energy to exit S&P 500, shift to SmallCap 600 index", ("ENPH", "Enphase Energy"))
+    assert r["ENPH"].direction == -1
+
+
+def test_activists_short_sellers_and_holders():
+    r = read("Starboard Value Takes ~6% Stake In Pinterest, Plans To Push For Strategic Review",
+             ("PINS", "Pinterest"))
+    assert r["PINS"].direction == 1
+    r = read("Hertz Shares Jump After Bill Ackman's Pershing Square Reveals Nearly 20% Stake", ("HTZ", "Hertz"))
+    assert r["HTZ"].direction == 1
+    r = read("Muddy Waters shorts AppLovin, alleges it violates app-store terms", ("APP", "AppLovin"))
+    assert r["APP"].direction == -1
+    r = read("Citron Research covers Carvana short, says it is now long the stock", ("CVNA", "Carvana"))
+    assert r["CVNA"].direction == 1
+    r = read("SoftBank Sells $4.8B Of T-Mobile US Shares Via Overnight Block Trade", ("TMUS", "T-Mobile"))
+    assert r["TMUS"].direction == -1
+
+
+def test_things_that_look_like_news_but_are_not():
+    r = read("Evercore ISI reiterates Amazon as top pick into third-quarter earnings",
+             ("EVR", "Evercore"), ("AMZN", "Amazon"), actors={0: ("analyst", "target")})
+    assert r["AMZN"].direction == 0 and r["EVR"].direction == 0
+    r = read("Netflix begins trading on split-adjusted basis following 10-for-1 stock split", ("NFLX", "Netflix"))
+    assert r["NFLX"].direction == 0
+    r = read("Tesla Recalls 1.2 Million Vehicles Over Rearview Camera Delay; Fix Delivered Via Over-The-Air "
+             "Software Update", ("TSLA", "Tesla"))
+    assert r["TSLA"].direction == 0
+    r = read("Lam Research Announces Pricing Of $1.5 Billion Senior Notes Offering", ("LRCX", "Lam Research"))
+    assert r["LRCX"].direction == 0
+    # "takes over as CEO" doesn't make the hiring company a loser
+    r = read("Chipotle poaches Wingstop's chief executive. He takes over as CEO in March.",
+             ("CMG", "Chipotle"), ("WING", "Wingstop"))
+    assert r["CMG"].direction == 1 and r["WING"].direction == -1
+
+
+def test_legal_outcomes_and_denied_deals():
+    r = read("Arm loses licensing fight as jury sides with Qualcomm", ("ARM", "Arm"), ("QCOM", "Qualcomm"))
+    assert r["ARM"].direction == -1 and r["QCOM"].direction == 1
+    r = read("Judge spares Google a Chrome breakup in search monopoly case", ("GOOGL", "Google"))
+    assert r["GOOGL"].direction == 1
+    r = read("Warner Bros. Discovery Says It Has Not Received Any Proposal From Comcast, Denying Media Report",
+             ("WBD", "Warner Bros. Discovery"), ("CMCSA", "Comcast"))
+    assert r["WBD"].direction == -1 and r["CMCSA"].direction == 0
+    r = read("Comcast tops Paramount Skydance offer for Warner Bros Discovery with $32-a-share bid",
+             ("CMCSA", "Comcast"), ("PSKY", "Paramount Skydance"), ("WBD", "Warner Bros Discovery"))
+    assert r["WBD"].direction == 1 and r["CMCSA"].direction == 0 and r["PSKY"].direction == 0

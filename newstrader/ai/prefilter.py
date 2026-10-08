@@ -16,6 +16,9 @@ from .keywords import (
     COMPANY_CONTEXT_AFTER,
     COMPANY_CONTEXT_BEFORE,
     COUNTRY_ETFS,
+    EUROZONE_COUNTRY_ETFS,
+    EUROZONE_ETF,
+    INDEX_CHANGE_WORDS_AFTER,
     INDEX_ETF_ALIASES,
     INDEX_MEMBERSHIP_WORDS,
     MACRO_WORDS,
@@ -124,8 +127,8 @@ def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = 
                     prev = tokens[i - 1] if i > 0 else ""
                     if prev == "the" and i > 1:
                         prev = tokens[i - 2]
-                    if prev in INDEX_MEMBERSHIP_WORDS:
-                        continue  # "set to join the S&P 500" is about the company joining, not SPY
+                    if prev in INDEX_MEMBERSHIP_WORDS or nxt in INDEX_CHANGE_WORDS_AFTER:
+                        continue  # "set to join the S&P 500" / "S&P 500 adds Affirm" is about the company, not SPY
             else:
                 syms = table.by_name.get(key)
                 if not syms:
@@ -159,7 +162,10 @@ def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = 
                 phrase = " ".join(tokens[j:j + n])
                 etf = COUNTRY_ETFS.get(phrase)
                 if etf and (n > 1 or originals[j][:1].isupper() or caseless or phrase in ("uk", "boj", "ecb", "rba")):
-                    add(etf, f"country: {phrase.title() if len(phrase) > 3 else phrase.upper()}")
+                    name = phrase.title() if len(phrase) > 3 else phrase.upper()
+                    add(etf, f"country: {name}")
+                    if etf in EUROZONE_COUNTRY_ETFS:
+                        add(EUROZONE_ETF, f"country: {name} (euro area)")
 
     keywords = [kw for kw, rx in _KEYWORD_RES if rx.search(text)]
     candidates = list(found.values())
