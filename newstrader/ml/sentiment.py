@@ -77,6 +77,7 @@ NEGATIVE_WORDS = {
     "dilutive", "offering", "resign", "resigns", "resigned", "breach", "hack", "hacked", "outage", "tariff",
     "tariffs", "sanction", "sanctions", "negative", "worst", "disappointing", "disappoints", "plummet",
     "plummets", "plummeted", "shutdown", "closure", "closes", "withdraw", "withdraws", "terminated", "terminate",
+    "hackers", "stole", "stolen", "leaked", "cyberattack", "ransomware", "shrinks", "shrank", "contraction",
 }
 NEGATORS = {"not", "no", "never", "without", "isn't", "wasn't", "won't", "didn't", "doesn't"}
 _WORD = re.compile(r"[a-z']+")

@@ -26,10 +26,10 @@ log = logging.getLogger(__name__)
 
 N_HASH = 2 ** 18
 NUMERIC = ["pos", "neg", "neu", "net", "relevance", "in_headline", "tagged", "log_symbols", "log_words",
-           "time_of_day"]
+           "time_of_day", "event_score"]
 C_GRID = (0.03, 0.1, 0.3, 1.0, 3.0)
 THRESHOLDS = (55, 60, 65, 70, 75, 80, 85, 90)
-MODEL_VERSION = 2
+MODEL_VERSION = 3  # 3: event rules (score + event/flag words) - older models must be retrained
 
 
 @dataclass
@@ -41,13 +41,14 @@ class SampleFeatures:
     tagged: bool
     n_symbols: int
     time_of_day: float | None  # 0 = market open, 1 = close
+    event_score: float = 0.0  # direction x strength of the news event the rules recognised (-1..1)
 
     def numeric(self) -> list[float]:
         s = self.sentiment
         words = len(self.text.split())
         tod = 0.5 if self.time_of_day is None else min(1.0, max(0.0, self.time_of_day))
         return [s.positive, s.negative, s.neutral, s.net, self.relevance, float(self.in_headline),
-                float(self.tagged), math.log1p(max(0, self.n_symbols)), math.log1p(words), tod]
+                float(self.tagged), math.log1p(max(0, self.n_symbols)), math.log1p(words), tod, self.event_score]
 
 
 def _vectorizer():

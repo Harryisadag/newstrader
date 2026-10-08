@@ -75,3 +75,14 @@ jobs:
         shell: bash
         run: python scripts/check_models.py --mlx
 
+      # How well the local engine reads the labelled headline sets with the real FinBERT (the unit tests use the
+      # offline word list). Results go to the run's summary page.
+      - name: Detection quality with FinBERT
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          for s in dev set2 $( [ -f tests/fixtures/eval/holdout.jsonl ] && echo holdout ); do
+            python scripts/eval_detection.py --set "$s" --sentiment finbert --compare --mistakes 15 | tee -a "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          done
+

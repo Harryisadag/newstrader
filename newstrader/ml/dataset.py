@@ -30,10 +30,11 @@ from ..config import SourceConfig
 from ..db import Database, iso, parse_iso
 from ..performance.prices import first_bar_at_or_after
 from ..sources.alpaca_news import news_to_item
-from .engine import time_of_day
-from .model import SampleFeatures, TrainingSample
+from ..sources.base import NewsItem
+from .engine import build_features, readings_for
+from .model import TrainingSample
 from .sentiment import SentimentScores
-from .text import mask_company, relevance, target_text
+from .text import target_text
 
 log = logging.getLogger(__name__)
 
@@ -323,17 +324,20 @@ def load_samples(db: Database, table: TickerTable, model, horizon_min: int, star
         t = target_text(r["headline"], r["summary"] or "", "text", cand, table)
         if t is None:
             continue
-        picked.append((r, cand))
+        item = NewsItem(source_id=_SRC.id, source_type=_SRC.type, source_name=_SRC.name,
+                        external_id=str(r["news_id"]), title=r["headline"], body=r["summary"] or "",
+                        published_at=parse_iso(r["published_at"]), symbols=json.loads(r["symbols"] or "[]"))
+        picked.append((r, cand, item))
         targets.append(t)
     scores = cached_sentiment(db, model, [t.snippet for t in targets], progress, cancelled, predict)
     samples = []
-    for (r, cand), t, s in zip(picked, targets, scores, strict=True):
-        n_sym = len(json.loads(r["symbols"] or "[]"))
-        at = parse_iso(r["published_at"])
+    for (r, cand, item), t, s in zip(picked, targets, scores, strict=True):
+        at = item.published_at
         small = abs(r["adj_ret_pct"]) < min_move_pct
         counts["small_moves"] += small
-        feats = SampleFeatures(text=mask_company(t.snippet, cand, table), sentiment=s, relevance=relevance(t, n_sym),
-                               in_headline=t.in_headline, tagged=t.tagged, n_symbols=n_sym, time_of_day=time_of_day(at))
+        # exactly the inputs live analysis builds (same text, same event rules)
+        reading = readings_for(item, [(cand, t)], table)[0]
+        feats = build_features(item, cand, t, s, table, at, reading)
         samples.append(TrainingSample(feats=feats, up=int(r["adj_ret_pct"] > 0), at=at, adj_ret=r["adj_ret_pct"],
                                       group=r["news_id"], ret=r["ret_pct"], small=small))
     counts["used"] = len(samples)

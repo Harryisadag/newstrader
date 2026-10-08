@@ -260,7 +260,9 @@
           <b class="ticker" x-text="s.ticker"></b>
           <span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span>
           <span class="conf" :class="confClass(s.confidence)" x-text="s.confidence"></span>
-          <span class="reason" x-text="s.reasoning"></span>
+          <span class="reason"><span class="pill small info" x-show="s.event" x-text="s.event"></span>
+            <template x-for="f in flagList(s)"><span class="pill small warn" x-text="f"></span></template>
+            <span x-text="s.reasoning"></span></span>
           <span class="small muted" x-text="s.source_name + ' · ' + fmt.ago(s.created_at)"></span>
           <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)" x-text="s.direction === 'bullish' ? 'Approve & Buy' : 'Approve & Sell'"></button>
           <button class="btn ghost small" @click="dismiss(s)">Dismiss</button>
@@ -296,7 +298,9 @@
               <td class="small"><span x-text="s.source_name"></span>
                 <span class="pill small info" x-show="s.corroborations > 1" x-text="'+' + (s.corroborations - 1)" :title="(s.sources_seen || []).join(', ')"></span></td>
               <td class="reason-cell">
-                <div x-text="s.reasoning"></div>
+                <div><span class="pill small info" x-show="s.event" x-text="s.event"></span>
+                  <template x-for="f in flagList(s)"><span class="pill small warn" x-text="f"></span></template>
+                  <span x-text="s.reasoning"></span></div>
                 <div class="expand" x-show="expanded === s.id" @click.stop>
                   <div class="cases">
                     <div class="case bull"><b>Bull case</b><p x-text="s.bull_case"></p></div>
@@ -332,12 +336,19 @@
           <template x-for="t in testResult.signals" :key="t.ticker">
             <div class="test-signal">
               <div class="row gap"><b x-text="t.ticker"></b><span class="pill small" :class="dirClass(t.direction)" x-text="t.direction"></span>
-                <span class="conf" :class="confClass(t.confidence)" x-text="t.confidence"></span><span class="small muted" x-text="t.time_sensitivity"></span></div>
+                <span class="conf" :class="confClass(t.confidence)" x-text="t.confidence"></span><span class="small muted" x-text="t.time_sensitivity"></span>
+                <span class="pill small info" x-show="t.event" x-text="t.event"></span>
+                <template x-for="f in flagList(t)"><span class="pill small warn" x-text="f"></span></template></div>
               <div x-text="t.reasoning"></div>
               <div class="cases"><div class="case bull"><b>Bull case</b><p x-text="t.bull_case"></p></div><div class="case bear"><b>Bear case</b><p x-text="t.bear_case"></p></div></div>
             </div>
           </template>
-          <div x-show="testResult.status === 'ok' && !testResult.signals.length" class="muted" x-text="testResult.engine === 'local' ? 'The local engine found no clearly good or bad news about a named company in this text.' : 'Claude found nothing tradeable in this text.'"></div>
+          <template x-for="n in (testResult.neutral || [])" :key="'n' + n.ticker">
+            <div class="small"><b x-text="n.ticker"></b> <span class="pill small">neutral</span>
+              <span class="pill small info" x-show="n.event" x-text="n.event"></span>
+              <span class="muted" x-text="n.why"></span></div>
+          </template>
+          <div x-show="testResult.status === 'ok' && !testResult.signals.length && !(testResult.neutral || []).length" class="muted" x-text="testResult.engine === 'local' ? 'The local engine found no clearly good or bad news about a named company in this text.' : 'Claude found nothing tradeable in this text.'"></div>
           <div x-show="testResult.model" class="small muted" x-text="'Engine: ' + testResult.model"></div>
         </div>
       </template>

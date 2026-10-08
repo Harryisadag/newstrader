@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from ..ai.prefilter import Candidate
-from ..ai.tickers import TickerTable, tokenize
+from ..ai.tickers import TickerTable, short_name, tokenize
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[\"'“(\[]?[A-Z0-9$])|\n+")
 _TIMESTAMP = re.compile(r"^\[\d{1,2}:\d{2}(?::\d{2})?\]\s*")
@@ -16,9 +16,16 @@ CONTEXT_MARKER = "Earlier (context only"
 MAX_SNIPPET_CHARS = 700
 
 
+_ABBREV = re.compile(r"\b(U\.S|U\.K|E\.U|Corp|Inc|Co|Ltd|Plc|No|vs|St|Mr|Mrs|Ms|Dr|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|"
+                     r"Sept|Oct|Nov|Dec|approx|est|Ave|Jr|Sr|Bros)\.(?=\s)")
+
+
 def split_sentences(text: str) -> list[str]:
+    # "U.S. Steel shares jump." is one sentence, not "U.S." + "Steel shares jump."
+    text = _ABBREV.sub(lambda m: m.group(1).replace(".", "\u2024") + "\u2024", text or "")
     out = []
-    for part in _SENTENCE_SPLIT.split(text or ""):
+    for part in _SENTENCE_SPLIT.split(text):
+        part = part.replace("\u2024", ".")
         part = _TIMESTAMP.sub("", part.strip())
         part = _WS.sub(" ", part).strip()
         if len(part) >= 3:
@@ -50,6 +57,9 @@ def mention_for(cand: Candidate, table: TickerTable) -> Mention:
     info = table.get(cand.symbol)
     if info is not None and info.clean_name:
         add(info.clean_name)
+        short = short_name(tuple(tokenize(info.clean_name)))  # "Zoom", "Abbott": what headlines call them
+        if short is not None and table.by_name.get(short) == [cand.symbol]:
+            add(" ".join(short))
     if cand.why and cand.why != "tagged by source" and not cand.why.startswith("$") and ":" not in cand.why:
         add(cand.why)
     for phrase, sym in table.aliases.items():
@@ -60,7 +70,8 @@ def mention_for(cand: Candidate, table: TickerTable) -> Mention:
 
 def mentions(sentence: str, m: Mention) -> bool:
     sym = re.escape(m.symbol)
-    if re.search(rf"(?<![\w$])\$?{sym}(?![\w])", sentence):  # ticker as written (case-sensitive)
+    # ticker as written (case-sensitive); a one-letter ticker ("A", "F") only with a $ - "A spokesperson" isn't Agilent
+    if re.search(rf"(?<![\w$])\$?{sym}(?![\w])" if len(m.symbol) > 1 else rf"\${sym}(?![\w])", sentence):
         return True
     toks = tokenize(sentence)
     for term in m.terms:

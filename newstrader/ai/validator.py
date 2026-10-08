@@ -32,6 +32,8 @@ class ValidSignal:
     confidence: int
     time_sensitivity: str
     reasoning: str
+    event: str = ""  # the news event the local engine recognised (e.g. "Cut its forecast")
+    flags: list[str] = field(default_factory=list)  # e.g. ["unconfirmed"]
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -150,10 +152,14 @@ def validate_response(raw: str, tickers: TickerTable, max_signals: int = 3) -> V
         if ticker in accepted:
             res.problems.append(f"{label}: duplicate ticker in one response (kept the first)")
             continue
+        event = item.get("event")
+        flags = item.get("flags")
         accepted[ticker] = ValidSignal(ticker=ticker, company=texts["company"] or info.name,
                                        speaker=texts["speaker"], bull_case=texts["bull_case"],
                                        bear_case=texts["bear_case"], direction=direction, confidence=conf,
-                                       time_sensitivity=ts, reasoning=texts["reasoning"])
+                                       time_sensitivity=ts, reasoning=texts["reasoning"],
+                                       event=event.strip()[:80] if isinstance(event, str) else "",
+                                       flags=[str(f)[:20] for f in flags[:6]] if isinstance(flags, list) else [])
 
     signals = sorted(accepted.values(), key=lambda s: s.confidence, reverse=True)
     if len(signals) > max_signals:

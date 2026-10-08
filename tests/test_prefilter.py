@@ -59,10 +59,25 @@ def test_uppercase_tickers_but_not_common_words(tickers):
     assert syms(prefilter("ALL eyes on the jobs report", tickers)) == []
 
 
-def test_ambiguous_single_word_names_need_cashtag(tickers):
-    assert syms(prefilter("We need to target inflation", tickers)) == []
-    assert syms(prefilter("Target misses on earnings", tickers)) == []  # ambiguous word
+def test_everyday_word_names_need_company_context(tickers):
+    # "Target", "Ford", "Delta" are everyday words: only the company when the words around say so
+    for text in ("We need to target inflation", "Analysts raise their price target for gold",
+                 "Target price for Apple raised", "Ford the river at the shallow end", "Target date funds grow"):
+        assert "TGT" not in syms(prefilter(text, tickers)) and "F" not in syms(prefilter(text, tickers)), text
+    assert "TGT" in syms(prefilter("Target misses on earnings", tickers))
+    assert "TGT" in syms(prefilter("Target shares slide after weak holiday forecast", tickers))
+    assert "TGT" in syms(prefilter("Shares of Target fell", tickers))
+    assert "F" in syms(prefilter("Ford recalls 300,000 F-150 trucks", tickers))
     assert "TGT" in syms(prefilter("$TGT misses on earnings", tickers))
+
+
+def test_name_matching_details(tickers):
+    assert syms(prefilter("Ford Motor raises outlook - Reuters", tickers)) == ["F"]  # " - " used to break matching
+    assert syms(prefilter("the best apple pie recipe", tickers)) == []  # not capitalised, and "apple pie"
+    assert syms(prefilter("Amazon rainforest fires spread", tickers)) == []
+    assert syms(prefilter("Elon Musk's SpaceX launches Starship", tickers)) == []
+    assert syms(prefilter("Musk says Tesla robotaxi launch delayed", tickers)) == ["TSLA"]
+    assert syms(prefilter("tesla deliveries came in well below the street", tickers)) == ["TSLA"]  # lower-case speech
 
 
 def test_shouty_headlines_dont_match_every_word(tickers):

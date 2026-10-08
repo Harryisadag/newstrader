@@ -8,11 +8,12 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import unicodedata
 from dataclasses import dataclass
 from datetime import timedelta
 
 from ..db import Database, iso, parse_iso, utcnow
-from .keywords import ALIASES
+from .keywords import ALIASES, COMMON_WORDS, CONTEXT_NAMES
 
 log = logging.getLogger(__name__)
 
@@ -27,15 +28,35 @@ _SUFFIXES = [
     r"\binc\b\.?", r"incorporated", r"\bcorp\b\.?", r"corporation", r"\bco\b\.?", r"company",
     r"\bltd\b\.?", r"limited", r"\bplc\b", r"\bn\.?v\.?\b", r"\bs\.?a\.?\b", r"\bag\b", r"\bse\b",
     r"\blp\b", r"\bl\.?p\.?\b", r"\bllc\b", r"holdings?", r"\bgroup\b", r"\bthe\b",
+    r"\bcompanies\b", r"registered (?:ordinary )?shares?", r"\bsponsored\b", r"\bp\.l\.c\.?", r"\bs\.p\.a\.?",
+    r"\ba/s\b", r"\basa\b", r"\boyj\b", r"\bkgaa\b", r"\(publ\)", r"depositary receipts?", r"depository receipts?",
+    r"\bsa/nv\b", r"\bs\.?e\.?\b", r"\bk\.?k\.?\b",
+    r"\((?:[a-z]{2}|delaware|maryland|nevada|new|holding company)\)",  # "(DE)": state of incorporation
 ]
+# Words that describe what a company does; "Sarepta Therapeutics" is called "Sarepta" in headlines
+GENERIC_TAIL = {
+    "therapeutics", "pharmaceuticals", "pharmaceutical", "pharma", "biosciences", "bioscience", "biotherapeutics",
+    "biopharma", "biopharmaceuticals", "biologics", "biotech", "biotechnology", "medical", "technologies",
+    "technology", "tech", "interactive", "financial", "holdings", "holding", "systems", "solutions", "software",
+    "networks", "brands", "worldwide", "enterprises", "industries", "entertainment", "communications",
+    "semiconductor", "semiconductors", "motors", "motor", "airlines", "athletica", "labs", "laboratories",
+    "platforms", "health", "healthcare", "wellness", "oncology", "genomics", "sciences", "robotics", "devices",
+    "electronics", "micro", "incorporated", "international", "global", "energy", "resources", "cruises",
+}
 _SUFFIX_RE = re.compile("|".join(_SUFFIXES), re.IGNORECASE)
 _PUNCT_RE = re.compile(r"[^a-z0-9&'\- ]+")
 _SPACES = re.compile(r"\s+")
 
 
+def fold(text: str) -> str:
+    """Accents off ('Nestlé' -> 'Nestle'), curly apostrophes straightened."""
+    text = (text or "").replace("’", "'").replace("‘", "'")
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+
 def clean_company_name(name: str) -> str:
     """'Apple Inc. Common Stock' -> 'apple'; 'Alphabet Inc. Class C Capital Stock' -> 'alphabet'."""
-    s = (name or "").lower()
+    s = fold(name).lower()
     s = s.replace(",", " ").replace("/", " ")
     for _ in range(2):
         s = _SUFFIX_RE.sub(" ", s)
@@ -45,16 +66,42 @@ def clean_company_name(name: str) -> str:
 
 
 def tokenize(text: str) -> list[str]:
-    """Lower-case words; possessives dropped ("Apple's" -> "apple")."""
-    s = _PUNCT_RE.sub(" ", text.lower().replace("’", "'"))
+    """Lower-case words; possessives dropped ("Apple's" -> "apple"), accents removed."""
+    return [n for n, _o in token_pairs(text)]
+
+
+_TOKEN = re.compile(r"[A-Za-z0-9&'\-]+")
+_NUM_DASH = re.compile(r"(?<=\b\d)-(?=[A-Za-z])")
+
+
+def token_pairs(text: str) -> list[tuple[str, str]]:
+    """(lower-case token, the word as written) - the same tokens as tokenize(), lined up with the original text."""
     out = []
-    for t in s.split():
+    # "UPDATE 1-Robinhood ..." (wire-service prefix): the number isn't part of the name
+    for m in _TOKEN.finditer(_NUM_DASH.sub(" ", fold(text))):
+        orig = m.group(0)
+        t = orig.lower()
         if t.endswith("'s"):
             t = t[:-2]
         t = t.strip("-'")
         if t:
-            out.append(t)
+            out.append((t, orig))
     return out
+
+
+def short_name(key: tuple[str, ...]) -> tuple[str, ...] | None:
+    """('sarepta', 'therapeutics') -> ('sarepta',): the name headlines actually use. None if it would be generic."""
+    short = list(key)
+    while len(short) > 1 and short[-1] in GENERIC_TAIL:
+        short.pop()
+    if len(short) == len(key) or not short:
+        return None
+    if len(short) == 1:
+        w = short[0]
+        # everyday words like "ford" stay: the pre-filter only counts them next to company words ("Ford recalls")
+        if len(w) < 4 or w in COMMON_WORDS or w in GENERIC_TAIL or w.isdigit():
+            return None
+    return tuple(short)
 
 
 @dataclass
@@ -130,17 +177,29 @@ class TickerTable:
     def _build(self, rows: list[dict]) -> None:
         by_symbol: dict[str, TickerInfo] = {}
         by_name: dict[tuple[str, ...], list[str]] = {}
+        shorts: dict[tuple[str, ...], list[str]] = {}
         for r in rows:
             info = TickerInfo(r["symbol"], r["name"] or "", r["clean_name"] or "", r["exchange"] or "",
                               bool(r["tradable"]), bool(r["shortable"]), bool(r["easy_to_borrow"]))
             by_symbol[info.symbol] = info
             name_l = info.name.lower()
             # Fund names are long and generic ("SPDR S&P 500 ETF Trust"); match funds by ticker only.
-            if not info.clean_name or " etf" in f" {name_l}" or " fund" in f" {name_l}" or "trust" in name_l.split():
+            if not info.clean_name or any(w in f" {name_l} " for w in (" etf", " fund ", " fund,", " ishares",
+                                                                         " spdr", " index ", "trust units")):
                 continue
             key = tuple(tokenize(info.clean_name))
             if 1 <= len(key) <= 6:
                 by_name.setdefault(key, []).append(info.symbol)
+                short = short_name(key)
+                if short is not None:
+                    shorts.setdefault(short, []).append(info.symbol)
+        for key, syms in shorts.items():  # a full name always wins; a short name shared by two companies is unused
+            if key not in by_name and len(syms) == 1:
+                by_name[key] = syms
+        for phrase, sym in CONTEXT_NAMES.items():
+            key = tuple(tokenize(phrase))
+            if (not by_symbol or sym in by_symbol) and key not in by_name:
+                by_name[key] = [sym]
         aliases = {}
         for phrase, sym in ALIASES.items():
             if not by_symbol or sym in by_symbol:

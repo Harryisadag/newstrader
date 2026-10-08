@@ -1,0 +1,3234 @@
+[
+ {
+  "symbol": "AAPL",
+  "name": "Apple Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MSFT",
+  "name": "Microsoft Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AMZN",
+  "name": "Amazon.com, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GOOGL",
+  "name": "Alphabet Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GOOG",
+  "name": "Alphabet Inc. Class C Capital Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "META",
+  "name": "Meta Platforms, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NVDA",
+  "name": "NVIDIA Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TSLA",
+  "name": "Tesla, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AVGO",
+  "name": "Broadcom Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ORCL",
+  "name": "Oracle Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRM",
+  "name": "Salesforce, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ADBE",
+  "name": "Adobe Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NOW",
+  "name": "ServiceNow, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "INTC",
+  "name": "Intel Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AMD",
+  "name": "Advanced Micro Devices, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "QCOM",
+  "name": "QUALCOMM Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TXN",
+  "name": "Texas Instruments Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MU",
+  "name": "Micron Technology, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AMAT",
+  "name": "Applied Materials, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LRCX",
+  "name": "Lam Research Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KLAC",
+  "name": "KLA Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MRVL",
+  "name": "Marvell Technology, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ON",
+  "name": "ON Semiconductor Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ADI",
+  "name": "Analog Devices, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LSCC",
+  "name": "Lattice Semiconductor Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SMCI",
+  "name": "Super Micro Computer, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ARM",
+  "name": "Arm Holdings plc American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TSM",
+  "name": "Taiwan Semiconductor Manufacturing Company Ltd.",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ASML",
+  "name": "ASML Holding N.V. New York Registry Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CSCO",
+  "name": "Cisco Systems, Inc. Common Stock (DE)",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IBM",
+  "name": "International Business Machines Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DELL",
+  "name": "Dell Technologies Inc. Class C Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HPQ",
+  "name": "HP Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ANET",
+  "name": "Arista Networks, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NTNX",
+  "name": "Nutanix, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRWV",
+  "name": "CoreWeave, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PLTR",
+  "name": "Palantir Technologies Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SNOW",
+  "name": "Snowflake Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DDOG",
+  "name": "Datadog, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRWD",
+  "name": "CrowdStrike Holdings, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PANW",
+  "name": "Palo Alto Networks, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "S",
+  "name": "SentinelOne, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "OKTA",
+  "name": "Okta, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NET",
+  "name": "Cloudflare, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WDAY",
+  "name": "Workday, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TEAM",
+  "name": "Atlassian Corporation Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ZM",
+  "name": "Zoom Communications, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BOX",
+  "name": "Box, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PATH",
+  "name": "UiPath, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AI",
+  "name": "C3.ai, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IT",
+  "name": "Gartner, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SHOP",
+  "name": "Shopify Inc. Class A Subordinate Voting Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "U",
+  "name": "Unity Software Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "APP",
+  "name": "AppLovin Corporation Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TTD",
+  "name": "The Trade Desk, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RDDT",
+  "name": "Reddit, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DUOL",
+  "name": "Duolingo, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IONQ",
+  "name": "IonQ, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "RGTI",
+  "name": "Rigetti Computing, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "SOUN",
+  "name": "SoundHound AI, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "NFLX",
+  "name": "Netflix, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DIS",
+  "name": "Walt Disney Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ROKU",
+  "name": "Roku, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SPOT",
+  "name": "Spotify Technology S.A. Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WBD",
+  "name": "Warner Bros. Discovery, Inc. Series A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PSKY",
+  "name": "Paramount Skydance Corporation Class B Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CMCSA",
+  "name": "Comcast Corporation Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NWSA",
+  "name": "News Corporation Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FOXA",
+  "name": "Fox Corporation Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LYV",
+  "name": "Live Nation Entertainment, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SNAP",
+  "name": "Snap Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PINS",
+  "name": "Pinterest, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "T",
+  "name": "AT&T Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "VZ",
+  "name": "Verizon Communications Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TMUS",
+  "name": "T-Mobile US, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NOK",
+  "name": "Nokia Corporation Sponsored American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ERIC",
+  "name": "Telefonaktiebolaget LM Ericsson American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UBER",
+  "name": "Uber Technologies, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LYFT",
+  "name": "Lyft, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ABNB",
+  "name": "Airbnb, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DASH",
+  "name": "DoorDash, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BKNG",
+  "name": "Booking Holdings Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EXPE",
+  "name": "Expedia Group, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EBAY",
+  "name": "eBay Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ETSY",
+  "name": "Etsy, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CHWY",
+  "name": "Chewy, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "W",
+  "name": "Wayfair Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CVNA",
+  "name": "Carvana Co. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KMX",
+  "name": "CarMax Inc",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CAR",
+  "name": "Avis Budget Group, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CARS",
+  "name": "Cars.com Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HTZ",
+  "name": "Hertz Global Holdings, Inc Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "F",
+  "name": "Ford Motor Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GM",
+  "name": "General Motors Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "STLA",
+  "name": "Stellantis N.V. Common Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RIVN",
+  "name": "Rivian Automotive, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LCID",
+  "name": "Lucid Group, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NIO",
+  "name": "NIO Inc. American depositary shares, each representing one Class A ordinary share",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "XPEV",
+  "name": "XPeng Inc. American depositary shares, each representing two Class A ordinary shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LI",
+  "name": "Li Auto Inc. American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TM",
+  "name": "Toyota Motor Corporation American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HMC",
+  "name": "Honda Motor Company, Ltd. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RACE",
+  "name": "Ferrari N.V. Common Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JOBY",
+  "name": "Joby Aviation, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ACHR",
+  "name": "Archer Aviation Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RKLB",
+  "name": "Rocket Lab Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BA",
+  "name": "Boeing Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LMT",
+  "name": "Lockheed Martin Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RTX",
+  "name": "RTX Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NOC",
+  "name": "Northrop Grumman Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GD",
+  "name": "General Dynamics Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LHX",
+  "name": "L3Harris Technologies, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KTOS",
+  "name": "Kratos Defense & Security Solutions, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AVAV",
+  "name": "AeroVironment, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LDOS",
+  "name": "Leidos Holdings, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AXON",
+  "name": "Axon Enterprise, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GE",
+  "name": "GE Aerospace Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GEV",
+  "name": "GE Vernova Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HON",
+  "name": "Honeywell International Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MMM",
+  "name": "3M Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CAT",
+  "name": "Caterpillar, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DE",
+  "name": "Deere & Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ETN",
+  "name": "Eaton Corporation, PLC Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EMR",
+  "name": "Emerson Electric Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FLR",
+  "name": "Fluor Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EME",
+  "name": "EMCOR Group, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FIX",
+  "name": "Comfort Systems USA, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRH",
+  "name": "CRH PLC Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FAST",
+  "name": "Fastenal Company Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "J",
+  "name": "Jacobs Solutions Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "R",
+  "name": "Ryder System, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UNP",
+  "name": "Union Pacific Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NSC",
+  "name": "Norfolk Southern Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CSX",
+  "name": "CSX Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FDX",
+  "name": "FedEx Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UPS",
+  "name": "United Parcel Service, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DAL",
+  "name": "Delta Air Lines, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UAL",
+  "name": "United Airlines Holdings, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AAL",
+  "name": "American Airlines Group, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LUV",
+  "name": "Southwest Airlines Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ALK",
+  "name": "Alaska Air Group, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JBLU",
+  "name": "JetBlue Airways Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "CCL",
+  "name": "Carnival Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RCL",
+  "name": "Royal Caribbean Cruises Ltd. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NCLH",
+  "name": "Norwegian Cruise Line Holdings Ltd. Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HLT",
+  "name": "Hilton Worldwide Holdings Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HGV",
+  "name": "Hilton Grand Vacations Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MAR",
+  "name": "Marriott International Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "H",
+  "name": "Hyatt Hotels Corporation Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WMT",
+  "name": "Walmart Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TGT",
+  "name": "Target Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "COST",
+  "name": "Costco Wholesale Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HD",
+  "name": "Home Depot, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LOW",
+  "name": "Lowe's Companies, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BBY",
+  "name": "Best Buy Co., Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GAP",
+  "name": "Gap, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "M",
+  "name": "Macy's Inc Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KSS",
+  "name": "Kohl's Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "DG",
+  "name": "Dollar General Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DLTR",
+  "name": "Dollar Tree, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TJX",
+  "name": "TJX Companies, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ROST",
+  "name": "Ross Stores, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ULTA",
+  "name": "Ulta Beauty, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ANF",
+  "name": "Abercrombie & Fitch Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FIVE",
+  "name": "Five Below, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FND",
+  "name": "Floor & Decor Holdings, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AZO",
+  "name": "AutoZone, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AAP",
+  "name": "Advance Auto Parts Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WOOF",
+  "name": "Petco Health and Wellness Company, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "GO",
+  "name": "Grocery Outlet Holding Corp. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GME",
+  "name": "GameStop Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "AMC",
+  "name": "AMC Entertainment Holdings, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "NKE",
+  "name": "Nike, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LULU",
+  "name": "lululemon athletica inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DECK",
+  "name": "Deckers Outdoor Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TPR",
+  "name": "Tapestry, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CPRI",
+  "name": "Capri Holdings Limited Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PTON",
+  "name": "Peloton Interactive, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HAS",
+  "name": "Hasbro, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PII",
+  "name": "Polaris Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WHR",
+  "name": "Whirlpool Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LOVE",
+  "name": "The Lovesac Company Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "LEN",
+  "name": "Lennar Corporation Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PLAY",
+  "name": "Dave & Buster's Entertainment, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FUN",
+  "name": "Six Flags Entertainment Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SBUX",
+  "name": "Starbucks Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CMG",
+  "name": "Chipotle Mexican Grill, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MCD",
+  "name": "McDonald's Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WING",
+  "name": "Wingstop Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "YUM",
+  "name": "Yum! Brands, Inc.",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DPZ",
+  "name": "Domino's Pizza Inc Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CAVA",
+  "name": "CAVA Group, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EAT",
+  "name": "Brinker International, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CAKE",
+  "name": "The Cheesecake Factory Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KO",
+  "name": "Coca-Cola Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PEP",
+  "name": "PepsiCo, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CELH",
+  "name": "Celsius Holdings, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MNST",
+  "name": "Monster Beverage Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KHC",
+  "name": "The Kraft Heinz Company Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MDLZ",
+  "name": "Mondelez International, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HSY",
+  "name": "The Hershey Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GIS",
+  "name": "General Mills, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TSN",
+  "name": "Tyson Foods, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BYND",
+  "name": "Beyond Meat, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "KR",
+  "name": "Kroger Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ACI",
+  "name": "Albertsons Companies, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PG",
+  "name": "Procter & Gamble Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CL",
+  "name": "Colgate-Palmolive Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KMB",
+  "name": "Kimberly-Clark Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CLX",
+  "name": "Clorox Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EL",
+  "name": "Estee Lauder Companies, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ELF",
+  "name": "e.l.f. Beauty, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PM",
+  "name": "Philip Morris International Inc Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MO",
+  "name": "Altria Group, Inc.",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "STZ",
+  "name": "Constellation Brands, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TAP",
+  "name": "Molson Coors Beverage Company Class B Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UL",
+  "name": "Unilever PLC American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DEO",
+  "name": "Diageo plc Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BTI",
+  "name": "British American Tobacco Industries, p.l.c. Common Stock ADR",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JPM",
+  "name": "JPMorgan Chase & Co. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BAC",
+  "name": "Bank of America Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "C",
+  "name": "Citigroup, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WFC",
+  "name": "Wells Fargo & Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GS",
+  "name": "Goldman Sachs Group, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MS",
+  "name": "Morgan Stanley Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "USB",
+  "name": "U.S. Bancorp Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PNC",
+  "name": "PNC Financial Services Group, Inc. (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TFC",
+  "name": "Truist Financial Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "KEY",
+  "name": "KeyCorp Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SCHW",
+  "name": "Charles Schwab Corporation (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "COF",
+  "name": "Capital One Financial Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SYF",
+  "name": "Synchrony Financial Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AXP",
+  "name": "American Express Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "V",
+  "name": "Visa Inc.",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MA",
+  "name": "Mastercard Incorporated Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PYPL",
+  "name": "PayPal Holdings, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "XYZ",
+  "name": "Block, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MQ",
+  "name": "Marqeta, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AFRM",
+  "name": "Affirm Holdings, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SOFI",
+  "name": "SoFi Technologies, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HOOD",
+  "name": "Robinhood Markets, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "COIN",
+  "name": "Coinbase Global, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRCL",
+  "name": "Circle Internet Group, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MSTR",
+  "name": "Strategy Inc Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MARA",
+  "name": "MARA Holdings, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RIOT",
+  "name": "Riot Platforms, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BX",
+  "name": "Blackstone Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BRK.B",
+  "name": "Berkshire Hathaway Inc. New Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "L",
+  "name": "Loews Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MAIN",
+  "name": "Main Street Capital Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AMP",
+  "name": "Ameriprise Financial, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JEF",
+  "name": "Jefferies Financial Group Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RJF",
+  "name": "Raymond James Financial, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SF",
+  "name": "Stifel Financial Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PIPR",
+  "name": "Piper Sandler Companies Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EVR",
+  "name": "Evercore Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LAZ",
+  "name": "Lazard, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "UBS",
+  "name": "UBS Group AG Registered Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DB",
+  "name": "Deutsche Bank AG Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BCS",
+  "name": "Barclays PLC Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HSBC",
+  "name": "HSBC Holdings plc",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SAN",
+  "name": "Banco Santander, S.A. Sponsored ADR (Spain)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BBVA",
+  "name": "Banco Bilbao Vizcaya Argentaria S.A. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ING",
+  "name": "ING Group, N.V. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MUFG",
+  "name": "Mitsubishi UFJ Financial Group, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SMFG",
+  "name": "Sumitomo Mitsui Financial Group Inc Unsponsored American Depositary Shares (Japan)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MFG",
+  "name": "Mizuho Financial Group, Inc. Sponsored ADR (Japan)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NMR",
+  "name": "Nomura Holdings Inc ADR American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RY",
+  "name": "Royal Bank Of Canada Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TD",
+  "name": "Toronto Dominion Bank (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BMO",
+  "name": "Bank Of Montreal Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HDB",
+  "name": "HDFC Bank Limited Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IBN",
+  "name": "ICICI Bank Limited Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NU",
+  "name": "Nu Holdings Ltd. Class A Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ALL",
+  "name": "Allstate Corporation (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PGR",
+  "name": "Progressive Corporation (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TRV",
+  "name": "The Travelers Companies, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AIG",
+  "name": "American International Group, Inc. New Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MET",
+  "name": "MetLife, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ERIE",
+  "name": "Erie Indemnity Company Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ROOT",
+  "name": "Root, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "UNH",
+  "name": "UnitedHealth Group Incorporated Common Stock (DE)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HUM",
+  "name": "Humana Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CVS",
+  "name": "CVS Health Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CI",
+  "name": "The Cigna Group Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ELV",
+  "name": "Elevance Health, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CNC",
+  "name": "Centene Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HIMS",
+  "name": "Hims & Hers Health, Inc. Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "LLY",
+  "name": "Eli Lilly and Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PFE",
+  "name": "Pfizer, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MRK",
+  "name": "Merck & Company, Inc. Common Stock (new)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ABBV",
+  "name": "AbbVie Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BMY",
+  "name": "Bristol-Myers Squibb Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JNJ",
+  "name": "Johnson & Johnson Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AMGN",
+  "name": "Amgen Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GILD",
+  "name": "Gilead Sciences, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "REGN",
+  "name": "Regeneron Pharmaceuticals, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "VRTX",
+  "name": "Vertex Pharmaceuticals Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BIIB",
+  "name": "Biogen Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MRNA",
+  "name": "Moderna, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BNTX",
+  "name": "BioNTech SE American Depositary Share",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NVAX",
+  "name": "Novavax, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "VKTX",
+  "name": "Viking Therapeutics, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IONS",
+  "name": "Ionis Pharmaceuticals, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BEAM",
+  "name": "Beam Therapeutics Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NTLA",
+  "name": "Intellia Therapeutics, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CRSP",
+  "name": "CRISPR Therapeutics AG Common Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ALNY",
+  "name": "Alnylam Pharmaceuticals, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NBIX",
+  "name": "Neurocrine Biosciences, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BMRN",
+  "name": "BioMarin Pharmaceutical Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "INSM",
+  "name": "Insmed Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SMMT",
+  "name": "Summit Therapeutics Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SRPT",
+  "name": "Sarepta Therapeutics, Inc. Common Stock (DE)",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MDGL",
+  "name": "Madrigal Pharmaceuticals, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CYTK",
+  "name": "Cytokinetics, Incorporated Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AXSM",
+  "name": "Axsome Therapeutics, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EXEL",
+  "name": "Exelixis, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TECH",
+  "name": "Bio-Techne Corp Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TMO",
+  "name": "Thermo Fisher Scientific Inc Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "A",
+  "name": "Agilent Technologies, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WAT",
+  "name": "Waters Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ABT",
+  "name": "Abbott Laboratories Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MDT",
+  "name": "Medtronic plc. Ordinary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BSX",
+  "name": "Boston Scientific Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SYK",
+  "name": "Stryker Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ISRG",
+  "name": "Intuitive Surgical, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DXCM",
+  "name": "DexCom, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "INSP",
+  "name": "Inspire Medical Systems, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GEHC",
+  "name": "GE HealthCare Technologies Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NVO",
+  "name": "Novo Nordisk A/S",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NVS",
+  "name": "Novartis AG Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "AZN",
+  "name": "AstraZeneca PLC American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "GSK",
+  "name": "GSK plc American Depositary Shares (Each representing two Ordinary Shares)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SNY",
+  "name": "Sanofi ADS",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TAK",
+  "name": "Takeda Pharmaceutical Company Limited American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PHG",
+  "name": "Koninklijke Philips N.V. NY Registry Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "XOM",
+  "name": "Exxon Mobil Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CVX",
+  "name": "Chevron Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "COP",
+  "name": "ConocoPhillips Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "OXY",
+  "name": "Occidental Petroleum Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FANG",
+  "name": "Diamondback Energy, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EOG",
+  "name": "EOG Resources, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DVN",
+  "name": "Devon Energy Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PR",
+  "name": "Permian Resources Corporation Class A Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "OVV",
+  "name": "Ovintiv Inc. (DE) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SLB",
+  "name": "SLB N.V. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HAL",
+  "name": "Halliburton Company Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NFE",
+  "name": "New Fortress Energy Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "SHEL",
+  "name": "Shell plc ADS",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BP",
+  "name": "BP p.l.c. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "TTE",
+  "name": "TotalEnergies SE Sponsored ADR",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EQNR",
+  "name": "Equinor ASA",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PBR",
+  "name": "Petroleo Brasileiro S.A.- Petrobras Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NEE",
+  "name": "NextEra Energy, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DUK",
+  "name": "Duke Energy Corporation (Holding Company) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SO",
+  "name": "Southern Company (The) Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "D",
+  "name": "Dominion Energy, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ED",
+  "name": "Consolidated Edison, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "HE",
+  "name": "Hawaiian Electric Industries, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "CEG",
+  "name": "Constellation Energy Corporation Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "VST",
+  "name": "Vistra Corp. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PLUG",
+  "name": "Plug Power, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "RUN",
+  "name": "Sunrun Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FSLR",
+  "name": "First Solar, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ENPH",
+  "name": "Enphase Energy, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DOW",
+  "name": "Dow Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "NUE",
+  "name": "Nucor Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "RIO",
+  "name": "Rio Tinto Plc Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BHP",
+  "name": "BHP Group Limited American Depositary Shares (Each representing two Ordinary Shares)",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "VALE",
+  "name": "VALE S.A. American Depositary Shares Each Representing one common share",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "O",
+  "name": "Realty Income Corporation Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MPW",
+  "name": "Medical Properties Trust, Inc. common stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "WELL",
+  "name": "Welltower Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "ARE",
+  "name": "Alexandria Real Estate Equities, Inc. Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "OPEN",
+  "name": "Opendoor Technologies Inc Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "Z",
+  "name": "Zillow Group, Inc. Class C Capital Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SONY",
+  "name": "Sony Group Corporation American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SAP",
+  "name": "SAP SE ADS",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BABA",
+  "name": "Alibaba Group Holding Limited American Depositary Shares each representing eight Ordinary share",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "JD",
+  "name": "JD.com, Inc. American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "BIDU",
+  "name": "Baidu, Inc. ADS",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "PDD",
+  "name": "PDD Holdings Inc. American Depositary Shares",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "INFY",
+  "name": "Infosys Limited American Depositary Shares",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "WIT",
+  "name": "Wipro Limited Common Stock",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "SE",
+  "name": "Sea Limited American Depositary Shares, each representing one Class A Ordinary Share",
+  "exchange": "NYSE",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MELI",
+  "name": "MercadoLibre, Inc. Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "LAZR",
+  "name": "Luminar Technologies, Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": false,
+  "shortable": false,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "GOEV",
+  "name": "Canoo Inc. Class A Common Stock",
+  "exchange": "NASDAQ",
+  "tradable": false,
+  "shortable": false,
+  "easy_to_borrow": false
+ },
+ {
+  "symbol": "SPY",
+  "name": "SPDR S&P 500 ETF Trust",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "QQQ",
+  "name": "Invesco QQQ Trust, Series 1",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "IWM",
+  "name": "iShares Russell 2000 ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "DIA",
+  "name": "SPDR Dow Jones Industrial Average ETF Trust",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWJ",
+  "name": "iShares MSCI Japan ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "FXI",
+  "name": "iShares China Large-Cap ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "MCHI",
+  "name": "iShares MSCI China ETF",
+  "exchange": "NASDAQ",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWG",
+  "name": "iShares MSCI Germany ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWU",
+  "name": "iShares MSCI United Kingdom ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "INDA",
+  "name": "iShares MSCI India ETF",
+  "exchange": "BATS",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWZ",
+  "name": "iShares MSCI Brazil ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWY",
+  "name": "iShares MSCI South Korea ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWT",
+  "name": "iShares MSCI Taiwan ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EZU",
+  "name": "iShares MSCI Eurozone ETF",
+  "exchange": "BATS",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWC",
+  "name": "iShares MSCI Canada ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ },
+ {
+  "symbol": "EWA",
+  "name": "iShares MSCI Australia ETF",
+  "exchange": "ARCA",
+  "tradable": true,
+  "shortable": true,
+  "easy_to_borrow": true
+ }
+]

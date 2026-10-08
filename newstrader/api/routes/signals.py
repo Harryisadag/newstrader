@@ -151,7 +151,7 @@ async def test_ai(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
     item = NewsItem(source_id="manual-test", source_type="manual", source_name="Manual test",
                     external_id=stable_id(text, datetime.now(UTC).isoformat()), title=text[:300],
                     body=text if len(text) > 300 else "", published_at=datetime.now(UTC))
-    pre = prefilter(item.text, p.tickers, [], claude)
+    pre = prefilter(item.text, p.tickers, [], claude, country_etfs=ctx.config.settings.ml.country_etfs)
     result = await p.analyze_item(item, pre, dry_run=True)
     return {"prefilter": pre.as_dict(), **result}
 

@@ -200,7 +200,8 @@ class Pipeline:
         ai = self.ctx.config.settings.ai
         claude = ai.engine == "claude"
         keyword_only = ai.analyze_keyword_only and claude  # the local engine needs a named company
-        pre = await asyncio.to_thread(prefilter, item.text, self.tickers, item.symbols, keyword_only)
+        pre = await asyncio.to_thread(prefilter, item.text, self.tickers, item.symbols, keyword_only, 10,
+                                      self.ctx.config.settings.ml.country_etfs)
         status = "queued"
         dup_of = None
         reason = ""
@@ -355,6 +356,7 @@ class Pipeline:
             "reasoning": sig.reasoning, "bull_case": sig.bull_case, "bear_case": sig.bear_case,
             "time_sensitivity": sig.time_sensitivity, "headline": item.title[:500], "url": item.url,
             "sources_seen": json.dumps([item.source_name]), "engine": engine,
+            "event": getattr(sig, "event", "") or None, "flags": json.dumps(sig.flags) if getattr(sig, "flags", None) else None,
         }
         if dry_run:
             return {**row, "action": "test", "action_reason": "Test only - not traded", "traded": 0}

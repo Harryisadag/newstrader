@@ -69,7 +69,20 @@ document.addEventListener("alpine:init", () => {
 
     async runTest() {
       this.testing = true; this.testResult = null;
-      try { this.testResult = await NT.api.post("/ai/test", { text: this.testText }); this.loadStats(); }
+      try {
+        const r = await NT.api.post("/ai/test", { text: this.testText });
+        // the local engine explains every company it looked at, including the ones it called neutral
+        r.neutral = [];
+        if (r.engine === "local" && r.raw) {
+          try {
+            const shown = new Set((r.signals || []).map(s => s.ticker));
+            r.neutral = (JSON.parse(r.raw).details || []).filter(d => !shown.has(d.ticker))
+              .map(d => ({ ticker: d.ticker, event: d.event, why: d.neutral_because || "no clear good or bad news" }));
+          } catch (e) { /* not JSON */ }
+        }
+        this.testResult = r;
+        this.loadStats();
+      }
       catch (e) { Alpine.store("nt").error(e, "AI test failed"); }
       finally { this.testing = false; }
     },
@@ -81,6 +94,14 @@ document.addEventListener("alpine:init", () => {
       if (s.traded) return { bought: "BOUGHT", sold: "SOLD", shorted: "SHORTED" }[s.action] || "TRADED";
       if (s.action === "review") return s.review_status === "dismissed" ? "dismissed" : "review";
       return s.action;
+    },
+    // short labels for the reading flags the local engine attaches to a signal
+    flagList(s) {
+      let flags = s.flags || [];
+      if (typeof flags === "string") { try { flags = JSON.parse(flags); } catch (e) { flags = []; } }
+      const names = { unconfirmed: "not confirmed", denial: "denied", moved: "stock already moving",
+                      country: "country fund", person_only: "person only" };
+      return flags.filter(f => names[f]).map(f => names[f]);
     },
     dirClass(d) { return d === "bullish" ? "good" : d === "bearish" ? "bad" : ""; },
     confClass(c) { return c >= 80 ? "hi" : c >= 60 ? "mid" : "lo"; },

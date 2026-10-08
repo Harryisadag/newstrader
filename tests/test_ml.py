@@ -175,7 +175,8 @@ async def test_local_engine_is_the_default_and_trades_good_news(local_env):
     out = await run(pipeline, news("Nvidia wins $10 billion government AI contract"))
     assert out["status"] == "ok" and out["engine"] == "local"
     s = out["signals"][0]
-    assert s["ticker"] == "NVDA" and s["direction"] == "bullish" and s["confidence"] == 95
+    # contract win (0.72, +0.08 for $1bn+) + FinBERT agrees (+0.2 x 0.45) -> 89
+    assert s["ticker"] == "NVDA" and s["direction"] == "bullish" and s["confidence"] == 89
     assert s["traded"] == 1 and broker.calls[-1][:3] == ("submit_bracket", "NVDA", "buy")
     a = ctx.db.query_one("SELECT * FROM analyses")
     assert a["engine"] == "local" and a["cost_usd"] == 0 and a["model"].startswith("local: FinBERT")
@@ -206,8 +207,9 @@ async def test_body_mentions_get_lower_confidence(local_env):
     ctx, pipeline, fake, _ = local_env
     out = await run(pipeline, news("Chipmakers in focus", "Nvidia wins a major cloud contract, sources said."))
     s = out["signals"][0]
-    assert s["ticker"] == "NVDA" and s["confidence"] == round(95 * 0.85)
-    assert "not the headline" in s["reasoning"]
+    # contract win, unconfirmed ("sources said": x0.85), named only in the body (x0.85)
+    assert s["ticker"] == "NVDA" and s["confidence"] == round((0.72 * 0.85 + 0.2 * 0.45) * 0.85 * 100)
+    assert "not the headline" in s["reasoning"] and "Not confirmed yet" in s["reasoning"]
 
 
 async def test_test_the_ai_endpoint_uses_local_engine(local_env, client):
@@ -561,7 +563,7 @@ async def test_failed_price_model_sends_sentiment_signals_to_review(local_env, t
     assert s["confidence"] == 79 and s["action"] == "review" and "Sent for review" in s["reasoning"]
     ctx.config.update({"ml": {"sentiment_only_trading": "always"}})
     out = await run(pipeline, news("Tesla beats delivery estimates as demand surges in China"))
-    assert out["signals"][0]["confidence"] == 95
+    assert out["signals"][0]["confidence"] == 87  # earnings beat 0.78 + FinBERT agrees 0.09
 
 
 async def test_transcripts_use_sentiment_only(local_env, tmp_path):
