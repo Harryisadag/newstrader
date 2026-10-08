@@ -19,9 +19,9 @@ import httpx
 
 LLAMA_REPO = "ggml-org/llama.cpp"
 # the server builds the app can use: Windows NVIDIA (CUDA 13 / 12), Windows any GPU (Vulkan), CPU, Apple Silicon
-ASSET_PATTERNS = [r"bin-win-cuda-1[23]\.\d+-x64\.zip$", r"^cudart-.*win-cuda-1[23]\.\d+-x64\.zip$",
-                  r"bin-win-vulkan-x64\.zip$", r"bin-win-cpu-x64\.zip$", r"bin-macos-arm64\.zip$",
-                  r"bin-ubuntu-x64\.zip$", r"bin-ubuntu-vulkan-x64\.zip$"]
+ASSET_PATTERNS = [r"bin-win-cuda-1[23]\.\d+-x64\.(zip|tar\.gz)$", r"^cudart-.*win-cuda-1[23]\.\d+-x64\.zip$",
+                  r"bin-win-vulkan-x64\.(zip|tar\.gz)$", r"bin-win-cpu-x64\.(zip|tar\.gz)$",
+                  r"bin-macos-(arm64|x64)\.(zip|tar\.gz)$", r"bin-ubuntu-(x64|vulkan-x64)\.(zip|tar\.gz)$"]
 # model searches on Hugging Face (GGUF builds); the report lists the most downloaded repos and their files
 MODEL_SEARCHES = ["Qwen3.5-4B", "Qwen3.5-9B", "gemma-4-12b", "gemma-4-E4B", "gemma-4-26B-A4B", "Qwen3.6-35B-A3B",
                   "Qwen3.8-27B", "Qwen3.6-27B", "gpt-oss-20b", "Qwen3.5-0.8B", "Qwen3-Embedding-0.6B"]
@@ -39,7 +39,9 @@ def github_releases(client: httpx.Client) -> list[dict]:
 
 def release_report(releases: list[dict]) -> tuple[list[str], list[dict]]:
     lines, out = ["## llama.cpp server builds", ""], []
-    for rel in releases[:6]:
+    if releases:
+        lines += ["All assets of the newest build: " + ", ".join(a["name"] for a in releases[0].get("assets", [])), ""]
+    for rel in releases[:3]:
         lines.append(f"### {rel['tag_name']} ({'pre-release' if rel.get('prerelease') else 'release'}, "
                      f"{rel.get('published_at')})")
         lines += ["", "| Asset | Size | SHA-256 | URL |", "|---|---|---|---|"]
