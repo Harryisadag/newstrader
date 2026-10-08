@@ -113,7 +113,7 @@ RULES: list[tuple] = [
      r"\b(?:deal|merger|talks|takeover|acquisition|bid) (?:(?!(?:that|which|would|will|to|could)\b)[\w&'.-]+ ){0,7}?"
      r"(?:collapses?|collapsed|falls? (?:apart|"
      r"through)|fell (?:apart|through)|terminated|blocked|scrapped|called off|ends?|ended)\b|\b(?:ftc|doj|regulators?|"
-     r"court|judge) (?:\w+ ){0,3}(?:blocks?|blocked|sues? to block)\b|\bsues? to block\b", 0, "immediate"),
+     r"court|judge) (?:[\w-]+ ){0,3}(?:blocks?|blocked|sues? to block)\b|\bsues? to block\b", 0, "immediate"),
     ("divestiture", "Selling a business", +1, 0.6, "subject",
      r"\b(?:to sell|sells?|selling|spin(?:s|ning)? off|spin-off of|carve[- ]out|divest\w*|explor\w+ (?:a )?sale of)"
      r" (?:its |the |a )?(?:[\w-]+ ){0,3}(?:unit|business|division|arm|segment|subsidiary)\b", 0, "hours"),
@@ -160,7 +160,7 @@ RULES: list[tuple] = [
      r"(?:(?!(?:concerns?|questions?|doubts?|fears?|worries|alarm|hopes?|price|share|stock|pt|confidence|optimism|bets?|stakes?|expectations)\b)[\w&-]+ ){0,4}?"
      r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:above|ahead of|higher)|"
      r"(?:outlook|forecast|guidance) (?:above|tops|beats|ahead of) (?:estimates|expectations|consensus)|"
-     r"(?:strong|upbeat|bullish|rosy|robust|better-than-expected|raised) (?:\w+ ){0,2}(?:guidance|outlook|forecast)",
+     r"(?:strong|upbeat|bullish|rosy|robust|better-than-expected|raised) (?:[\w-]+ ){0,2}(?:guidance|outlook|forecast)",
      2, "immediate"),
     ("guidance_cut", "Cut its forecast", -1, 0.86, "subject",
      r"\b(?:cuts?|lowers?|lowered|slashes?|slashed|trims?|trimmed|reduces?|reduced|downgrades? its|pares?|"
@@ -169,11 +169,11 @@ RULES: list[tuple] = [
      r"(?:guidance|outlook|forecast|view|targets?(?! to \$?\d| price)|estimates?)\b|\bguides? (?:below|lower|under)|"
      r"(?:guidance|outlook|forecast) (?:is |was |came in |looks )?(?:light|weak|soft|below|disappointing)\b|"
      r"(?:outlook|forecast|guidance) (?:below|misses|short of|disappoints|underwhelms)|"
-     r"(?:weak|soft|disappointing|downbeat|gloomy|cautious|bleak|lower[- ]than[- ]expected|tepid) (?:\w+ ){0,2}"
+     r"(?:weak|soft|disappointing|downbeat|gloomy|cautious|bleak|lower[- ]than[- ]expected|tepid) (?:[\w-]+ ){0,2}"
      r"(?:guidance|outlook|forecast)|profit warning|warns? (?:of|on) (?:lower|weaker|slowing|falling)", 2,
      "immediate"),
     ("guidance_withdrawn", "Withdrew its forecast", -1, 0.75, "subject",
-     r"\b(?:withdraws?|withdrew|pulls?|pulled|suspends?|suspended|scraps?) (?:its |the )?(?:\w+ ){0,2}"
+     r"\b(?:withdraws?|withdrew|pulls?|pulled|suspends?|suspended|scraps?) (?:its |the )?(?:[\w-]+ ){0,2}"
      r"(?:guidance|outlook|forecast)\b", 2, "immediate"),
     # ---- earnings ----
     ("earnings_beat", "Beat estimates", +1, 0.78, "subject",
@@ -183,56 +183,56 @@ RULES: list[tuple] = [
      r"(?:estimates?|expectations?|forecasts?|consensus|views?|the street|street (?:estimates|forecasts|view)|"
      r"analysts'? (?:estimates|expectations|forecasts))\b|\b(?:revenue|sales|profit|earnings|eps|results) "
      r"(?:above|ahead of|top|tops|beat|beats|surpass\w*) (?:consensus|estimates|expectations)\b|"
-     r"\bbetter[- ]than[- ]expected (?:\w+ ){0,2}(?:results|earnings|profit|revenue|sales|quarter)|"
+     r"\bbetter[- ]than[- ]expected (?:[\w-]+ ){0,2}(?:results|earnings|profit|revenue|sales|quarter)|"
      r"\brecord (?:quarterly |annual )?(?:revenue|sales|profit|earnings|deliveries|quarter)\b|"
-     r"\b(?:beats?|tops?) on (?:the )?(?:\w+ ){0,2}(?:profit|revenue|sales|earnings|eps|top|bottom|growth|margins?)\b",
+     r"\b(?:beats?|tops?) on (?:the )?(?:[\w-]+ ){0,2}(?:profit|revenue|sales|earnings|eps|top|bottom|growth|margins?)\b",
      1, "immediate"),
     ("earnings_miss", "Missed estimates", -1, 0.80, "subject",
      r"\b(?:miss(?:es|ed)?|falls? short of|fell short of|lags?|lagged|trails?|trailed|below|under|"
      r"worse than|disappoints?) (?:the )?(?:\w+[- ]?){0,4}(?:estimates?|expectations?|forecasts?|consensus|views?|"
      r"the street|street (?:estimates|forecasts|view)|analysts'? (?:estimates|expectations|forecasts))\b|"
      r"\b(?:revenue|sales|profit|earnings|eps|results) (?:below|miss|misses|short of|disappoint\w*)\b|"
-     r"\bworse[- ]than[- ]expected (?:\w+ ){0,2}(?:results|earnings|profit|revenue|sales|loss|quarter)|"
+     r"\bworse[- ]than[- ]expected (?:[\w-]+ ){0,2}(?:results|earnings|profit|revenue|sales|loss|quarter)|"
      r"\b(?:profit|sales|revenue|earnings|deliveries) (?:falls?|fell|drops?|dropped|slumps?|slumped|plunges?|"
      r"plunged|declines?|declined|shrinks?|shrank|tumbles?|tumbled) (?:short|more than expected)|"
-     r"\bmiss(?:es|ed)? on (?:the )?(?:\w+ ){0,3}(?:profit|revenue|sales|earnings|eps|growth|margins?|subscribers|"
+     r"\bmiss(?:es|ed)? on (?:the )?(?:[\w-]+ ){0,3}(?:profit|revenue|sales|earnings|eps|growth|margins?|subscribers|"
      r"deliveries|bookings)\b", 1, "immediate"),
     ("results_up", "Strong results", +1, 0.62, "subject",
-     r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:\w+ ){0,2}(?:jumps?|jumped|surges?|surged|"
+     r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:[\w-]+ ){0,2}(?:jumps?|jumped|surges?|surged|"
      r"soars?|soared|rises?|rose|grows?|grew|climbs?|climbed|more than doubles?|doubles?) (?:by )?\d+(?:\.\d+)?%|"
-     r"\b(?:revenue|sales|profit|earnings) (?:\w+ ){0,2}more than doubles?\b", 1, "hours"),
+     r"\b(?:revenue|sales|profit|earnings) (?:[\w-]+ ){0,2}more than doubles?\b", 1, "hours"),
     ("results_down", "Weak results", -1, 0.62, "subject",
-     r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:\w+ ){0,2}(?:falls?|fell|drops?|dropped|"
+     r"\b(?:revenue|sales|profit|earnings|bookings|net income|deliveries) (?:[\w-]+ ){0,2}(?:falls?|fell|drops?|dropped|"
      r"declines?|declined|slumps?|slumped|plunges?|plunged|sinks?|sank|shrinks?|shrank|tumbles?|tumbled) (?:by )?"
      r"\d+(?:\.\d+)?%", 1, "hours"),
     ("slowdown", "Growth slowing", -1, 0.66, "subject",
-     r"\b(?:growth|sales|demand|revenue|backlog|bookings|subscriber growth|user growth) (?:\w+ ){0,2}(?:slows?|slowed|"
+     r"\b(?:growth|sales|demand|revenue|backlog|bookings|subscriber growth|user growth) (?:[\w-]+ ){0,2}(?:slows?|slowed|"
      r"slowing|decelerat\w+|weakens?|weakened|stalls?|stalled)\b", 1, "immediate"),
     # ---- FDA / clinical ----
     ("fda_approval", "FDA approval", +1, 0.75, "any",
      r"\b(?:fda|ema|regulators?|health canada|mhra|european commission)\b.{0,30}\b(?:approves?|approved|clears?|"
      r"cleared|grants? (?:accelerated |full |conditional )?approval|backs?|recommends? approval)\b|\b(?:wins?|won|"
-     r"receives?|received|gets?|got|secures?|secured|earns?) (?:\w+ ){0,3}(?:fda |ema |european )?(?:approval|"
+     r"receives?|received|gets?|got|secures?|secured|earns?) (?:[\w-]+ ){0,3}(?:fda |ema |european )?(?:approval|"
      r"clearance|nod|green light|label(?: expansion)?|expanded (?:fda )?label)\b|\bbreakthrough (?:therapy )?designation\b"
      r"|\bfda (?:approval|nod|clearance) for\b", 0, "immediate"),
     ("fda_rejection", "FDA rejection / setback", -1, 0.88, "any",
      r"\b(?:complete response letter|\bcrl\b|refuse to file|clinical hold|fda (?:rejects?|rejected|declines?|"
-     r"declined|denies?|denied|delays?|delayed)|(?:rejects?|rejected) (?:\w+ ){0,3}(?:drug|therapy|application)|"
-     r"advisory (?:committee|panel) (?:votes? )?against|(?:panel|adcom) (?:rejects|votes against))\b", 0,
+     r"declined|denies?|denied|delays?|delayed)|(?:rejects?|rejected) (?:[\w-]+ ){0,3}(?:drug|therapy|application)|"
+     r"advisory (?:committee|panel) (?:votes? (?:\d+[- ]to[- ]\d+ |\d+-\d+ )?)?against|(?:panel|adcom) (?:rejects|votes against))\b", 0,
      "immediate"),
     ("trial_fail", "Trial failed", -1, 0.88, "any",
      r"\b(?:fails?|failed|did not|didn't|does not|doesn't) to (?:improve|meet|show|extend|hit|reach|beat|slow|reduce)"
-     r"\b|\b(?:fails?|failed|misses|missed|did not meet|didn't meet|does not meet|falls? short on) (?:its |the |a )?"
-     r"(?:\w+ ){0,2}(?:primary |main |key )?(?:endpoint|goal|trial|study)\b|\b(?:halts?|halted|stops?|stopped|"
+     r"\b|\bdisappoints? (?:on|in) (?:[\w-]+ ){0,3}(?:trial|study|phase|tolerability|efficacy|safety|data)\b|\b(?:fails?|failed|misses|missed|did not meet|didn't meet|does not meet|falls? short on) (?:its |the |a )?"
+     r"(?:[\w-]+ ){0,2}(?:primary |main |key )?(?:endpoint|goal|trial|study)\b|\b(?:halts?|halted|stops?|stopped|"
      r"pauses?|paused|discontinues?|discontinued|terminates?|terminated) (?:its |the |a )?(?:\w+[- ]?){0,3}"
      r"(?:trial|study|program|development)\b|\bpatient death\b", 0, "immediate"),
     ("trial_success", "Trial success", +1, 0.80, "any",
      r"\b(?:meets?|met|hits?|achieves?|achieved|succeeds? on|reaches?|reached) (?:its |the |all |both )?"
-     r"(?:\w+ ){0,2}(?:primary |main |key )?(?:endpoints?|goals?)\b|\bpositive (?:topline |top-line |pivotal |"
+     r"(?:[\w-]+ ){0,2}(?:primary |main |key )?(?:endpoints?|goals?)\b|\bpositive (?:topline |top-line |pivotal |"
      r"phase \d |late-stage )*(?:results|data|readout)\b|\bshows? (?:up to )?\d+(?:\.\d+)?% (?:weight loss|"
      r"reduction|improvement)|\b(?:extends?|extended|improves?|improved|prolongs?) (?:overall |progression-free )?"
      r"survival\b|\breduces? (?:the )?risk of (?:death|progression|heart attack|stroke)|\bshows? (?:strong|robust|"
-     r"impressive|durable|positive) (?:\w+ ){0,2}(?:response|efficacy|data|results)", 0, "immediate"),
+     r"impressive|durable|positive) (?:[\w-]+ ){0,2}(?:response|efficacy|data|results)", 0, "immediate"),
     # ---- shares and payouts ----
     ("offering", "Share offering (dilution)", -1, 0.80, "any",
      r"\b(?:prices?|priced|launches?|launched|announces?|announced|files? for|plans?|proposes?|commences?|"
@@ -240,7 +240,7 @@ RULES: list[tuple] = [
      r"underwritten |public |secondary |follow-on |registered direct |overnight |upsized |discounted )*"
      r"(?:(?:stock|share|equity|common stock) (?:offering|sale)|offering of (?:common )?(?:stock|shares)|"
      r"(?<!initial )(?<!initial-)(?:secondary |follow-on |underwritten )?public offering|"
-     r"at-the-market (?:offering|program|equity program)|\batm (?:offering|program)\b|convertible (?:senior )?"
+     r"at-the-market (?:offering|program|equity program)|\batm (?:offering|program)\b|(?:convertible|exchangeable) (?:senior )?"
      r"(?:notes?|bonds?|offering|debt)|private placement|dilutive|dilution)\b|\bsell(?:s|ing)? (?:up to )?\$?[\d.,]+ "
      r"?(?:bln|billion|mln|million|bn|b|m)? (?:in|of|worth of) (?:new )?(?:class [a-c] )?(?:common )?(?:stock|shares)\b",
      0, "immediate"),
@@ -254,7 +254,8 @@ RULES: list[tuple] = [
     ("dividend_raise", "Dividend raised", +1, 0.6, "any",
      r"\b(?:raises?|raised|hikes?|hiked|increases?|increased|boosts?|boosted|lifts?) (?:its |the )?(?:quarterly |"
      r"annual |interim |monthly |final )?(?:dividend|payout|distribution)\b|\b(?:initiates?|declares?|announces?|"
-     r"pays?) (?:an? |its )?(?:first|first-ever|inaugural|special|one-time|extra)\b (?:\w+ )?dividend\b|"
+     r"pays?) (?:an? |its )?(?:\$?[\d.,]+(?: per share)? )?(?:first|first-ever|inaugural|special|one-time|extra)\b "
+     r"(?:[\w-]+ )?dividend\b|"
      r"\binitiates? (?:an? |a quarterly )?dividend\b|\bbigger-than-expected dividend\b", 0,
      "hours"),
     ("split", "Stock split", +1, 0.6, "any", r"\b\d+[- ]for[- ]\d+ (?:forward )?stock split\b|\bannounces? (?:a )?"
@@ -281,17 +282,17 @@ RULES: list[tuple] = [
      "immediate"),
     ("short_report", "Short-seller report", -1, 0.78, "any",
      r"\b(?:short[- ]seller|short report|hindenburg|muddy waters|citron|spruce point|grizzly research|"
-     r"wolfpack|culper|fuzzy panda|kerrisdale) (?:\w+ ){0,3}(?:report|targets?|alleges?|accuses?|bets? against|"
+     r"wolfpack|culper|fuzzy panda|kerrisdale) (?:[\w-]+ ){0,3}(?:report|targets?|alleges?|accuses?|bets? against|"
      r"says|discloses? short)|\bshort[- ]seller\b", 0, "immediate"),
     ("legal", "Probe / lawsuit", -1, 0.70, "any",
      r"\b(?:probes?|probed|probing|investigat\w+|subpoena\w*|indicted|indictment|charged? with|charges against|"
      r"sues|sued|lawsuit|class action|antitrust (?:suit|lawsuit|case|probe)|fined|fines|fine of|penalty|verdict|"
      r"hit with (?:an? )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|million)? )?(?:\w+ )?(?:suit|lawsuit|fine|penalty|probe)|"
      r"jury (?:orders?|finds?|awards?)|verdict against|ordered to pay|raid(?:ed|s)? (?:\w+ )?offices?)\b|"
-     r"\b(?:sec|doj|ftc|justice department|attorneys? general|prosecutors?|regulators?) (?:\w+ ){0,3}"
+     r"\b(?:sec|doj|ftc|justice department|attorneys? general|prosecutors?|regulators?) (?:[\w-]+ ){0,3}"
      r"(?:probe|investigation|charges|sues|accuses)\b", 0, "hours"),
     ("ceo_exit", "CEO leaving", -1, 0.62, "any",
-     r"\b(?:ceo|chief executive|cfo|chief financial officer|founder)\b (?:\w+ ){0,3}(?:resigns?|resigned|steps? "
+     r"\b(?:ceo|chief executive|cfo|chief financial officer|founder)\b (?:[\w-]+ ){0,3}(?:resigns?|resigned|steps? "
      r"down|stepping down|to step down|quits?|departs?|exits?|ousted|fired|out\b|leaves|leaving|is out)|"
      r"\b(?:ousts?|ousted|fires?|fired) (?:its |the )?(?:ceo|chief executive)\b", 0, "immediate"),
     ("recall", "Recall / safety problem", -1, 0.62, "any",
@@ -299,17 +300,17 @@ RULES: list[tuple] = [
      r"fire at|contamination|outbreak|e\. ?coli|salmonella|listeria|food poisoning|safety (?:probe|investigation|"
      r"warning))\b", 0, "hours"),
     ("delay", "Launch delayed", -1, 0.62, "any",
-     r"\b(?:launch|rollout|release|debut|production|deliveries|approval|start) (?:\w+ ){0,2}(?:delayed|pushed back|"
-     r"postponed|slips?)\b|\bdelays? (?:the |its )?(?:\w+ ){0,2}(?:launch|rollout|release|debut)\b", 0, "hours"),
+     r"\b(?:launch|rollout|release|debut|production|deliveries|approval|start) (?:[\w-]+ ){0,2}(?:delayed|pushed back|"
+     r"postponed|slips?)\b|\bdelays? (?:the |its )?(?:[\w-]+ ){0,2}(?:launch|rollout|release|debut)\b", 0, "hours"),
     ("activist", "Activist investor stake", +1, 0.7, "any",
-     r"\bactivist (?:investor |hedge fund |fund |shareholder )?(?:\w+ ){0,3}(?:builds?|building|takes?|taking|has|"
-     r"holds?|discloses?|disclosed|amass\w*|buys?|bought|acquires?|acquired) (?:an? )?(?:\w+ ){0,2}(?:stake|position)|"
+     r"\bactivist (?:investor |hedge fund |fund |shareholder )?(?:[\w-]+ ){0,3}(?:builds?|building|takes?|taking|has|"
+     r"holds?|discloses?|disclosed|amass\w*|buys?|bought|acquires?|acquired) (?:an? )?(?:[\w-]+ ){0,2}(?:stake|position)|"
      r"\bactivist stake\b", 0, "hours"),
     ("breach", "Hack / outage", -1, 0.6, "any",
      r"\b(?:hack(?:ed|ers?)?|data breach|breach|cyberattack|cyber attack|ransomware|outage|stole|stolen|"
      r"leaked)\b", 0, "hours"),
     ("halt", "Production halt / strike", -1, 0.66, "any",
-     r"\b(?:halts?|halted|halting|suspends?|suspended|stops?|stopped|pauses?|paused) (?:\w+ ){0,2}"
+     r"\b(?:halts?|halted|halting|suspends?|suspended|stops?|stopped|pauses?|paused) (?:[\w-]+ ){0,2}"
      r"(?:production|output|operations|shipments|deliveries|sales)\b|\bproduction halt\b|\bon strike\b|"
      r"\bstrike (?:begins|starts|continues|widens)\b|\bwalk(?:s|ed)? off the job\b", 0, "hours"),
     ("strike_end", "Strike ends / labour deal", +1, 0.65, "any",
@@ -324,7 +325,7 @@ RULES: list[tuple] = [
      r"inks?|(?:selected|chosen|picked|tapped) for) (?:an? |the |its |[\w&.-]+'s )?(?:\$?[\d.,]+ ?(?:bln|billion|mln|"
      r"million|bn|b|m)?[- ]?)?(?:[\w&.'-]+[- ]?){0,5}?"
      r"(?:contract|order|orders|deal|award|program|programme|rights|games|account|tender|business)\b|\bnamed (?:the )?"
-     r"(?:official|exclusive|preferred|primary) (?:\w+ ){0,3}(?:provider|partner|supplier|sponsor)\b", 0, "hours"),
+     r"(?:official|exclusive|preferred|primary) (?:[\w-]+ ){0,3}(?:provider|partner|supplier|sponsor)\b", 0, "hours"),
     ("chosen", "Picked by a customer", +1, 0.70, "object",
      r"\b(?:picks?|picked|chooses?|chose|selects?|selected|taps?|tapped|hires?|hired|switches? to|switched to)\b",
      0, "hours"),
@@ -332,15 +333,15 @@ RULES: list[tuple] = [
      r"\b(?:partners? with|partnership|teams? up|collaborat\w+|alliance|joint venture|expand(?:s|ed)? (?:\w+ )?"
      r"partnership|to partner)\b", 0, "hours"),
     ("layoffs", "Job cuts / restructuring", 0, 0.0, "any",
-     r"\b(?:layoffs?|lay off|laying off|job cuts|cuts? (?:about |around |nearly |some )?[\d,]+ (?:\w+ ){0,2}(?:jobs|"
-     r"positions|roles|workers|employees|staff)|to cut (?:\w+ ){0,3}jobs|restructuring|workforce reduction|"
+     r"\b(?:layoffs?|lay off|laying off|job cuts|cuts? (?:about |around |nearly |some )?[\d,]+ (?:[\w-]+ ){0,2}(?:jobs|"
+     r"positions|roles|workers|employees|staff)|to cut (?:[\w-]+ ){0,3}jobs|restructuring|workforce reduction|"
      r"reduce (?:its )?workforce)\b", 0, "hours"),
     ("exec_named", "New executive", 0, 0.0, "any",
-     r"\b(?:names?|named|appoints?|appointed|hires?|taps?) (?:\w+ ){0,4}(?:as )?(?:new )?(?:ceo|cfo|chief|"
+     r"\b(?:names?|named|appoints?|appointed|hires?|taps?) (?:[\w-]+ ){0,4}(?:as )?(?:new )?(?:ceo|cfo|chief|"
      r"president|chair\w*|director|successor)\b", 0, "hours"),
     ("routine", "Routine announcement", 0, 0.0, "any",
      r"\b(?:to (?:hold|host|present|participate|webcast)|will (?:hold|host|present|participate)|annual (?:general |"
-     r"shareholders' |shareholder )?meeting|investor day|conference call|fireside chat|to report (?:\w+ ){0,3}"
+     r"shareholders' |shareholder )?meeting|investor day|conference call|fireside chat|to report (?:[\w-]+ ){0,3}"
      r"results on|declares? (?:a |its )?(?:regular )?(?:quarterly |monthly |semi-annual |annual )?(?:cash )?"
      r"dividend)\b", 0, "hours"),
 ]
