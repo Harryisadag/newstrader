@@ -96,12 +96,31 @@ class Trader:
     def _default_factory(self):
         if os.environ.get("NEWSTRADER_FAKE_BROKER") == "1":  # demo / UI testing only - never real orders
             return FakeBroker.demo()
+        t = self.ctx.config.settings.trading
         creds = live_guard.credentials_for_mode(self.ctx.state, self.ctx.keys.keys)
-        if creds is None:
-            return None
-        from .broker import Broker
+        live = self.ctx.state.mode == "live"
+        if live or t.broker == "alpaca" or (t.broker == "auto" and creds is not None):
+            if creds is None:
+                return None
+            from .broker import Broker
 
-        return Broker(creds, self.ctx.state, data_feed=self.ctx.config.settings.trading.data_feed)
+            return Broker(creds, self.ctx.state, data_feed=t.data_feed)
+        # no Alpaca account: the built-in simulator (fake money, free prices) - never real money
+        from .sim_broker import SimBroker
+
+        return SimBroker(self.ctx.db, starting_cash=t.sim_starting_cash, slippage_pct=t.sim_slippage_pct)
+
+    def _broker_label(self) -> str:
+        if self.broker_kind == "simulator":
+            return "Built-in simulator (free Yahoo prices)"
+        return f"Alpaca {getattr(self.broker, 'mode', 'paper')}"
+
+    @property
+    def broker_kind(self) -> str:
+        """"simulator", "alpaca" or "" (not connected) - shown in the header and settings."""
+        if self.broker is None:
+            return ""
+        return getattr(self.broker, "kind", "alpaca")
 
     async def connect(self) -> None:
         await self._stop_stream()
@@ -113,13 +132,14 @@ class Trader:
         except Exception as exc:
             self.broker = None
             self.last_error = str(exc)
-            self.ctx.state.set_status("alpaca", "error", f"Couldn't create Alpaca client: {exc}")
-            log.error("Alpaca client error: %s", exc)
+            self.ctx.state.set_status("alpaca", "error", f"Couldn't connect to the broker: {exc}")
+            log.error("Broker connection error: %s", exc)
             return
         if self.broker is None:
-            self.ctx.state.set_status("alpaca", "error", "No Alpaca paper keys - add them in Settings -> API keys")
+            self.ctx.state.set_status("alpaca", "error", "No Alpaca paper keys - add them in Settings -> API keys, or "
+                                                         "use the built-in simulator (Settings -> Trading)")
             return
-        self.ctx.state.set_status("alpaca", "starting", f"Connecting ({self.broker.mode})...")
+        self.ctx.state.set_status("alpaca", "starting", f"Connecting ({self._broker_label()})...")
         await self.refresh(force=True)
         if self.account is not None:
             self._start_stream()
@@ -151,7 +171,7 @@ class Trader:
             self.last_error = None
             mkt = "open" if self.clock and self.clock.get("is_open") else "closed"
             self.ctx.state.set_status("alpaca", "ok",
-                                      f"{b.mode.upper()} account {account.get('account_number', '')} - market {mkt}")
+                                      f"{self._broker_label()} {account.get('account_number', '')} - market {mkt}")
             self.ctx.bus.publish("account", self.summary())
             if force or now - self._orders_synced_at > 30:
                 self._orders_synced_at = now
@@ -164,8 +184,8 @@ class Trader:
             await self._check_daily_loss()
         except Exception as exc:
             self.last_error = str(exc)
-            self.ctx.state.set_status("alpaca", "error", f"Alpaca error: {exc}")
-            log.warning("Alpaca refresh failed: %s", exc)
+            self.ctx.state.set_status("alpaca", "error", f"{self._broker_label()} error: {exc}")
+            log.warning("Broker refresh failed: %s", exc)
 
     async def _check_daily_loss(self) -> None:
         if self.account is None or self.ctx.state.halted_today:
@@ -182,6 +202,7 @@ class Trader:
         acct = self.account
         return {
             "broker_connected": acct is not None,
+            "broker_kind": self.broker_kind,
             "broker_error": self.last_error,
             "market": self.clock,
             "account": None if acct is None else {
@@ -312,7 +333,7 @@ class Trader:
 
     async def _risk_context(self, symbol: str) -> RiskContext:
         if self.account is None:
-            raise RuntimeError(self.last_error or "Alpaca account unavailable")
+            raise RuntimeError(self.last_error or "Trading account unavailable")
         s = self.ctx.config.settings
         a = self.account
         # entry orders (always market orders) that haven't filled yet
@@ -343,7 +364,7 @@ class Trader:
         """signal needs: id (optional), ticker, direction, confidence. Returns the action taken."""
         symbol = signal["ticker"].upper()
         if self.broker is None:
-            return self._result("blocked", "Not connected to Alpaca (check API keys).")
+            return self._result("blocked", "Not connected to a trading account (Settings -> Trading, or add Alpaca keys).")
         async with self._lock:
             try:
                 await self.refresh()
@@ -388,7 +409,8 @@ class Trader:
             order = await asyncio.to_thread(self.broker.submit_bracket, symbol, "buy" if side == "buy" else "sell",
                                             decision.qty, decision.take_profit_price, decision.stop_price, coid)
         except Exception as exc:
-            msg = f"Alpaca rejected the {side} order for {symbol}: {exc}"
+            msg = f"{'The simulator' if self.broker_kind == 'simulator' else 'Alpaca'} rejected the {side} order " \
+                  f"for {symbol}: {exc}"
             log.error(msg)
             await self._alert("error", f"Order rejected ({symbol})", str(exc), "error")
             return self._result("error", msg)
@@ -505,7 +527,7 @@ class Trader:
     # ------------------------------------------------------------------ manual controls
     async def manual_close(self, symbol: str) -> dict:
         if self.broker is None:
-            raise RuntimeError("Not connected to Alpaca")
+            raise RuntimeError("Not connected to a trading account")
         async with self._lock:
             order = await asyncio.to_thread(self.broker.close_position, symbol.upper())
             pos_long = order.get("side") == "sell"
@@ -516,7 +538,7 @@ class Trader:
 
     async def cancel_order(self, alpaca_order_id: str) -> None:
         if self.broker is None:
-            raise RuntimeError("Not connected to Alpaca")
+            raise RuntimeError("Not connected to a trading account")
         await asyncio.to_thread(self.broker.cancel_order, alpaca_order_id)
         await self.refresh(force=True)
 

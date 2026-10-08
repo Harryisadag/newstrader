@@ -312,6 +312,18 @@ MIGRATIONS: list[str] = [
     ALTER TABLE signals ADD COLUMN flags TEXT;
     ALTER TABLE signals ADD COLUMN pre_move_pct REAL;
     """,
+    # 9 - the built-in paper-trading simulator (no broker account needed)
+    """
+    CREATE TABLE sim_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT
+    );
+    CREATE TABLE sim_equity (
+        ts TEXT PRIMARY KEY,
+        equity REAL
+    );
+    """,
 ]
 
 

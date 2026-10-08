@@ -267,6 +267,12 @@ class TradingSettings(_Model):
     # Don't chase: if the price already moved this much (%) in the signal's direction since the news came out,
     # send the signal to manual review instead of auto-trading it. 0 = off.
     max_chase_pct: float = Field(3.0, ge=0, le=50)
+    # Where paper trades go: "auto" = your Alpaca paper account if its keys are set, otherwise the built-in
+    # simulator; "simulator" = always the built-in simulator (fake money, free Yahoo prices, no account needed);
+    # "alpaca" = always Alpaca. Real-money (live) trading always uses Alpaca.
+    broker: Literal["auto", "simulator", "alpaca"] = "auto"
+    sim_starting_cash: float = Field(100_000.0, ge=1_000, le=10_000_000)
+    sim_slippage_pct: float = Field(0.05, ge=0, le=2)  # each simulated fill is this much worse than the last price
 
     @model_validator(mode="after")
     def _thresholds(self) -> TradingSettings:
