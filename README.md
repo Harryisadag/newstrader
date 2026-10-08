@@ -1,4 +1,4 @@
-# NewsTrader
+# NewsTrader -- Harry
 
 NewsTrader is a desktop app for **Windows and Mac** that:
 
@@ -534,3 +534,4 @@ newstrader/
   web/                the dashboard (HTML/CSS/Alpine.js/Chart.js, no build step)
 tests/                pytest suite (risk rules, AI validation, ML engine, Mac support, pipeline, audio, alerts, backtest...)
 ```
+Yes AI made it.
