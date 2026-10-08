@@ -131,6 +131,18 @@ def _market_date(value: datetime) -> date:
     return value.astimezone(MARKET_TZ).date()
 
 
+def blocked_reason(a) -> str:
+    """Which of Alpaca's three block flags is set, in words, with what to do about it ("" if none)."""
+    if a.trade_suspended_by_user:
+        return ("Trading is paused in your Alpaca account settings ('suspend trading' is on). "
+                "Turn it off in the Alpaca dashboard (Account -> Configure), then try again.")
+    if a.account_blocked:
+        return "Alpaca has blocked this account. Check the Alpaca dashboard for a notice, or contact Alpaca support."
+    if a.trading_blocked:
+        return ("Alpaca has blocked trading on this account. For a paper account, reset it in the Alpaca dashboard "
+                "(or make a new paper account) and paste its new keys in Settings -> API keys.")
+    return ""
+
 class Broker:
     """Real Alpaca connection (paper by default; live only through live_guard)."""
 
@@ -171,6 +183,7 @@ class Broker:
             "short_market_value": _f(a.short_market_value),
             "shorting_enabled": bool(a.shorting_enabled),
             "trading_blocked": bool(a.trading_blocked or a.account_blocked or a.trade_suspended_by_user),
+            "blocked_reason": blocked_reason(a),
             "pattern_day_trader": bool(a.pattern_day_trader),
             "daytrade_count": a.daytrade_count,
         }

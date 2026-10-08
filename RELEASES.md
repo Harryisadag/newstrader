@@ -93,6 +93,7 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 - Update check: a banner when a newer version is out (Settings → Display).
 - Times follow your choice of this computer's time zone, New York time or UTC.
 - Logs → System status hides turned-off and off-air sources unless you ask for them.
+- When Alpaca blocks a trade, the message now says which Alpaca setting is causing it and how to fix it.
 
 ## v0.2.1 — 7 October 2026
 

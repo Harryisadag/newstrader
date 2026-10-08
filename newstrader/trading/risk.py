@@ -23,6 +23,7 @@ class AccountSnapshot:
     cash: float = 0.0
     shorting_enabled: bool = False
     trading_blocked: bool = False
+    blocked_reason: str = ""
 
     @property
     def day_pl(self) -> float:
@@ -112,7 +113,7 @@ def _common_gates(ctx: RiskContext, symbol: str, manual: bool, is_exit: bool) ->
     if not manual and not ctx.trading.auto_trade:
         return RiskDecision.block("Auto-trade is off (Settings -> Trading).")
     if ctx.account.trading_blocked:
-        return RiskDecision.block("Alpaca reports this account is blocked from trading.")
+        return RiskDecision.block(ctx.account.blocked_reason or "Alpaca reports this account is blocked from trading.")
     if not is_exit:
         if ctx.halted_today:
             return RiskDecision.block("Trading is halted for today (daily loss limit was hit).")

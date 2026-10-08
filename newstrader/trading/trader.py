@@ -345,7 +345,7 @@ class Trader:
             trading=s.trading, risk=s.risk,
             account=AccountSnapshot(equity=a["equity"], last_equity=a["last_equity"], buying_power=a["buying_power"],
                                     cash=a["cash"] or 0, shorting_enabled=a["shorting_enabled"],
-                                    trading_blocked=a["trading_blocked"]),
+                                    trading_blocked=a["trading_blocked"], blocked_reason=a.get("blocked_reason") or ""),
             positions=[PositionInfo(p["symbol"], p["qty"] or 0, p["market_value"] or 0) for p in self.positions],
             market_open=bool(self.clock and self.clock.get("is_open")),
             now=datetime.now(UTC),

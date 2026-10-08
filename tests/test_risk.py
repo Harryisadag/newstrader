@@ -122,6 +122,20 @@ def test_account_blocked():
     assert "blocked" in check_entry("AAPL", "buy", 100.0, make_ctx(account=acct)).reason
 
 
+def test_blocked_message_names_the_alpaca_setting():
+    from types import SimpleNamespace
+
+    from newstrader.trading.broker import blocked_reason
+
+    flags = dict(trade_suspended_by_user=False, account_blocked=False, trading_blocked=False)
+    assert blocked_reason(SimpleNamespace(**flags)) == ""
+    assert "suspend trading" in blocked_reason(SimpleNamespace(**{**flags, "trade_suspended_by_user": True}))
+    assert "reset it" in blocked_reason(SimpleNamespace(**{**flags, "trading_blocked": True}))
+    acct = AccountSnapshot(equity=100_000, last_equity=100_000, buying_power=1e5, trading_blocked=True,
+                           blocked_reason="Trading is paused in your Alpaca account settings")
+    assert "paused" in check_entry("AAPL", "buy", 100.0, make_ctx(account=acct)).reason
+
+
 def test_market_hours_only():
     closed = make_ctx(market_open=False)
     assert "closed" in check_entry("AAPL", "buy", 100.0, closed).reason
