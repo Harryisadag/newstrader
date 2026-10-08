@@ -80,12 +80,12 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 - Two default feeds that had stopped working (Yahoo Finance and MarketWatch real-time) were replaced automatically.
 
 **Better news detection (local engine)**
-- Recognises about 55 kinds of market-moving news (earnings and the numbers behind them, forecasts, buyouts, analyst actions, FDA and trial results, offerings, lawsuits, recalls…) and works out which company each one is good or bad for (the target vs the buyer, the rated stock vs the analyst firm, the winner vs the company it replaced).
+- Recognises about 70 kinds of market-moving news (earnings and the numbers behind them, forecasts, buyouts, analyst actions, FDA and trial results, offerings, lawsuits, recalls…) and works out which company each one is good or bad for (the target vs the buyer, the rated stock vs the analyst firm, the winner vs the company it replaced).
 - Recaps of moves that already happened, opinion pieces, round-ups and law-firm adverts come out neutral. Reports and rumours get lower confidence; denials turn the event around.
 - Signals scored on wording alone (no recognised event) now always go to manual review.
 - International macro news can give a signal for that country's fund (always manual review).
 - Better company-name matching (short names like "Sarepta", everyday-word names like "Target" only when used as the company, CEO names, lower-case TV transcripts).
-- On 280 labelled test headlines kept aside while the rules were written, the right call went from 57% to 80% at the first test.
+- On 150 labelled headlines written by people who never saw the rules, the right call was 66% at the first look (v0.2: 45%). After fixing the general gaps that test showed it's about 92% on that set, though that's flattering because the set was used for the fixes.
 - The Signals screen shows the news event behind each call, and the Test box explains why a company came out neutral.
 - If you trained a price model with v0.2, retrain it once (Backtest tab): it now also learns from the news event.
 

@@ -184,7 +184,7 @@ Pick it in **Settings → AI engine**. The default is **Local machine learning**
 It runs on your computer, needs no API key, and keeps working offline after the first download. For every company named in a story:
 
 1. It picks out the **headline plus the sentences about that company**. In "Apple sues Samsung", Apple and Samsung each get their own read.
-2. **News-event rules** look for the kind of news that actually moves stocks: earnings beats and misses (including the numbers, e.g. "EPS $1.20 vs $1.35 est"), raised or cut forecasts, buyouts, analyst up/downgrades and price targets, FDA decisions and trial results, share offerings, buybacks, dividend changes, index changes, lawsuits and fines, recalls, hacks, strikes, contract wins, bankruptcy risk and more (about 55 kinds). They also work out **who** the news is for:
+2. **News-event rules** look for the kind of news that actually moves stocks: earnings beats and misses (including the numbers, e.g. "EPS $1.20 vs $1.35 est"), raised or cut forecasts, buyouts, analyst up/downgrades and price targets, FDA decisions and trial results, share offerings, buybacks, dividend changes, index changes, lawsuits and fines, recalls, hacks, strikes, contract wins, bankruptcy risk and more (about 70 kinds). They also work out **who** the news is for:
    - the company being bought goes up, the buyer is neutral
    - the analyst firm is neutral, the stock it rated gets the call
    - the winner of a contract goes up, the company it replaced goes down; a company only named in passing gets nothing
@@ -202,7 +202,7 @@ What it can't do (Claude can):
 - handle US macro news that names no company ("Fed cuts rates"). The local engine skips those stories. International macro news ("Bank of Japan raises rates") can give a signal for that country's US-listed fund (EWJ, FXI, EWG…), always for manual review.
 - read news that isn't in English. Non-English text feeds are skipped by the local engine (TV is translated, so that works). Claude reads any language.
 
-How good is it? On 280 labelled test headlines kept aside while the rules were written, the right call (good / bad / neutral for each company) went from 57% to 80% at the first test, then higher after fixing the general gaps that test showed. You can run the tests yourself: `python scripts/eval_detection.py --compare`.
+How good is it? On 150 labelled headlines written by people who never saw the rules, the right call (good / bad / neutral for each company) was 66% at the first look, vs 45% for v0.2. Those misses were then used to fix general gaps (it's about 92% on that set now, but that number is flattering because the set was used for the fixes). In those tests the engine never auto-traded the wrong way; unclear cases go to manual review. You can run the tests yourself: `python scripts/eval_detection.py --compare`.
 
 ### Training the price model (recommended)
 Go to **Backtest → Local ML model → Train the price model**. It's free and runs in the background while trading continues.
