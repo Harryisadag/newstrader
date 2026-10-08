@@ -81,7 +81,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          for s in dev set2 $( [ -f tests/fixtures/eval/holdout.jsonl ] && echo holdout ); do
+          for s in dev set2 set3 $( [ -f tests/fixtures/eval/holdout.jsonl ] && echo holdout ); do
             python scripts/eval_detection.py --set "$s" --sentiment finbert --compare --mistakes 15 | tee -a "$GITHUB_STEP_SUMMARY"
             echo >> "$GITHUB_STEP_SUMMARY"
           done

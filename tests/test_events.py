@@ -165,7 +165,7 @@ def _eval_module():
     return mod
 
 
-@pytest.mark.parametrize("which,min_accuracy", [("dev", 95), ("set2", 94)])
+@pytest.mark.parametrize("which,min_accuracy", [("dev", 95), ("set2", 94), ("set3", 89)])
 def test_detection_quality_does_not_slip(which, min_accuracy, tmp_path):
     """The labelled headline sets (offline, word-list sentiment). Guards against a rule change breaking others."""
     ev = _eval_module()

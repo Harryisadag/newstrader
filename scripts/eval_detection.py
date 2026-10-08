@@ -144,7 +144,7 @@ ROWS = [
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--set", default="dev", help="dev, set2, holdout, or a path to a .jsonl file")
+    ap.add_argument("--set", default="dev", help="dev, set2, set3, holdout, or a path to a .jsonl file")
     ap.add_argument("--sentiment", default="lexicon", choices=["lexicon", "finbert"])
     ap.add_argument("--compare", action="store_true", help="also run without the event rules (v0.2 behaviour)")
     ap.add_argument("--mistakes", type=int, default=0, help="print this many wrong answers")

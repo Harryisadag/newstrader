@@ -9,7 +9,8 @@ reviewers; disagreements were settled and the reason is kept in `note`.
 |---|---|---|
 | `dev.jsonl` | 156 | Written first and used to build the event rules. |
 | `set2.jsonl` | 280 | Kept unseen until the rules were done, then measured once: 79.9% right with the event rules vs 56.9% for v0.2. After that first look its mistakes were used to fix general gaps, so it is no longer unseen. |
-| `holdout.jsonl` | - | A fresh unseen set for the final number (added separately). |
+| `set3.jsonl` | 150 | Written by two separate agents who never saw the rules (and labelled again blind by a third: 98.6% agreement, 3 items settled by hand). First look: 65.9% right with the event rules vs 45.3% for v0.2. Then used for a second round of general fixes. |
+| `holdout.jsonl` | - | A second fresh set, written in different styles, kept sealed until the end for the final number. |
 
 `eval_tickers.json` is a fixed slice of Alpaca's asset list so the results don't depend on today's listings.
 

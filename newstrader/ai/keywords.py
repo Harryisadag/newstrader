@@ -121,7 +121,7 @@ ALIASES: dict[str, str] = {
     "at&t": "T", "verizon": "VZ", "t-mobile": "TMUS", "comcast": "CMCSA",
     "rivian": "RIVN", "lucid": "LCID", "gamestop": "GME", "bristol myers": "BMY", "bristol-myers": "BMY",
     "e.l.f. beauty": "ELF", "elf beauty": "ELF", "delta air lines": "DAL", "hoka": "DECK", "ugg": "DECK",
-    "deckers": "DECK", "keytruda": "MRK", "wegovy": "NVO",
+    "deckers": "DECK", "ge healthcare": "GEHC", "ge vernova": "GEV", "keytruda": "MRK", "wegovy": "NVO",
     "s&p 500": "SPY", "nasdaq 100": "QQQ", "nasdaq-100": "QQQ", "russell 2000": "IWM",
     # more US brands, products and people
     "copilot": "MSFT", "xbox": "MSFT", "linkedin": "MSFT", "android": "GOOGL", "chrome": "GOOGL", "whole foods": "AMZN", "prime video": "AMZN", "alexa": "AMZN",
@@ -201,7 +201,7 @@ EUROZONE_COUNTRY_ETFS: set[str] = {"EWG", "EWQ", "EWI", "EWP"}
 # Index ETFs named after their index: "joins the S&P 500" is about the joining company, not SPY
 INDEX_ETF_ALIASES: set[str] = {"SPY", "QQQ", "IWM", "DIA"}
 INDEX_MEMBERSHIP_WORDS: set[str] = {"join", "joins", "joining", "joined", "to", "from", "enter", "enters", "entering",
-                                    "into", "in", "leave", "leaves", "leaving", "for"}
+                                    "into", "in", "leave", "leaves", "leaving", "for", "exit", "exits", "exiting"}
 INDEX_CHANGE_WORDS_AFTER: set[str] = {"adds", "add", "removes", "remove", "drops", "drop", "inclusion", "rebalance",
                                       "rebalancing", "reshuffle", "constituent", "constituents", "membership"}
 COMPANY_CONTEXT_BEFORE: set[str] = {

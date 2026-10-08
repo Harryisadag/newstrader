@@ -59,6 +59,22 @@ def _shouty(text: str) -> bool:
     return len(letters) > 20 and sum(ch.isupper() for ch in letters) / len(letters) > 0.6
 
 
+def _starts_longer_name(sym: str, rest: str, table: TickerTable) -> bool:
+    """'GE Vernova', 'GE HealthCare': the capitals start another company's name, so they aren't GE itself."""
+    nxt = [t for t, _o in token_pairs(rest[:40])][:1]
+    if not nxt:
+        return False
+    first_two = getattr(table, "_name_starts", None)
+    if first_two is None or first_two[0] is not table.by_name:  # (built once per ticker-table refresh)
+        starts: dict[tuple[str, str], set[str]] = {}
+        for key, syms in list(table.by_name.items()) + [(k, [v]) for k, v in table.aliases.items()]:
+            if len(key) >= 2:
+                starts.setdefault(key[:2], set()).update(syms)
+        first_two = (table.by_name, starts)
+        table._name_starts = first_two
+    return bool(first_two[1].get((sym.lower(), nxt[0]), set()) - {sym})
+
+
 def _company_context(tokens: list[str], originals: list[str], i: int, n: int) -> bool:
     """Is an everyday-word name ("Target", "Ford", "Gap") used as the company here?"""
     after = tokens[i + n] if i + n < len(tokens) else ""
@@ -93,7 +109,7 @@ def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = 
             sym = m.group(1)
             if sym in NOT_TICKERS or len(sym.replace(".", "")) < 2:
                 continue
-            if table.get(sym) is not None:
+            if table.get(sym) is not None and not _starts_longer_name(sym, text[m.end():], table):
                 add(sym, sym)
 
     # company names and aliases, longest phrase first
