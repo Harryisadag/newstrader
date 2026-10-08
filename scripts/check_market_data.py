@@ -53,6 +53,15 @@ def shape(obj, depth: int = 0, max_depth: int = 5):
     return obj
 
 
+def trim(obj, keep: int = 3):
+    """The full structure with every list cut to its first few items (for test fixtures)."""
+    if isinstance(obj, dict):
+        return {k: trim(v, keep) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [trim(v, keep) for v in obj[:keep]]
+    return obj
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default="", help="save each raw response in this folder")
@@ -80,7 +89,8 @@ def main() -> int:
                 (raw / f"{name}.txt").write_bytes(body)
             text = body.decode("utf-8", "replace")
             try:
-                outline = json.dumps(shape(json.loads(text)), indent=1)[:3500]
+                parsed = json.loads(text)
+                outline = json.dumps(trim(parsed), separators=(",", ":"))[:6000]
             except Exception:
                 outline = text[:1500]
             details += [f"### {name}", "", f"`{url}` {params}", "", "```", outline, "```", ""]
