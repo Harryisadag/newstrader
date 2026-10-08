@@ -1,0 +1,31 @@
+name: check-market-data
+
+# Checks that the free market-data sources used by the built-in paper-trading simulator still answer (Yahoo
+# Finance charts and screeners, Nasdaq's list of listed stocks). Results are in the run's summary page.
+# Weekly, and on demand: Actions -> check-market-data -> Run workflow.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install httpx
+      - name: Check the sources
+        run: python scripts/check_market_data.py --raw market-data | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: market-data-samples
+          path: market-data
+          retention-days: 14
