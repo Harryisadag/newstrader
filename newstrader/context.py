@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,6 +26,7 @@ class AppContext:
     token: str
     services: dict[str, Any] = field(default_factory=dict)
     loop: asyncio.AbstractEventLoop | None = None
+    quit_app: Callable[[], None] | None = None  # closes the app the normal way (set by app.py; used by Update now)
 
     def service(self, name: str) -> Any:
         return self.services.get(name)

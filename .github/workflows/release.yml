@@ -143,6 +143,9 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force dist/NewsTrader/data -ErrorAction SilentlyContinue
+          # "Update now" checks this file in the unpacked download
+          $v = (Get-Content dist/NewsTrader/_internal/newstrader/version.txt -Raw).Trim()
+          if ($v -ne $env:VERSION) { Write-Error "version.txt says '$v', not $env:VERSION"; exit 1 }
           7z a -tzip -mx=5 "$env:ASSET" ./dist/NewsTrader
           if ($LASTEXITCODE -ne 0) { exit 1 }
 

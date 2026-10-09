@@ -129,7 +129,7 @@ document.addEventListener("alpine:init", () => {
     {
       id: "display", label: "Display", fields: [
         F("ui.time_zone", "Show times in", "select", { options: { local: "This computer's time zone", market: "New York time (ET, the US market)", utc: "UTC" } }),
-        F("ui.check_updates", "Tell me when a new version is out", "toggle", { help: "Checks GitHub once a day and shows a banner with a download link. Nothing is installed by itself." }),
+        F("ui.check_updates", "Tell me when a new version is out", "toggle", { help: "Checks GitHub once a day and shows a banner when a new version is out. In the ready-made app, its Update now button installs it and restarts NewsTrader - only when you click it." }),
       ],
     },
   ];

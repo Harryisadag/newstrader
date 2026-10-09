@@ -54,6 +54,37 @@ document.addEventListener("alpine:init", () => {
       try { localStorage.setItem("nt_dismissed_update", this.dismissedUpdate); } catch (e) { /* private window */ }
     },
 
+    // "Update now" (the ready-made app only): download, check, swap in and restart
+    get install() { return this.s.update_install || {}; },
+    get canUpdateNow() { return !!(this.s.update && !this.s.update.source_mode && this.install.supported); },
+    get updating() { return !!this.install.busy; },
+    get updateActive() { return (!!this.install.phase && this.install.phase !== "idle") || !!this.install.message; },
+    get updatePct() { const i = this.install; return i.total ? Math.min(100, Math.round((100 * i.done) / i.total)) : 0; },
+    get updateText() {
+      const i = this.install;
+      if (i.phase === "downloading" && i.total) return `${i.message} ${this.updatePct}% of ${Math.round(i.total / 1e6)} MB`;
+      return i.message || "";
+    },
+    async updateNow() {
+      const u = this.s.update || {};
+      const size = u.size ? ` (about ${Math.round(u.size / 1e6)} MB)` : "";
+      const ok = confirm(`Update to NewsTrader ${u.latest} now?\n\n`
+        + `It downloads the new version${size} and checks it's intact. Then NewsTrader closes and opens again by itself, `
+        + "which takes about a minute. No trades are placed while it restarts.\n\n"
+        + "Your settings, keys, history and the kill switch stay as they are. If live trading is on, NewsTrader comes "
+        + "back in paper mode, like after any restart.");
+      if (!ok) return;
+      try {
+        this.store.status = { ...this.store.status, update_install: await NT.api.post("/updates/install") };
+      } catch (e) {
+        this.store.error(e, "The update didn't start");
+      }
+    },
+    async cancelUpdate() {
+      try { this.store.status = { ...this.store.status, update_install: await NT.api.post("/updates/cancel") }; }
+      catch (e) { this.store.error(e); }
+    },
+
     async init() {
       window.addEventListener("nt:connection", (e) => { this.store.connected = e.detail.connected; if (e.detail.connected) this.refresh(); });
       window.addEventListener("nt:heartbeat", (e) => { this.store.status = { ...this.store.status, ...e.detail }; });
@@ -63,6 +94,7 @@ document.addEventListener("alpine:init", () => {
       });
       window.addEventListener("nt:mode", (e) => { this.store.status.mode = e.detail.mode; });
       window.addEventListener("nt:pro_ai", (e) => { this.store.status = { ...this.store.status, pro_ai: e.detail }; });
+      window.addEventListener("nt:update_install", (e) => { this.store.status = { ...this.store.status, update_install: e.detail }; });
       window.addEventListener("nt:kill_switch", (e) => { this.store.status.kill_switch = e.detail; });
       window.addEventListener("nt:toast", (e) => this.store.toast(e.detail.kind || "info", e.detail.title, e.detail.message || ""));
       NT.connect();

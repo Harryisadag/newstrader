@@ -271,6 +271,9 @@ pre.raw { white-space: pre-wrap; word-break: break-word; font-family: var(--mono
 .banner.live { background: var(--bad); color: #fff; font-weight: 600; }
 .banner.info { background: var(--accent-bg, rgba(77, 140, 255, 0.12)); color: var(--text); }
 .banner.info a:not(.btn) { color: var(--accent); }
+.banner.update { flex-wrap: wrap; }
+.banner .update-status { flex-basis: 100%; display: flex; align-items: center; gap: 12px; }
+.banner .update-status .progress { width: 180px; flex: none; margin-top: 0; }
 
 /* ---------- KPIs ---------- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }

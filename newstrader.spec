@@ -9,6 +9,7 @@ import os
 import platform
 import re
 import sys
+import tempfile
 
 MAC = sys.platform == "darwin"
 VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', open("newstrader/__init__.py", encoding="utf-8").read()).group(1)
@@ -18,6 +19,13 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 block_cipher = None
 datas = [("newstrader/web", "newstrader/web"),
          ("newstrader/llm/samples.json", "newstrader/llm")]  # Pro AI's "Test my PC" headlines
+
+# A version file (_internal/newstrader/version.txt on Windows), so "Update now" can check an unpacked update is the
+# version it expects. Macs check the version in Info.plist.
+_version_txt = os.path.join(tempfile.mkdtemp(prefix="newstrader-build-"), "version.txt")
+with open(_version_txt, "w", encoding="utf-8") as fh:
+    fh.write(VERSION + "\n")
+datas.append((_version_txt, "newstrader"))
 binaries = []
 hiddenimports = []
 

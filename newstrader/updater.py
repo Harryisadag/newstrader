@@ -21,6 +21,7 @@ import hashlib
 import logging
 import os
 import plistlib
+import posixpath
 import re
 import shlex
 import shutil
@@ -33,7 +34,7 @@ import time
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import httpx
 
@@ -45,14 +46,17 @@ log = logging.getLogger(__name__)
 DOWNLOAD_PREFIX = f"https://github.com/{updates.REPO}/releases/download/"
 CHUNK = 1 << 20
 RETRIES = 4
-UNPACKED_FACTOR = 3.0  # the unpacked app needs about this many times the zip's size
 STATUS_FILE = "update-status.txt"  # the helper writes "ok <version>" or "failed: <why>" here
 HELPER_LOG = "update-helper.log"
+STAGE_MARKER = ".newstrader-update"  # marks the unpack folder as ours, so only ours is ever deleted
 ORDER_WAIT = 15  # seconds to wait for an order that's being placed before giving up on the restart
 QUIT_DELAY = 1.5  # seconds, so the window can show "Restarting..."
 CLEANUP_DELAY = 30
 WINDOWS_EXE = "NewsTrader.exe"
 MAC_EXE = "NewsTrader"
+DITTO = "/usr/bin/ditto"
+# what may sit next to NewsTrader.exe; anything else means the folder holds more than the app, so it isn't replaced
+WINDOWS_APP_FILES = {WINDOWS_EXE.lower(), "_internal", ".env", "desktop.ini", "thumbs.db"}
 BUSY_PHASES = ("checking", "downloading", "verifying", "unpacking", "restarting")
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -227,7 +231,8 @@ def app_root(kind: str | None = None, executable: str | None = None) -> Path | N
     kind = platform_kind() if kind is None else kind
     exe = Path(executable or sys.executable).absolute()
     if kind == "windows":
-        return exe.parent
+        root = exe.parent
+        return root if root.name and root.parent != root else None  # never a whole drive
     if kind == "mac":
         bundle = exe.parent.parent.parent
         if exe.parent.name == "MacOS" and exe.parent.parent.name == "Contents" and bundle.suffix == ".app":
@@ -265,9 +270,51 @@ def why_not_writable(root: Path, kind: str) -> str:
         probe.rmdir()
     except OSError:
         return f"Your account isn't allowed to change the folder NewsTrader is in ({root.parent})."
-    if kind == "mac" and not os.access(root, os.W_OK):
+    if not os.access(root, os.W_OK):
         return f"Your account isn't allowed to replace {root.name} in {root.parent}."
     return ""
+
+
+def other_files(root: Path, kind: str) -> list[str]:
+    """Things in the Windows app folder that aren't part of NewsTrader (the whole folder gets replaced, so they'd be
+    lost). A Mac .app bundle only ever holds the app."""
+    if kind != "windows":
+        return []
+    with contextlib.suppress(OSError):
+        return sorted(p.name for p in root.iterdir() if p.name.lower() not in WINDOWS_APP_FILES)
+    return []
+
+
+def _is_old_app(folder: Path) -> bool:
+    return (folder / "_internal").is_dir() and (folder / WINDOWS_EXE).is_file()
+
+
+def make_stage(stage: Path) -> None:
+    """A fresh, empty unpack folder. An old one is only removed when it's ours."""
+    if stage.exists():
+        if not (stage / STAGE_MARKER).is_file():
+            raise UpdateError(f"There's already a folder called {stage.name} next to NewsTrader ({stage.parent}). "
+                              "Move or rename it, then try again. Nothing was changed.")
+        shutil.rmtree(stage, ignore_errors=True)
+        if stage.exists():
+            raise UpdateError(f"The folder {stage} from an earlier update couldn't be removed. Delete it, then try "
+                              "again. Nothing was changed.")
+    stage.mkdir()
+    (stage / STAGE_MARKER).write_text("NewsTrader unpacks updates here. Safe to delete.\n", encoding="utf-8")
+
+
+def clear_old(root: Path, kind: str) -> None:
+    """Windows: the helper renames the app to <name>.old, so nothing may be there yet."""
+    old = old_location(root, kind)
+    if kind != "windows" or not old.exists():
+        return
+    if not _is_old_app(old):
+        raise UpdateError(f"There's already a folder called {old.name} next to NewsTrader ({old.parent}). Move or "
+                          "rename it, then try again. Nothing was changed.")
+    shutil.rmtree(old, ignore_errors=True)
+    if old.exists():
+        raise UpdateError(f"The folder {old} from an earlier update couldn't be removed. Delete it, then try again. "
+                          "Nothing was changed.")
 
 
 def _safe_parts(name: str) -> tuple[str, ...]:
@@ -275,6 +322,14 @@ def _safe_parts(name: str) -> tuple[str, ...]:
     if name.startswith(("/", "\\")) or not parts or ".." in parts or any(":" in p for p in parts):
         raise UpdateError(f"The update file has an unsafe entry ({name!r}), so nothing was changed.")
     return parts
+
+
+def _safe_link(parts: tuple[str, ...], target: str) -> bool:
+    """A link inside the app may only point at something else inside it (Mac bundles use relative links)."""
+    if not target or target.startswith("/") or "\\" in target:
+        return False
+    resolved = posixpath.normpath(posixpath.join(*parts[:-1], target))
+    return resolved != ".." and not resolved.startswith("../") and not resolved.startswith("/")
 
 
 def unzip(archive: Path, dest: Path, kind: str) -> None:
@@ -287,14 +342,13 @@ def unzip(archive: Path, dest: Path, kind: str) -> None:
                 parts = _safe_parts(info.filename)
                 if stat.S_ISLNK(info.external_attr >> 16):
                     target = zf.read(info).decode("utf-8", "replace")
-                    if kind != "mac" or target.startswith("/") or ".." in PurePosixPath(
-                            *parts[:-1], target).parts[: len(parts) - 1] or target.count("..") > len(parts) - 1:
+                    if kind != "mac" or not _safe_link(parts, target):
                         raise UpdateError(f"The update file has an unsafe link ({info.filename!r}), so nothing was "
                                           "changed.")
-            if kind == "mac" and sys.platform == "darwin" and Path("/usr/bin/ditto").exists():
-                zf.close()
-                r = subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(dest)], capture_output=True,
-                                   text=True, timeout=600, check=False)
+            check_space(dest, sum(i.file_size for i in infos))
+            if kind == "mac" and sys.platform == "darwin" and Path(DITTO).exists():
+                r = subprocess.run([DITTO, "-x", "-k", str(archive), str(dest)], capture_output=True,
+                                   text=True, timeout=900, check=False)
                 if r.returncode != 0:
                     raise UpdateError(f"The update couldn't be unpacked ({(r.stderr or '').strip()[:200]}). "
                                       "Nothing was changed.")
@@ -313,20 +367,20 @@ def unzip(archive: Path, dest: Path, kind: str) -> None:
                         shutil.copyfileobj(src, dst, CHUNK)
                     if os.name != "nt" and mode & 0o111:
                         os.chmod(out, 0o755)
-    except (zipfile.BadZipFile, EOFError, OSError) as exc:
+    except (zipfile.BadZipFile, EOFError, OSError, subprocess.SubprocessError) as exc:
         raise UpdateError(f"The update couldn't be unpacked ({exc}). Nothing was changed.") from exc
 
 
 def _read_version_file(path: Path) -> str | None:
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return path.read_text(encoding="utf-8").strip() or None
     except OSError:
         return None
 
 
 def check_layout(stage: Path, kind: str, version: str) -> Path:
     """The unpacked app, after checking it is a complete NewsTrader <version>. Raises UpdateError otherwise."""
-    tops = [p for p in stage.iterdir() if p.name != "__MACOSX" and not p.name.startswith("._")]
+    tops = [p for p in stage.iterdir() if p.name != "__MACOSX" and not p.name.startswith(".")]
     bad = UpdateError("The download doesn't contain a complete NewsTrader app, so nothing was changed. Use "
                       "Download to update by hand.")
     if len(tops) != 1 or not tops[0].is_dir():
@@ -346,7 +400,9 @@ def check_layout(stage: Path, kind: str, version: str) -> Path:
                 found = str(plistlib.load(fh).get("CFBundleShortVersionString") or "") or None
         except (OSError, plistlib.InvalidFileException, ValueError) as exc:
             raise bad from exc
-    if found is not None and found != version:
+    if found is None:  # older builds had no version file: the checked zip's name is the version
+        log.info("The unpacked update has no version file; going by the zip's name (%s)", version)
+    elif found != version:
         raise UpdateError(f"The download contains NewsTrader {found}, not {version}, so nothing was changed.")
     return top
 
@@ -365,25 +421,26 @@ def carry_over(root: Path, new_app: Path) -> list[str]:
 
 
 # ------------------------------------------------------------------------------------------------ helper scripts
+# Plain ASCII on purpose: cmd reads .cmd files in the old DOS code page, which would mangle accented folder names.
+# Every path comes in as an NT_* environment variable and is only ever used inside double quotes, so spaces, accents,
+# & and brackets in folder names are safe. Messages passed to :log / :status must not contain & | < > ^ or %.
 WINDOWS_HELPER = r"""@echo off
 rem NewsTrader update helper: waits for NewsTrader to close, swaps in the new version and starts it.
-rem If a step fails it puts the old version back and starts that instead. The folders come in as NT_*
-rem environment variables, so names with spaces, brackets or accents are safe, and are always quoted.
+rem If a step fails it puts the old version back and starts that instead.
 setlocal EnableExtensions DisableDelayedExpansion
 call :log "Waiting for NewsTrader - process %NT_PID% - to close"
 set /a waited=0
 :wait
-tasklist /FI "PID eq %NT_PID%" /FI "IMAGENAME eq %NT_IMAGE%" /FO CSV /NH 2>nul | find /I "%NT_FIND%" >nul
+%SystemRoot%\System32\tasklist.exe /FI "PID eq %NT_PID%" /FI "IMAGENAME eq %NT_IMAGE%" /FO CSV /NH 2>nul | %SystemRoot%\System32\find.exe /I ".exe" >nul
 if errorlevel 1 goto closed
 set /a waited+=1
 if %waited% GEQ 180 goto still_open
-ping -n 2 127.0.0.1 >nul
+call :pause 2
 goto wait
 
 :closed
 call :log "NewsTrader has closed"
-ping -n 3 127.0.0.1 >nul
-if exist "%NT_OLD%\" rd /s /q "%NT_OLD%"
+call :pause 3
 if exist "%NT_OLD%\" goto old_in_way
 set /a tries=0
 :move_old
@@ -391,30 +448,29 @@ move "%NT_APP%" "%NT_OLD%" >nul 2>&1
 if exist "%NT_OLD%\" goto move_new
 set /a tries+=1
 if %tries% GEQ 15 goto cant_move_old
-ping -n 3 127.0.0.1 >nul
+call :pause 3
 goto move_old
 
 :move_new
 set /a tries=0
 :move_new_again
-move "%NT_NEW%" "%NT_APP%" >nul 2>&1
+if not exist "%NT_APP%\" move "%NT_NEW%" "%NT_APP%" >nul 2>&1
 if exist "%NT_APP%\%NT_EXE%" goto swapped
-if exist "%NT_APP%\" goto put_back
 set /a tries+=1
 if %tries% GEQ 5 goto put_back
-ping -n 3 127.0.0.1 >nul
+call :pause 3
 goto move_new_again
 
 :put_back
 call :log "The new version couldn't be moved into place - putting the old one back"
-if exist "%NT_APP%\" rd /s /q "%NT_APP%"
 set /a tries=0
 :put_back_again
-move "%NT_OLD%" "%NT_APP%" >nul 2>&1
-if exist "%NT_APP%\%NT_IMAGE%" goto put_back_done
+if exist "%NT_OLD%\" if exist "%NT_APP%\" rd /s /q "%NT_APP%" >nul 2>&1
+if exist "%NT_OLD%\" if not exist "%NT_APP%\" move "%NT_OLD%" "%NT_APP%" >nul 2>&1
+if not exist "%NT_OLD%\" if exist "%NT_APP%\" goto put_back_done
 set /a tries+=1
 if %tries% GEQ 10 goto put_back_failed
-ping -n 3 127.0.0.1 >nul
+call :pause 3
 goto put_back_again
 
 :put_back_done
@@ -422,7 +478,7 @@ call :status "failed: the new version couldn't be moved into place, so the old o
 goto start_old
 
 :put_back_failed
-call :status "failed: the old version couldn't be put back - it is in the folder ending in .old next to where NewsTrader was, rename it back"
+call :status "failed: the old version couldn't be put back. It is in the folder ending in .old next to where NewsTrader was - rename it back"
 goto done
 
 :swapped
@@ -434,7 +490,7 @@ rd /s /q "%NT_STAGE%" >nul 2>&1
 goto done
 
 :old_in_way
-call :status "failed: a .old folder from an earlier update couldn't be removed, so nothing was changed"
+call :status "failed: a folder from an earlier update was in the way, so nothing was changed"
 goto start_old
 
 :cant_move_old
@@ -462,11 +518,17 @@ exit /b 0
 >"%NT_STATUS%" echo %~1
 call :log "%~1"
 exit /b 0
+
+:pause
+%SystemRoot%\System32\PING.EXE -n %~1 127.0.0.1 >nul
+exit /b 0
 """
 
 MAC_HELPER = """#!/bin/sh
 # NewsTrader update helper: waits for NewsTrader to close, swaps in the new version and opens it.
 # If a step fails it puts the old version back and opens that instead.
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
 APP={app}
 NEW={new}
 OLD={old}
@@ -476,6 +538,7 @@ LOG={log}
 STATUS={status}
 PID={pid}
 VERSION={version}
+trap 'rm -rf "$HELPER_DIR"' EXIT
 
 log() {{ printf '%s %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG" 2>/dev/null; }}
 finish() {{ printf '%s\\n' "$1" > "$STATUS" 2>/dev/null; log "$1"; }}
@@ -494,7 +557,7 @@ log "NewsTrader has closed"
 sleep 1
 rm -rf "$OLD"
 if ! mv "$APP" "$OLD"; then
-  finish "failed: the old version couldn't be moved aside, so nothing was changed"
+  finish "failed: macOS wouldn't let the old version be moved, so nothing was changed"
   open "$APP"
   exit 1
 fi
@@ -514,18 +577,15 @@ finish "ok $VERSION"
 log "Opening NewsTrader $VERSION"
 open "$APP"
 rm -rf "$STAGE"
-rm -rf "$HELPER_DIR"
 """
 
 
 def windows_helper(root: Path, new_app: Path, version: str, pid: int, image: str, log_file: Path,
                    status_file: Path, helper_dir: Path) -> tuple[str, dict[str, str]]:
-    """The .cmd helper and the environment variables that carry its paths. The script itself is plain ASCII: cmd
-    reads .cmd files in the old DOS code page, which would mangle accented folder names written into it."""
+    """The .cmd helper and the environment variables that carry its paths (they never go into the script)."""
     env = {
-        "NT_PID": str(pid),
+        "NT_PID": str(int(pid)),
         "NT_IMAGE": image,
-        "NT_FIND": image if image.isascii() else ".exe",
         "NT_EXE": WINDOWS_EXE,
         "NT_APP": str(root),
         "NT_OLD": str(old_location(root, "windows")),
@@ -597,13 +657,15 @@ class Updater:
     def __init__(self, ctx: AppContext, client_factory: Callable[[], httpx.Client] | None = None,
                  launcher: Callable[[str, Path, dict, Path], None] | None = None,
                  reveal: Callable[[Path], None] | None = None, kind: str | None = None,
-                 executable: str | None = None):
+                 executable: str | None = None, asset: str | None = None, quit_delay: float = QUIT_DELAY):
         self.ctx = ctx
         self._client_factory = client_factory or make_client
         self._launch = launcher or launch_helper
         self._reveal = reveal or reveal_file
-        self._kind = kind
+        self._kind = kind  # these three are for tests; normally they come from this computer
         self._executable = executable
+        self._asset = asset
+        self.quit_delay = quit_delay
         self.phase = "idle"
         self.message = ""
         self.done = 0
@@ -624,32 +686,36 @@ class Updater:
         return self._task is not None and not self._task.done()
 
     def supported(self) -> bool:
-        return updates.can_update_in_place() and self.kind in ("windows", "mac")
+        """Only the ready-made Windows / Mac app updates itself; the source version has update.bat / .command."""
+        return paths.is_frozen() and self.kind in ("windows", "mac")
 
     async def start(self) -> None:
         self._read_last_result()
         if self.last_result:
             self._tasks.append(asyncio.create_task(self._announce_result(), name="update-result"))
-        if paths.is_frozen():
+        if self.supported():
             self._tasks.append(asyncio.create_task(self._cleanup_later(), name="update-cleanup"))
 
     async def stop(self) -> None:
-        self._cancel.set()
-        for t in [*self._tasks, self._task]:
-            if t is not None and not t.done() and self.phase != "restarting":
-                t.cancel()
-        for t in [*self._tasks, self._task]:
-            if t is not None:
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await t
+        self._cancel.set()  # a download in progress stops at its next chunk
+        tasks = [t for t in (*self._tasks, self._task) if t is not None]
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await t
 
     def summary(self) -> dict:
-        return {"phase": self.phase, "message": self.message, "done": self.done, "total": self.total,
-                "version": self.version, "supported": self.supported(), "last_result": self.last_result}
+        return {"phase": self.phase, "busy": self.phase in BUSY_PHASES, "message": self.message, "done": self.done,
+                "total": self.total, "version": self.version, "supported": self.supported(),
+                "source_mode": not paths.is_frozen(), "last_result": self.last_result}
 
     # ---- starting
+    def _trader(self):
+        return self.ctx.service("trader")
+
     def _trader_busy(self) -> bool:
-        trader = self.ctx.service("trader")
+        trader = self._trader()
         return bool(trader is not None and getattr(trader, "busy", False))
 
     async def install(self) -> dict:
@@ -682,7 +748,7 @@ class Updater:
             files, sha = await asyncio.to_thread(self._lookup, client)
             self.version = files.version
             zip_path = await asyncio.to_thread(self._download, client, files, sha)
-            self._set("unpacking", "Unpacking the new version...")
+            self._set("unpacking", "Unpacking and checking the new version...")
             prepared = await asyncio.to_thread(self._unpack, files, zip_path)
             if "manual" in prepared:
                 self._set("manual", prepared["manual"])
@@ -702,6 +768,7 @@ class Updater:
                 client.close()
 
     def _lookup(self, client: httpx.Client) -> tuple[ReleaseFiles, str]:
+        """The newest release's files for this computer and the zip's expected SHA-256 (nothing downloaded yet)."""
         try:
             r = client.get(updates.LATEST_URL, headers={"Accept": "application/vnd.github+json"})
             release = r.json() if r.status_code == 200 else None
@@ -713,7 +780,7 @@ class Updater:
         latest, mine = updates.parse_version(release.get("tag_name")), updates.parse_version(__version__)
         if not latest or not mine or latest <= mine:
             raise UpdateError(f"You already have the newest version ({__version__}).")
-        files = release_files(release)
+        files = release_files(release, self._asset)
         if files is None:
             raise UpdateError("The newest release has no ready-made download for this computer yet. Use Download "
                               "to get it from the Releases page.")
@@ -723,9 +790,10 @@ class Updater:
         except httpx.HTTPError as exc:
             raise UpdateError("Couldn't reach GitHub to get the update - check the internet connection and try "
                               "again.") from exc
-        if r.status_code != 200 or len(r.content) > 4096:
-            raise UpdateError(_http_problem(r.status_code) if r.status_code != 200 else
-                              "The update's checksum file is damaged, so nothing was downloaded.")
+        if r.status_code != 200:
+            raise UpdateError(_http_problem(r.status_code))
+        if len(r.content) > 4096:
+            raise UpdateError("The update's checksum file is damaged, so nothing was downloaded.")
         sha = parse_sha256_file(r.text, files.name)
         if files.digest and files.digest != sha:
             raise UpdateError("GitHub's checksum for the update doesn't match the release's own, so nothing was "
@@ -736,7 +804,7 @@ class Updater:
         folder = updates_folder()
         dest = folder / files.name
         if dest.is_file() and dest.stat().st_size == files.size:  # downloaded earlier: check it again
-            self._set("verifying", "Checking the download is intact...")
+            self._set("verifying", "Checking the earlier download is intact...")
             if sha256_file(dest, self._cancel) == sha:
                 return dest
             dest.unlink()
@@ -753,22 +821,28 @@ class Updater:
             self.ctx.bus.publish("update_install", self.summary())
 
     def _unpack(self, files: ReleaseFiles, zip_path: Path) -> dict:
+        """Unpack the checked zip next to the app and check it. {"manual": message} when the app can't be replaced
+        where it is."""
         kind = self.kind
         root = app_root(kind, self._executable)
         if root is None or not root.exists():
-            raise UpdateError("Couldn't find NewsTrader's own folder to update. Use Download to update by hand.")
+            return {"manual": self._manual(zip_path, "Couldn't find NewsTrader's own folder to replace.", kind)}
         if _inside(paths.data_dir(), root):
-            raise UpdateError(f"Your NewsTrader data folder is inside the app ({paths.data_dir()}), so replacing "
-                              "the app would delete it. Use Download to update by hand.")
+            return {"manual": self._manual(zip_path, f"Your NewsTrader data folder is inside the app "
+                                                     f"({paths.data_dir()}), so replacing the app would delete it.",
+                                           kind)}
+        extra = other_files(root, kind)
+        if extra:
+            shown = ", ".join(extra[:3]) + (f" and {len(extra) - 3} more" if len(extra) > 3 else "")
+            return {"manual": self._manual(zip_path, f"The folder NewsTrader is in ({root}) also has other things in "
+                                                     f"it ({shown}), so Update now won't replace it.", kind)}
         why = why_not_writable(root, kind)
         if why:
             return {"manual": self._manual(zip_path, why, kind)}
+        clear_old(root, kind)
         stage = staging_dir(root, kind)
-        if stage.exists():
-            shutil.rmtree(stage)
-        stage.mkdir()
+        make_stage(stage)
         try:
-            check_space(stage, files.size * UNPACKED_FACTOR)
             unzip(zip_path, stage, kind)
             new_app = check_layout(stage, kind, files.version)
         except BaseException:
@@ -781,8 +855,8 @@ class Updater:
         target = zip_path
         downloads = Path.home() / "Downloads"
         if downloads.is_dir():
-            with contextlib.suppress(OSError):
-                target = Path(shutil.copy2(zip_path, downloads / zip_path.name))
+            with contextlib.suppress(OSError, shutil.Error):
+                target = Path(shutil.move(str(zip_path), str(downloads / zip_path.name)))
         with contextlib.suppress(Exception):
             self._reveal(target)
         where = "your Downloads folder" if target.parent == downloads else str(target.parent)
@@ -792,6 +866,7 @@ class Updater:
         else:
             steps = ("Close NewsTrader, right-click the zip -> Extract All, and put the new NewsTrader folder in place "
                      "of the old one.")
+        log.warning("Update now can't replace the app here: %s", why)
         return (f"{why} The new version is downloaded and checked: {target.name} in {where} (a window just opened "
                 f"on it). {steps} Your settings and keys stay.")
 
@@ -806,24 +881,42 @@ class Updater:
             shutil.rmtree(staging_dir(root, self.kind), ignore_errors=True)
             raise UpdateBusy("An order is being placed right now, so NewsTrader didn't restart. Click Update now "
                              "again in a minute (the download is saved) - nothing was changed.")
-        trader = self.ctx.service("trader")
-        pause = getattr(trader, "pause_for_update", None)
-        if pause is not None:
-            pause(True)  # straight after the check, so no new order can start in between
+        hold = getattr(self._trader(), "hold_for_update", None)
+        if hold is not None:
+            hold(True)  # straight after the check, with no await in between, so no new order can start
         try:
             await asyncio.to_thread(self._start_helper, root, new_app, files.version)
         except BaseException:
-            if pause is not None:
-                pause(False)
+            if hold is not None:
+                hold(False)
             shutil.rmtree(staging_dir(root, self.kind), ignore_errors=True)
             raise
         log.warning("Restarting to install NewsTrader %s", files.version)
-        quit_app = getattr(self.ctx, "quit_app", None)
-        if quit_app is None:
+        if getattr(self.ctx, "quit_app", None) is None:
             self._set("restarting", "Close NewsTrader to finish the update - the new version then opens by itself.")
             return
         self._set("restarting", f"Restarting into NewsTrader {files.version}...")
-        asyncio.get_running_loop().call_later(QUIT_DELAY, quit_app)
+        asyncio.get_running_loop().call_later(self.quit_delay, self._quit)
+
+    def _quit(self) -> None:
+        """Close the app the normal way (from its own thread, so a slow window can't stall the engine)."""
+        loop = asyncio.get_running_loop()
+
+        def run() -> None:
+            try:
+                self.ctx.quit_app()
+            except Exception as exc:
+                log.exception("Couldn't close NewsTrader for the update")
+                loop.call_soon_threadsafe(self._quit_failed, exc)
+
+        threading.Thread(target=run, name="update-quit", daemon=True).start()
+
+    def _quit_failed(self, exc: Exception) -> None:
+        hold = getattr(self._trader(), "hold_for_update", None)
+        if hold is not None:
+            hold(False)  # trading carries on until you close the app
+        self._set("restarting", "NewsTrader couldn't close itself. Close it within 3 minutes to finish the update - "
+                                f"the new version then opens by itself ({type(exc).__name__}).")
 
     def _start_helper(self, root: Path, new_app: Path, version: str) -> None:
         kind = self.kind
@@ -869,7 +962,7 @@ class Updater:
             if rest.strip() == __version__:
                 self.last_result = {"ok": True, "message": f"Updated to NewsTrader {__version__}. Your settings, "
                                                            "keys and history came with it."}
-        else:
+        elif text:
             why = text.partition(":")[2].strip() or "something went wrong"
             self.last_result = {"ok": False, "message": f"The update didn't finish: {why}. You're on NewsTrader "
                                                         f"{__version__} - try Update now again, or use Download to "
@@ -894,13 +987,15 @@ class Updater:
             await asyncio.to_thread(self.cleanup)
 
     def cleanup(self) -> None:
-        """Remove what an earlier update left behind (best effort)."""
+        """Remove what an earlier update left behind (best effort, and only things that are clearly ours)."""
         kind = self.kind
         root = app_root(kind, self._executable) if kind else None
         if root is not None:
-            shutil.rmtree(staging_dir(root, kind), ignore_errors=True)
+            stage = staging_dir(root, kind)
+            if (stage / STAGE_MARKER).is_file():
+                shutil.rmtree(stage, ignore_errors=True)
             old = old_location(root, kind)
-            if kind == "windows" and (old / "_internal").is_dir():
+            if kind == "windows" and _is_old_app(old):
                 shutil.rmtree(old, ignore_errors=True)
         mine = updates.parse_version(__version__)
         for f in updates_folder().iterdir():

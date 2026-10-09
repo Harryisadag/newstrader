@@ -49,6 +49,9 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     updates = ctx.service("updates")
     if updates is not None:
         out["update"] = updates.summary()
+    updater = ctx.service("updater")
+    if updater is not None:
+        out["update_install"] = updater.summary()
     pro = ctx.service("pro_ai")
     if pro is not None:
         out["pro_ai"] = pro.summary()

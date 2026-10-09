@@ -54,9 +54,12 @@ To open it: on Windows, paste `%LOCALAPPDATA%\NewsTrader` into the File Explorer
 - `.env` from your NewsTrader folder
 - `config.json`, `newstrader.db` and the `models` folder from its `data` folder
 
-**Updating:** from v0.3.0 the app checks for a newer release once a day and shows a banner with a link (it never installs anything by itself). Download the newest release and replace the app. Your settings stay.
-- Windows: delete the old `NewsTrader` folder, then extract the new one in its place.
-- Mac: drag the new NewsTrader.app into Applications and choose **Replace**.
+**Updating:** the app checks for a newer release once a day and shows a banner at the top (turn it off in Settings → Display).
+- **From v0.4:** click **Update now** in the banner. NewsTrader downloads the zip for your computer, checks its SHA-256 checksum, swaps in the new version and restarts by itself (about a minute). Nothing changes until you click it, it won't start while an order is being placed, and if a step fails it puts the old version back. Your settings, keys, history and the kill switch stay.
+- **Coming from v0.3** (its banner only has a Download link): update by hand this once. Download the newest release and replace the app:
+  - Windows: close NewsTrader, delete the old `NewsTrader` folder, then extract the new one in its place.
+  - Mac: close NewsTrader, drag the new NewsTrader.app into Applications and choose **Replace**.
+- Update now can't replace an app in a folder your account can't change (such as `C:\Program Files`, or a Mac app that isn't in Applications), or a Windows `NewsTrader` folder that holds other files too. It then saves the checked zip in your Downloads folder and shows it; replace the app by hand as above. Keep the Mac app in Applications so Update now works.
 
 The app has its own copy of yt-dlp (the YouTube downloader). If TV streams stop working after YouTube changes something, the fix is a newer release. `update.bat` / `update.command` are only for the source version.
 

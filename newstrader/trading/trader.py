@@ -34,6 +34,7 @@ OPEN_STATUSES = {"new", "accepted", "pending_new", "held", "partially_filled", "
                  "pending_replace", "replaced", "calculated"}
 CHASE_LOOKBACK = timedelta(minutes=60)  # "since the news" looks back at most this far
 SIGNAL_INTENTS = ("open_long", "open_short", "close_long", "close_short")
+UPDATE_HOLD = "NewsTrader is restarting to install an update - no new orders until it's back (about a minute)."
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -79,6 +80,7 @@ class Trader:
         self._snapshot_at = 0.0
         self._asset_cache: dict[str, tuple[float, dict | None]] = {}
         self.last_error: str | None = None
+        self._held_for_update = False
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -93,6 +95,17 @@ class Trader:
                 await t
         self._tasks.clear()
         await self._stop_stream()
+
+    @property
+    def busy(self) -> bool:
+        """True while a trade is being decided or an order placed (Update now waits for this)."""
+        return self._lock.locked()
+
+    def hold_for_update(self, on: bool) -> None:
+        """No new orders while NewsTrader restarts into an update (the kill switch still works)."""
+        self._held_for_update = on
+        if on:
+            log.warning("No new orders until NewsTrader has restarted into the update")
 
     async def on_keys_changed(self) -> None:
         await self.connect()
@@ -380,6 +393,8 @@ class Trader:
                 signal["direction"], signal["confidence"], self.holding_long(symbol), self.ctx.config.settings.trading):
             charts.prefetch(symbol)  # the chart downloads while the account is refreshed below
         async with self._lock:
+            if self._held_for_update:
+                return self._result("blocked", UPDATE_HOLD)
             try:
                 await self.refresh()
                 holding = self.holding_long(symbol)
@@ -564,6 +579,8 @@ class Trader:
         if self.broker is None:
             raise RuntimeError("Not connected to a trading account")
         async with self._lock:
+            if self._held_for_update:
+                raise RuntimeError(UPDATE_HOLD)
             order = await asyncio.to_thread(self.broker.close_position, symbol.upper())
             pos_long = order.get("side") == "sell"
             self._record_order(order, {}, "close_long" if pos_long else "close_short", "Closed manually")

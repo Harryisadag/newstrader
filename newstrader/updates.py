@@ -1,8 +1,8 @@
 """Tells you when a newer NewsTrader is out: checks GitHub once at start-up, then once a day.
 
-Nothing is downloaded or installed by itself. The app shows a banner with a link to the right download for this
-computer (or, when running from the source code, says to run the update script). It is one small request to
-api.github.com a day; turn it off in Settings -> Display.
+Nothing is downloaded or installed by itself. The app shows a banner with an Update now button (the ready-made app,
+see updater.py) and a link to the right download for this computer, or, when running from the source code, says to
+run the update script. It is one small request to api.github.com a day; turn it off in Settings -> Display.
 """
 
 from __future__ import annotations
@@ -56,12 +56,14 @@ def release_info(release: dict, current: str = __version__, asset: str | None = 
     latest, mine = parse_version(tag), parse_version(current)
     asset = platform_asset() if asset is None else asset
     page = release.get("html_url") or RELEASES_PAGE
-    download = page
+    download, size = page, 0
     if asset:
         for a in release.get("assets") or []:
             name = str(a.get("name") or "")
             if name.endswith(f"-{asset}.zip") and a.get("state", "uploaded") == "uploaded":
                 download = a.get("browser_download_url") or page
+                with contextlib.suppress(TypeError, ValueError):
+                    size = int(a.get("size") or 0)
                 break
     return {
         "current": current,
@@ -69,6 +71,7 @@ def release_info(release: dict, current: str = __version__, asset: str | None = 
         "newer": bool(latest and mine and latest > mine),
         "url": page,
         "download": download,
+        "size": size,
         "published_at": release.get("published_at"),
         "notes": str(release.get("body") or "").split("\n## ")[0].strip()[:600],
     }
@@ -101,7 +104,8 @@ class UpdateChecker:
         """Small dict for the 5-second heartbeat (None until a newer version is known)."""
         if not self.info or not self.info.get("newer"):
             return None
-        return {k: self.info[k] for k in ("latest", "url", "download")} | {"newer": True, "source_mode": not paths.is_frozen()}
+        return {k: self.info.get(k) for k in ("latest", "url", "download", "size")} | {
+            "newer": True, "source_mode": not paths.is_frozen()}
 
     def payload(self) -> dict:
         return {"enabled": self.ctx.config.settings.ui.check_updates, "checked_at": self.checked_at,
@@ -147,8 +151,13 @@ class UpdateChecker:
             if self._announced != info["latest"]:
                 self._announced = info["latest"]
                 self.ctx.bus.publish("update_available", self.summary())
-                how = ("Run update.bat / update.command to get it." if not paths.is_frozen()
-                       else "Download it from the banner at the top.")
+                updater = self.ctx.service("updater")
+                if not paths.is_frozen():
+                    how = "Run update.bat / update.command to get it."
+                elif updater is not None and updater.supported():
+                    how = "Click Update now in the banner at the top."
+                else:
+                    how = "Download it from the banner at the top."
                 self.ctx.bus.publish("toast", {"kind": "info", "title": f"NewsTrader {info['latest']} is out",
                                                "message": how})
         else:

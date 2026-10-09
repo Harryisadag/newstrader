@@ -456,7 +456,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 
 The free Alpaca data plan (IEX) sees part of the market's trading, so volume numbers are lower than the full market's. Spike detection compares a stock with its own normal volume, so it still works.
 
-**Display:** times in the app can follow this computer's time zone, New York (market) time, or UTC. **Check for updates** (on) looks at GitHub once a day and shows a banner when a newer NewsTrader is out. It never installs anything by itself.
+**Display:** times in the app can follow this computer's time zone, New York (market) time, or UTC. **Check for updates** (on) looks at GitHub once a day and shows a banner when a newer NewsTrader is out. In the downloaded app (v0.4 and newer) the banner has an **Update now** button; nothing is installed until you click it.
 
 **Alerts:** desktop pop-ups (Windows or Mac) and Discord, each on/off. You can also turn each alert type on/off:
 - trade placed
@@ -562,9 +562,18 @@ The app keeps its settings, database and keys in `~/Library/Application Support/
 ---
 
 ## Updating
-The app checks GitHub once a day and shows a banner at the top when a newer version is out, with a link to it (turn this off in Settings → Display). Nothing is downloaded or installed by itself.
+The app checks GitHub once a day and shows a banner at the top when a newer version is out (turn this off in Settings → Display). Nothing is downloaded or installed until you click something.
 
-Using a downloaded release? Download the newest one instead (see "Updating" in [RELEASES.md](RELEASES.md)).
+**Downloaded app, v0.4 and newer:** click **Update now** in the banner. NewsTrader:
+- downloads the new version for your computer and checks it against the release's SHA-256 checksum (a damaged download is thrown away before anything changes),
+- unpacks it next to the app and checks it's complete,
+- closes the normal way (stopping trading and the Pro AI server), swaps in the new version and opens it. This takes about a minute.
+
+It won't start while an order is being placed, and no trades are placed while it restarts. If a step fails, it puts the old version back, opens it and tells you why. Your settings, keys, history and the kill switch stay. If live trading was on, NewsTrader comes back in paper mode, like after any restart.
+
+If the app is somewhere your account can't change (for example `C:\Program Files`, or a Mac app that isn't in Applications), or its Windows folder holds other files too, Update now saves the checked zip in your Downloads folder, shows it to you and says how to swap it in by hand. The banner's **Download** link always works for updating by hand.
+
+**Downloaded app, v0.3:** its banner only has a Download link, so update by hand this once (see "Updating" in [RELEASES.md](RELEASES.md)). From v0.4 on, Update now does it for you.
 
 From the source code: double-click **`update.bat`** (Windows) or **`update.command`** (Mac). It:
 - pulls the latest code if you used GitHub Desktop / git (otherwise it tells you to re-download the ZIP), and
@@ -587,7 +596,7 @@ If you use the built app, run `build_exe.bat` / `build_app.command` again after 
 | Training fails with Alpaca errors | You hit Alpaca's free rate limit or a network blip. Days already downloaded are saved, so click Train again later. |
 | A TV stream says "offline - not live right now" | That channel isn't broadcasting. It re-checks every 5 minutes. Turn on another stream or add one. |
 | YouTube error "Sign in to confirm you're not a bot" | Settings → Transcription → **YouTube cookies from browser** → pick the browser where you're logged in to YouTube. Then update (source version: run the update script; downloaded app: get the newest release). On a Mac, Chrome asks for Keychain access, and Safari needs Full Disk Access for NewsTrader/Terminal. |
-| Streams fail after working before | YouTube changed and yt-dlp needs updating. Source version: run the **update** script. Downloaded app: get the newest release from the Releases page. |
+| Streams fail after working before | YouTube changed and yt-dlp needs updating. Source version: run the **update** script. Downloaded app: click **Update now** in the banner (v0.4 and newer) or get the newest release from the Releases page. |
 | "GPU unavailable … using CPU" (Windows) | No NVIDIA card? That's expected: it uses the CPU. Otherwise update the NVIDIA driver, restart, then run Logs → Run diagnostics. If it still fails, run `update.bat` (or get the newest release). |
 | Mac: "Apple-GPU speech engine isn't installed" | Run `run.command` again (it needs macOS 14+ on an M-series Mac). |
 | "Transcription falling behind" | Turn off a stream, or switch to `large-v3-turbo` (or `small` on an Intel Mac). |

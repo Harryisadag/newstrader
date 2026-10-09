@@ -89,6 +89,31 @@ def _platform_fixes() -> None:
         os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 
+class _Quitter:
+    """Closes NewsTrader the normal way, as if its window was closed (Update now uses it to restart)."""
+
+    def __init__(self, server):
+        self.server = server
+        self.window = None
+        self.called = False
+
+    def __call__(self) -> None:
+        self.called = True
+        if self.window is not None:
+            self.window.confirm_close = False  # no "are you sure?" box
+            self.window.destroy()
+        else:
+            self.server.should_exit = True
+
+
+def _exit_soon(seconds: float = 10) -> None:
+    """After the normal shutdown, make sure the process really ends so the update helper can carry on (a stuck
+    background thread would otherwise keep it open)."""
+    timer = threading.Timer(seconds, os._exit, args=(0,))
+    timer.daemon = True
+    timer.start()
+
+
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
@@ -139,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     app = create_app(ctx)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", log_config=None,
                                            access_log=False, lifespan="on", ws="auto"))
+    quitter = _Quitter(server)
+    ctx.quit_app = quitter
     thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)
     thread.start()
 
@@ -161,23 +188,25 @@ def main(argv: list[str] | None = None) -> int:
             while thread.is_alive():
                 time.sleep(0.5)
         else:
-            _run_window(url)
+            _run_window(url, quitter)
     except KeyboardInterrupt:
         pass
     finally:
-        log.info("Shutting down")
+        log.info("Shutting down%s", " to install an update" if quitter.called else "")
         server.should_exit = True
         thread.join(timeout=20)
         shutdown_logging()
+        if quitter.called:
+            _exit_soon()
     return 0
 
 
-def _run_window(url: str) -> None:
+def _run_window(url: str, quitter: _Quitter) -> None:
     import webview
 
     webview.settings["ALLOW_DOWNLOADS"] = True
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True  # news links open in your normal browser
-    webview.create_window(
+    quitter.window = webview.create_window(
         f"{APP_NAME} {__version__}",
         url,
         width=1440,

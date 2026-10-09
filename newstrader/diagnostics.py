@@ -23,7 +23,7 @@ UPDATE = "update.command" if MAC else "update.bat"
 def _update_hint() -> str:
     """How to get newer bundled tools: the downloaded app can only be replaced by a newer release."""
     if paths.is_frozen():
-        return "Download the newest NewsTrader release (see RELEASES.md on GitHub)"
+        return "Get the newest NewsTrader release (Update now in the banner when one is out, or see RELEASES.md on GitHub)"
     return f"Run {UPDATE}"
 
 

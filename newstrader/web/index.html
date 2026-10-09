@@ -117,17 +117,27 @@
   <b>Daily loss limit hit.</b> Trading is paused until the next trading day.
   <button class="btn ghost small" @click="if (confirm('Resume trading today anyway?')) NT.api.post('/halt/clear').then(() => refresh())">Resume anyway</button>
 </div>
-<div class="banner info" x-show="s.update && s.update.newer && dismissedUpdate !== s.update.latest">
+<div class="banner info update" x-show="s.update && s.update.newer && (dismissedUpdate !== s.update.latest || updateActive)">
   <b>NewsTrader <span x-text="s.update && s.update.latest"></span> is out</b>
   <span class="muted">(you have <span x-text="s.version"></span>)</span>
+  <template x-if="canUpdateNow">
+    <button class="btn primary small" :disabled="updating" @click="updateNow()"
+            x-text="updating ? 'Updating...' : 'Update now'" title="Downloads the new version, checks it, then NewsTrader restarts by itself"></button>
+  </template>
   <template x-if="s.update && !s.update.source_mode">
-    <a class="btn small" :href="fmt.url(s.update.download)" target="_blank" rel="noopener">Download</a>
+    <a class="btn small" :class="{ ghost: canUpdateNow }" :href="fmt.url(s.update.download)" target="_blank" rel="noopener"
+       :title="canUpdateNow ? 'Get the zip yourself and replace the app by hand' : ''">Download</a>
   </template>
   <template x-if="s.update && s.update.source_mode">
     <span>Double-click <b>update.bat</b> (Windows) or <b>update.command</b> (Mac) to get it.</span>
   </template>
   <a :href="fmt.url(s.update && s.update.url)" target="_blank" rel="noopener">What's new</a>
-  <button class="btn ghost small" @click="dismissUpdate()">Later</button>
+  <button class="btn ghost small" x-show="!updating" @click="dismissUpdate()">Later</button>
+  <div class="update-status" x-show="updateActive">
+    <div class="progress" x-show="install.phase === 'downloading'"><div class="bar" :style="`width:${updatePct}%`"></div></div>
+    <span :class="{ 'warn-text': install.phase === 'error' }" x-text="updateText"></span>
+    <button class="btn ghost small" x-show="['checking', 'downloading', 'verifying'].includes(install.phase)" @click="cancelUpdate()">Cancel</button>
+  </div>
 </div>
 <div class="banner live" x-show="s.mode === 'live'">
   <b>LIVE TRADING - REAL MONEY.</b> Switch back in Settings -> Live trading, or restart the app.

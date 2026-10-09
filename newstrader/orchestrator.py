@@ -80,6 +80,7 @@ class Orchestrator:
         from .sources.manager import SourceManager
         from .system_monitor import SystemMonitor
         from .trading.trader import Trader
+        from .updater import Updater
         from .updates import UpdateChecker
 
         self.add(SystemMonitor(self.ctx))
@@ -95,6 +96,7 @@ class Orchestrator:
         self.add(BacktestRunner(self.ctx))
         self.add(ModelTrainer(self.ctx))
         self.add(UpdateChecker(self.ctx))
+        self.add(Updater(self.ctx))  # "Update now": only ever runs when you click it
 
     async def _heartbeat(self) -> None:
         from .api.routes.status import status_summary
