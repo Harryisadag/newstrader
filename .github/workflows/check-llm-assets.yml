@@ -1,12 +1,19 @@
 name: check-llm-assets
 
-# Lists the llama.cpp server builds and GGUF model files that Pro AI (the optional local language model) can download,
-# with exact sizes and SHA-256 checksums, so the app can pin them. Results are on the run's summary page.
-# On demand (Actions -> check-llm-assets -> Run workflow) and weekly.
+# Pro AI (the optional local language model) downloads one pinned llama.cpp server build per platform and GGUF model
+# files, each pinned in newstrader/llm/catalog.py with its exact size and SHA-256. This checks every pin against the
+# GitHub release and the pinned Hugging Face revision (fails on any mismatch), and lists newer builds and models with
+# their checksums for the next update. Results are on the run's summary page.
+# On demand (Actions -> check-llm-assets -> Run workflow), weekly, and whenever the pins change.
 on:
   workflow_dispatch:
   schedule:
     - cron: "41 6 * * 1"
+  push:
+    paths:
+      - newstrader/llm/catalog.py
+      - scripts/check_llm_assets.py
+      - .github/workflows/check-llm-assets.yml
 
 permissions:
   contents: read
@@ -22,12 +29,21 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install httpx
-      - name: List the downloads
+      - name: Check the pinned downloads
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/check_llm_assets.py --verify-pins --json llm-pins.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: List newer builds and models
+        if: github.event_name != 'push'
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/check_llm_assets.py --json llm-assets.json | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: llm-assets
-          path: llm-assets.json
+          path: llm-*.json
+          if-no-files-found: ignore
           retention-days: 30

@@ -43,6 +43,42 @@ jobs:
       - name: Start the app headless and check it answers
         run: python scripts/smoke_test.py
 
+  # Pro AI end to end on the processor: the pinned llama.cpp Linux build and the smallest model are fetched with the
+  # app's own download code (sizes and SHA-256 checked; kept in the cache until catalog.py changes), then
+  # llama-server answers real headlines and the "Test my PC" self-test. Latency and score go to the summary page.
+  pro-ai-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NEWSTRADER_DATA_DIR: ${{ github.workspace }}/.pro-ai-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies (skipping the large CUDA library - CI has no GPU)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          grep -v "nvidia-cublas" requirements.txt > requirements-ci.txt
+          sed "s/-r requirements.txt/-r requirements-ci.txt/" requirements-dev.txt > requirements-dev-ci.txt
+          pip install -r requirements-dev-ci.txt
+
+      - name: Cache the Pro AI downloads
+        uses: actions/cache@v4
+        with:
+          path: .pro-ai-data/models/llm
+          key: pro-ai-${{ runner.os }}-${{ hashFiles('newstrader/llm/catalog.py') }}
+
+      - name: Pro AI smoke test
+        shell: bash
+        run: |
+          { echo '```'; code=0; python scripts/pro_ai_smoke.py || code=$?; echo '```'; exit $code; } | tee -a "$GITHUB_STEP_SUMMARY"
+
   # Downloads the real FinBERT model (~110 MB) and checks it scores known headlines the right way, and that
   # the Apple-GPU Whisper models exist. Needs internet, so it isn't part of the unit tests.
   models:
