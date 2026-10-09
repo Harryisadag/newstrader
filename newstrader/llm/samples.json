@@ -1,0 +1,459 @@
+{
+ "about": "Labelled headlines for Pro AI's 'Test my PC' check, copied from tests/fixtures/eval/dev.jsonl. candidates/keywords: what the prefilter finds, used when the app's ticker table isn't loaded.",
+ "items": [
+  {
+   "id": "h001",
+   "title": "Costco quarterly profit beats estimates on strong membership renewals - Reuters",
+   "body": "Net income rose to $2.61 billion, or $5.87 per share, topping the $5.80 analysts had forecast. Membership fee income climbed 14%.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "earnings_beat",
+   "expect": {
+    "COST": "bullish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "COST",
+     "name": "Costco Wholesale Corporation Common Stock",
+     "why": "costco"
+    }
+   ],
+   "keywords": [
+    "forecast",
+    "beats estimates"
+   ]
+  },
+  {
+   "id": "h019",
+   "title": "Nike quarterly revenue falls short of estimates as China sales slump",
+   "body": "Revenue fell 10% to $11.1 billion, below the $11.4 billion analysts expected, with Greater China sales down 17%.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "earnings_miss",
+   "expect": {
+    "NKE": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "NKE",
+     "name": "Nike, Inc. Common Stock",
+     "why": "nike"
+    }
+   ],
+   "keywords": [
+    "revenue"
+   ]
+  },
+  {
+   "id": "h037",
+   "title": "Apple Q3 EPS $1.20 vs $1.35 est; revenue $85B vs $89B est",
+   "body": "",
+   "source_type": "alpaca_news",
+   "symbols": [
+    "AAPL"
+   ],
+   "category": "earnings_numeric",
+   "expect": {
+    "AAPL": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "AAPL",
+     "name": "Apple Inc. Common Stock",
+     "why": "tagged by source"
+    }
+   ],
+   "keywords": [
+    "revenue",
+    "eps"
+   ]
+  },
+  {
+   "id": "h057",
+   "title": "Meta Platforms lifts fourth-quarter revenue guidance above consensus",
+   "body": "The company now expects revenue of $56 billion to $59 billion, above the $55.4 billion analysts were modeling.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "guidance_raise",
+   "expect": {
+    "META": "bullish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "META",
+     "name": "Meta Platforms, Inc. Class A Common Stock",
+     "why": "meta platforms"
+    }
+   ],
+   "keywords": [
+    "revenue",
+    "guidance"
+   ]
+  },
+  {
+   "id": "h069",
+   "title": "Whirlpool slashes annual profit forecast, blames tariffs and weak housing market",
+   "body": "The appliance maker now sees ongoing EPS of about $6.00, down from $8.00 previously.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "guidance_cut",
+   "expect": {
+    "WHR": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "WHR",
+     "name": "Whirlpool Corporation Common Stock",
+     "why": "whirlpool"
+    }
+   ],
+   "keywords": [
+    "forecast",
+    "eps",
+    "tariffs"
+   ]
+  },
+  {
+   "id": "h155",
+   "title": "FDA approves Vertex's non-opioid pain drug for chronic diabetic nerve pain",
+   "body": "The approval gives Vertex the first new class of pain medicine in decades for this indication.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "fda_approval",
+   "expect": {
+    "VRTX": "bullish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "VRTX",
+     "name": "Vertex Pharmaceuticals Incorporated Common Stock",
+     "why": "vertex"
+    }
+   ],
+   "keywords": [
+    "fda",
+    "approval",
+    "approves"
+   ]
+  },
+  {
+   "id": "h165",
+   "title": "FDA rejects Novavax's combination COVID-flu shot, requests new trial",
+   "body": "Novavax said the agency asked for an additional efficacy study before it can resubmit.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "fda_rejection_or_trial_fail",
+   "expect": {
+    "NVAX": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "NVAX",
+     "name": "Novavax, Inc. Common Stock",
+     "why": "novavax"
+    }
+   ],
+   "keywords": [
+    "fda"
+   ]
+  },
+  {
+   "id": "h181",
+   "title": "Rivian Automotive announces $1.5 billion convertible senior notes offering",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "offering_dilution",
+   "expect": {
+    "RIVN": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "RIVN",
+     "name": "Rivian Automotive, Inc. Class A Common Stock",
+     "why": "rivian automotive"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h209",
+   "title": "DOJ opens criminal probe into UnitedHealth's Medicare billing practices - WSJ",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "legal_probe_lawsuit",
+   "expect": {
+    "UNH": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "UNH",
+     "name": "UnitedHealth Group Incorporated Common Stock (DE)",
+     "why": "unitedhealth"
+    }
+   ],
+   "keywords": [
+    "probe"
+   ]
+  },
+  {
+   "id": "h235",
+   "title": "Palantir wins $10 billion U.S. Army enterprise agreement",
+   "body": "The agreement consolidates 75 separate contracts into a single enterprise deal over 10 years.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "contract_win",
+   "expect": {
+    "PLTR": "bullish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "PLTR",
+     "name": "Palantir Technologies Inc. Class A Common Stock",
+     "why": "palantir"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h259",
+   "title": "Tesla recalls 2 million vehicles to fix Autopilot safeguards",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "recall_breach_outage",
+   "expect": {
+    "TSLA": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "TSLA",
+     "name": "Tesla, Inc. Common Stock",
+     "why": "tesla"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h129",
+   "title": "Merck & Co to acquire Madrigal Pharmaceuticals for $310 per share in cash",
+   "body": "The deal values Madrigal at about $7 billion, a 38% premium to Friday's close. Merck expects it to close in the first quarter.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "mna_target_acquirer",
+   "expect": {
+    "MDGL": "bullish",
+    "MRK": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "MRK",
+     "name": "Merck & Company, Inc. Common Stock (new)",
+     "why": "merck"
+    },
+    {
+     "symbol": "MDGL",
+     "name": "Madrigal Pharmaceuticals, Inc. Common Stock",
+     "why": "madrigal pharmaceuticals"
+    }
+   ],
+   "keywords": [
+    "acquire"
+   ]
+  },
+  {
+   "id": "h103",
+   "title": "Goldman Sachs downgrades Apple to Neutral on valuation",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "analyst_downgrade",
+   "expect": {
+    "AAPL": "bearish",
+    "GS": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "GS",
+     "name": "Goldman Sachs Group, Inc. (The) Common Stock",
+     "why": "goldman sachs"
+    },
+    {
+     "symbol": "AAPL",
+     "name": "Apple Inc. Common Stock",
+     "why": "apple"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h265",
+   "title": "Door plug blows out on Alaska Airlines Boeing 737 MAX 9; FAA grounds 171 jets",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "recall_breach_outage",
+   "expect": {
+    "BA": "bearish",
+    "ALK": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "ALK",
+     "name": "Alaska Air Group, Inc. Common Stock",
+     "why": "alaska airlines"
+    },
+    {
+     "symbol": "BA",
+     "name": "Boeing Company (The) Common Stock",
+     "why": "boeing"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h277",
+   "title": "Why Nvidia Stock Jumped Today",
+   "body": "Shares of Nvidia rose 4.2% on Tuesday after a report that a major cloud customer expanded its orders.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "recap_already_moved",
+   "expect": {
+    "NVDA": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "NVDA",
+     "name": "NVIDIA Corporation Common Stock",
+     "why": "nvidia"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h297",
+   "title": "3 Reasons to Buy Amazon Stock Like There's No Tomorrow",
+   "body": "",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "opinion_listicle_question",
+   "expect": {
+    "AMZN": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "AMZN",
+     "name": "Amazon.com, Inc. Common Stock",
+     "why": "amazon"
+    }
+   ],
+   "keywords": [
+    "to buy"
+   ]
+  },
+  {
+   "id": "h417",
+   "title": "Apple to hold annual meeting of shareholders on February 24",
+   "body": "Shareholders will vote on director elections and several shareholder proposals.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "routine_neutral",
+   "expect": {
+    "AAPL": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "AAPL",
+     "name": "Apple Inc. Common Stock",
+     "why": "apple"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h401",
+   "title": "Bank of Japan raises rates to highest since 2008",
+   "body": "The central bank lifted its short-term policy rate to 0.75%, a move widely expected by markets.",
+   "source_type": "rss",
+   "symbols": [],
+   "category": "macro_country",
+   "expect": {
+    "EWJ": "neutral"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "EWJ",
+     "name": "iShares MSCI Japan ETF",
+     "why": "country: Bank Of Japan"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "id": "h427",
+   "title": "and breaking news right now shares of nvidia are moving higher after the company announced a ten billion dollar contract with the department of energy",
+   "body": "",
+   "source_type": "stream",
+   "symbols": [],
+   "category": "transcript_speech",
+   "expect": {
+    "NVDA": "bullish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "NWSA",
+     "name": "News Corporation Class A Common Stock",
+     "why": "news"
+    },
+    {
+     "symbol": "NVDA",
+     "name": "NVIDIA Corporation Common Stock",
+     "why": "nvidia"
+    }
+   ],
+   "keywords": [
+    "contract"
+   ]
+  },
+  {
+   "id": "h430",
+   "title": "tesla deliveries just crossed the wire three hundred eighty four thousand that's well below the street at four hundred twelve thousand",
+   "body": "",
+   "source_type": "stream",
+   "symbols": [],
+   "category": "transcript_speech",
+   "expect": {
+    "TSLA": "bearish"
+   },
+   "absent": [],
+   "candidates": [
+    {
+     "symbol": "TSLA",
+     "name": "Tesla, Inc. Common Stock",
+     "why": "tesla"
+    }
+   ],
+   "keywords": []
+  }
+ ]
+}
