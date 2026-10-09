@@ -67,6 +67,34 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 
 ## Versions
 
+## v0.4.0 — 9 October 2026
+
+**New: Pro AI for strong PCs (optional, free, offline)**
+- A real AI model that runs on your own graphics card and reads the news like a person: who's speaking, denials, who wins a deal, TV speech. No cloud and no cost per story.
+- Settings → Pro AI → **Set up Pro AI** checks your graphics card and picks a model that fits next to TV transcription. For example, an RTX 5070 Ti (16 GB) gets Qwen3.5 9B, a one-time download of about 5.7 GB plus about 0.6 GB for the server program. **Test my PC** shows seconds per story, whether the whole model fits on the card, and how many of 20 sample headlines it got right.
+- It starts **watch-only**: it judges the hard stories the rules struggle with (TV, news with no recognised event, market-wide news, non-English news) and logs what it would have done, but never trades. Performance → By AI engine compares it with the built-in AI. **Judge** mode lets it send disputed signals to manual review; it still never trades by itself.
+- Windows needs an NVIDIA card (driver 551 or newer; 580+ for the faster build) or any card through Vulkan; Macs need an M-series chip. Intel Macs aren't supported.
+
+**New: charts, patterns and indicators**
+- The app reads each stock's chart: RSI, MACD, moving averages, VWAP, Bollinger bands, ATR, relative volume, support and resistance, breakouts, gaps, double tops and bottoms, flags and candlestick patterns.
+- **Chart check on news signals** (on by default): if the stock already ran ("stretched": RSI over 80 or far above VWAP), the signal goes to manual review instead of buying the top. A chart that disagrees lowers the confidence; one that agrees raises it a little, but never enough to turn a review into an automatic trade. Sells are never held back.
+- **Chart signals:** breakouts and similar setups with heavy volume show up on the Signals tab, **watch-only** to start, so the scoreboard can show whether they actually work.
+- Market tab: click a stock to see its chart with VWAP and support/resistance, the indicators and the patterns in plain words.
+
+**Faster**
+- Every trade shows how long it took from the news coming out to the order, and how late the website itself was. Performance has a Speed card.
+- News sites are checked every 30 seconds (was 60). Press-release wires, SEC filings, the Fed and Truth Social are checked every 15 seconds.
+- TV: the AI waits 4 seconds after a company is mentioned (was 10). Also fixed: a company mentioned while the previous clip was still being judged was skipped.
+
+**An honest scoreboard**
+- Performance shows results by AI engine (built-in, Pro AI, chart patterns) and by news type.
+- A new sealed test of 195 fresh headlines that nobody tunes the rules on. The built-in AI gets about **65%** right there; that's the honest number to beat.
+
+**One-click updates**
+- From this version, the update banner has an **Update now** button: the app downloads the new version, checks its checksum, swaps itself and restarts. Your settings, keys and history stay. (Coming from v0.3, update by hand this once.)
+
+**Coming next:** crypto (24/7 paper trading), shared training (people with strong PCs label news, everyone's AI learns from it), the built-in simulator screens, Cautious / Normal / Aggressive presets and a "why did it trade?" card.
+
 ## v0.3.0 — 8 October 2026
 
 **New: market alerts and the Market tab**
