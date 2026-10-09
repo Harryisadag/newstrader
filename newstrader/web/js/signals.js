@@ -1,9 +1,12 @@
 // Signals tab: every AI signal (and every chart signal), the manual-review queue, and a "test the AI" box.
 document.addEventListener("alpine:init", () => {
+  const MAX_SIGNALS = 500;  // rows kept in the list (the newest)
   Alpine.data("signalsTab", () => ({
     fmt: NT.fmt,
     signals: [],
-    filters: { ticker: "", direction: "", action: "", engine: "", min_confidence: 0 },
+    reviews: [],  // the manual-review queue: loaded on its own, so busy watch-only rows never push one out
+    // watch-only calls (Pro AI's and the chart's) are hidden at first: they are never traded and can be many
+    filters: { ticker: "", direction: "", action: "", engine: "main", min_confidence: 0 },
     expanded: null,
     detail: {},
     stats: null,
@@ -14,32 +17,42 @@ document.addEventListener("alpine:init", () => {
 
     async init() {
       window.addEventListener("nt:signal", (e) => this.upsert(e.detail));
-      window.addEventListener("nt:signal_updated", () => { if (Alpine.store("nt").tab === "signals") this.load(true); });
-      window.addEventListener("nt:tab", (e) => { if (e.detail === "signals") { this.load(); this.loadStats(); } });
-      await this.load();
+      window.addEventListener("nt:signal_updated", () => {
+        if (Alpine.store("nt").tab === "signals") { this.load(true); this.loadReviews(); }
+      });
+      window.addEventListener("nt:tab", (e) => { if (e.detail === "signals") { this.load(); this.loadReviews(); this.loadStats(); } });
+      await Promise.all([this.load(), this.loadReviews()]);
       this.loadStats();
     },
 
     async load(quiet = false) {
       const f = this.filters;
-      const q = `limit=500&ticker=${encodeURIComponent(f.ticker)}&direction=${f.direction}&action=${f.action}&engine=${f.engine}&min_confidence=${f.min_confidence || 0}`;
+      const q = `limit=${MAX_SIGNALS}&ticker=${encodeURIComponent(f.ticker)}&direction=${f.direction}&action=${f.action}&engine=${f.engine}&min_confidence=${f.min_confidence || 0}`;
       try { this.signals = (await NT.api.get("/signals?" + q)).signals; }
       catch (e) { if (!quiet) Alpine.store("nt").error(e, "Couldn't load signals"); }
     },
     async loadStats() { try { this.stats = await NT.api.get("/ai/stats"); } catch (e) { /* ignore */ } },
+    async loadReviews() {
+      try { this.reviews = (await NT.api.get("/signals?review_only=true&limit=1000")).signals; } catch (e) { /* ignore */ }
+    },
 
     upsert(s) {
       if (s.merged_into) return;
+      if (typeof s.sources_seen === "string") { try { s.sources_seen = JSON.parse(s.sources_seen); } catch (e) { s.sources_seen = []; } }
+      const r = this.reviews.findIndex((x) => x.id === s.id);
+      if (this.pending(s)) { if (r >= 0) this.reviews.splice(r, 1, s); else this.reviews.unshift(s); }
+      else if (r >= 0) this.reviews.splice(r, 1);
       const f = this.filters;
       if ((f.engine === "main" && s.action === "watch") || (f.engine === "pro" && s.engine !== "pro") ||
           (f.engine === "chart" && s.engine !== "chart") || (f.engine === "news" && s.engine === "chart")) return;
-      if (typeof s.sources_seen === "string") { try { s.sources_seen = JSON.parse(s.sources_seen); } catch (e) { s.sources_seen = []; } }
       const i = this.signals.findIndex((x) => x.id === s.id);
       if (i >= 0) this.signals.splice(i, 1, s); else this.signals.unshift(s);
+      if (this.signals.length > MAX_SIGNALS) this.signals.splice(MAX_SIGNALS);
       this.loadStats();
     },
 
-    get reviewQueue() { return this.signals.filter((s) => s.action === "review" && (!s.review_status || s.review_status === "pending")); },
+    pending(s) { return s.action === "review" && (!s.review_status || s.review_status === "pending"); },
+    get reviewQueue() { return this.reviews.filter((s) => this.pending(s)); },
     get today() {
       const d = new Date().toDateString();
       // watch-only calls (Pro AI's and the chart's) aren't counted - they are never traded
@@ -62,12 +75,15 @@ document.addEventListener("alpine:init", () => {
       try {
         const r = await NT.api.post(`/signals/${s.id}/approve`);
         Alpine.store("nt").toast(r.traded ? "success" : "warn", r.traded ? `Order placed for ${s.ticker}` : `Not traded: ${s.ticker}`, r.reason);
-        await this.load(true);
+        await Promise.all([this.load(true), this.loadReviews()]);
       } catch (e) { Alpine.store("nt").error(e, "Approve failed"); }
       finally { this.busy[s.id] = false; }
     },
     async dismiss(s) {
-      try { await NT.api.post(`/signals/${s.id}/dismiss`); s.review_status = "dismissed"; }
+      try {
+        await NT.api.post(`/signals/${s.id}/dismiss`);
+        for (const x of [...this.reviews, ...this.signals]) if (x.id === s.id) x.review_status = "dismissed";
+      }
       catch (e) { Alpine.store("nt").error(e); }
     },
 

@@ -2,8 +2,9 @@
 risk checks, tracks order fills, and owns the kill switch.
 
 Before a news signal is acted on it is checked against its chart (chart/service.py, Settings -> Charts): the chart
-can nudge the confidence, or send a would-be trade to manual review like the "don't chase" check. It never blocks a
-sell of a stock you hold, and approving a signal by hand skips it.
+can nudge the confidence, or send a would-be trade to manual review like the "don't chase" check. It never blocks or
+delays a sell of a stock you hold, and approving a signal by hand skips it. The chart is waited for before the trade
+lock is taken, so a slow chart never holds up other trades or the kill switch.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from ..chart.service import worth_checking
 from ..context import AppContext
 from ..db import iso, parse_iso
 from ..performance.prices import directional_return, price_at
@@ -35,6 +35,7 @@ OPEN_STATUSES = {"new", "accepted", "pending_new", "held", "partially_filled", "
 CHASE_LOOKBACK = timedelta(minutes=60)  # "since the news" looks back at most this far
 SIGNAL_INTENTS = ("open_long", "open_short", "close_long", "close_short")
 UPDATE_HOLD = "NewsTrader is restarting to install an update - no new orders until it's back (about a minute)."
+KILLED = "Kill switch is engaged - re-arm trading to resume."
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -388,18 +389,27 @@ class Trader:
         if signal.get("engine") == "chart" and not manual:  # chart signals are only ever traded by hand
             return self._result("review", "Signals from the chart alone are never traded automatically - approve it "
                                           "to trade.")
-        charts = self.ctx.service("chart")
-        if not manual and charts is not None and hasattr(charts, "prefetch") and worth_checking(
-                signal["direction"], signal["confidence"], self.holding_long(symbol), self.ctx.config.settings.trading):
-            charts.prefetch(symbol)  # the chart downloads while the account is refreshed below
+        if self._held_for_update:
+            return self._result("blocked", UPDATE_HOLD)
+        # The chart check: its reading is waited for (at most CHECK_TIMEOUT) before taking the lock, so a slow chart
+        # never holds up other trades or the kill switch. Not when trading is stopped anyway (blocked below).
+        state = self.ctx.state
+        charts = None if manual or state.kill_engaged or state.halted_today else self.ctx.service("chart")
+        if not hasattr(charts, "assess"):
+            charts = None
+        reading = None
+        if charts is not None and charts.wanted(signal, self.holding_long(symbol)):
+            reading = await charts.wait_reading(symbol)
         async with self._lock:
             if self._held_for_update:
                 return self._result("blocked", UPDATE_HOLD)
+            if self.ctx.state.kill_engaged:  # straight out, so the kill switch never waits behind queued signals
+                return self._result("blocked", KILLED)
             try:
                 await self.refresh()
                 holding = self.holding_long(symbol)
                 confidence = int(signal["confidence"])
-                chart = None if manual else await self._chart_check(signal, holding)
+                chart = None if charts is None else self._chart_check(charts, signal, holding, reading)
                 if chart is not None:
                     confidence = chart.confidence
                 action, why = decide_action(signal["direction"], confidence, self.ctx.config.settings.trading, holding)
@@ -423,13 +433,13 @@ class Trader:
                 await self._alert("error", f"Trade error ({symbol})", str(exc), "error")
                 return self._result("error", f"Error: {exc}")
 
-    async def _chart_check(self, signal: dict, holding: bool):
-        """The chart check on a news signal (None when it is off, there is no chart service, or it failed)."""
-        charts = self.ctx.service("chart")
-        if charts is None or not hasattr(charts, "check"):
-            return None
+    @staticmethod
+    def _chart_check(charts, signal: dict, holding: bool, reading):
+        """The chart check on a news signal from the reading fetched before the lock (None when it is off, couldn't
+        change anything, or failed). A signal whose chart wasn't fetched - holding changed meanwhile - counts as
+        having no up-to-date chart."""
         try:
-            return await charts.check(signal, holding)
+            return charts.assess(signal, holding, reading)
         except Exception as exc:
             log.warning("Chart check for %s failed (traded without it): %s", signal.get("ticker"), exc)
             return None

@@ -7,8 +7,10 @@
 Pro AI (newstrader/llm, optional): after the main engine, the stories it finds hard (llm/routing.py) are queued for
 Pro AI. Its signals are stored with action "watch" - price-tracked for the scoreboard, never traded, alerted or
 merged into tradeable signals. In judge mode it can also send a main-engine signal it disagrees with to manual review
-(waiting up to max_wait_seconds for its answer) or raise a manual-review signal the main engine missed. It never
-places a trade by itself.
+or raise a manual-review signal the main engine missed. It never places a trade by itself. Judge mode only waits (up
+to max_wait_seconds, in a task of its own so other stories aren't held up) for signals the trader would act on by
+itself - never for one under the buy threshold or a sell of a stock you hold - and a signal it held is only ever
+traded when you approve it.
 """
 
 from __future__ import annotations
@@ -41,6 +43,8 @@ log = logging.getLogger(__name__)
 MAX_QUEUE_AGE = timedelta(minutes=10)
 # Text items published longer ago than this aren't analysed (old articles re-appearing in feeds).
 MAX_ITEM_AGE = timedelta(hours=3)
+# A signal's flag for "Pro AI (judge mode) disagreed and held it for manual review": it is only traded when approved.
+PRO_HELD = "pro_held"
 
 
 class Pipeline:
@@ -57,6 +61,7 @@ class Pipeline:
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         self._workers: list[asyncio.Task] = []
         self._tasks: list[asyncio.Task] = []
+        self._judging: set[asyncio.Task] = set()  # signals waiting for Pro AI's view (judge mode)
         self._cap_alert_day: str | None = None
         self.stats = {"received": 0, "filtered": 0, "duplicates": 0, "analysed": 0, "signals": 0}
 
@@ -90,13 +95,15 @@ class Pipeline:
         self.ctx.config.on_change(on_settings)
 
     async def stop(self) -> None:
-        for t in self._tasks + self._workers:
+        tasks = self._tasks + self._workers + list(self._judging)
+        for t in tasks:
             t.cancel()
-        for t in self._tasks + self._workers:
+        for t in tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t
         self._tasks.clear()
         self._workers.clear()
+        self._judging.clear()
 
     async def on_keys_changed(self) -> None:
         if self.tickers.needs_refresh(max_age_hours=0.01):
@@ -304,7 +311,7 @@ class Pipeline:
                 if utcnow() - queued_at > MAX_QUEUE_AGE:
                     self.ctx.db.update("news_items", item.db_id, {"status": "stale"})
                     continue
-                await self.analyze_item(item, pre)
+                await self.analyze_item(item, pre, background=True)
             except Exception:
                 log.exception("Analysis failed for %s", item.title[:80])
                 with contextlib.suppress(Exception):
@@ -317,7 +324,11 @@ class Pipeline:
         clock = getattr(trader, "clock", None) if trader else None
         return None if not clock else bool(clock.get("is_open"))
 
-    async def analyze_item(self, item: NewsItem, pre: PrefilterResult, dry_run: bool = False) -> dict:
+    async def analyze_item(self, item: NewsItem, pre: PrefilterResult, dry_run: bool = False,
+                           background: bool = False) -> dict:
+        """Analyse one story and act on its signals. `background` (the queue workers): signals that wait for Pro AI's
+        view in judge mode are handled in a task of their own, so the worker goes straight on to the next story (they
+        are then left out of the returned "signals")."""
         ai = self.ctx.config.settings.ai
         engine_name = ai.engine
         if engine_name == "claude" and not dry_run and spend_today(self.ctx.db) >= ai.daily_spend_cap_usd:
@@ -350,20 +361,55 @@ class Pipeline:
                                           "cost_usd": result.cost_usd, "error": error})
         signals = validation.signals if validation is not None else []
         job = None if dry_run else self._pro_job(item, pre, result.engine, analysis_id, signals)
-        verdict = None
-        if job is not None and job.judge and any(sig.direction != "neutral" for sig in signals):
-            verdict = await self.ctx.service("pro_ai").ask(job)  # judge mode: hold the trade for Pro AI's view
+        # judge mode waits for Pro AI's view only on the signals the trader would act on by itself
+        waiting = [sig for sig in signals if job is not None and job.judge and self._could_auto_trade(sig)]
+        judged = None
+        if waiting:
+            judged = asyncio.create_task(self._judged(job, waiting, item, analysis_id, result.engine, decided_at),
+                                         name="pro-ai-judge")
+            self._judging.add(judged)
+            judged.add_done_callback(self._judged_done if background else self._judging.discard)
+        elif job is not None:
+            self.ctx.service("pro_ai").offer(job)  # watch: after the main engine, never in its way
         out = []
         for sig in signals:
-            hold, pro_dir = self._judge_signal(sig, verdict)
-            out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine,
-                                                 decided_at=decided_at, hold=hold, pro_direction=pro_dir))
+            if sig not in waiting:
+                out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine,
+                                                     decided_at=decided_at))
         if item.db_id and any(sig.direction != "neutral" for sig in signals):
             self.ctx.db.update("news_items", item.db_id, {"status": "signal"})
-        if job is not None and job.future is None:
-            self.ctx.service("pro_ai").offer(job)  # watch: after the main engine, never in its way
+        if judged is not None and not background:
+            out += await judged
         return {"status": status, "error": error, "analysis_id": analysis_id, "signals": out,
                 "cost_usd": result.cost_usd, "raw": result.text, "engine": result.engine, "model": result.model}
+
+    async def _judged(self, job: ProJob, signals, item: NewsItem, analysis_id: int, engine: str,
+                      decided_at: datetime) -> list[dict]:
+        """Judge mode: wait for Pro AI's view, then act on the signals - holding back the ones it disagrees with."""
+        verdict = await self.ctx.service("pro_ai").ask(job)
+        out = []
+        for sig in signals:
+            hold, pro_dir = self._judge_signal(sig, verdict, self._could_auto_trade(sig))
+            out.append(await self._handle_signal(sig, item, analysis_id, engine=engine, decided_at=decided_at,
+                                                 hold=hold, pro_direction=pro_dir))
+        return out
+
+    def _judged_done(self, task: asyncio.Task) -> None:
+        self._judging.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.error("Handling signals after Pro AI's view failed", exc_info=task.exception())
+
+    def _could_auto_trade(self, sig) -> bool:
+        """Could the trader act on this main-engine signal by itself? Not under the buy threshold (manual review or
+        ignored anyway), not a sell of a stock you hold (never held back) and not a bearish one it would ignore."""
+        trading = self.ctx.config.settings.trading
+        trader = self.ctx.service("trader")
+        if trader is None or sig.direction not in ("bullish", "bearish") or sig.confidence < trading.buy_threshold:
+            return False
+        if sig.direction == "bullish":
+            return True
+        holding = trader.holding_long(sig.ticker) if hasattr(trader, "holding_long") else False
+        return not holding and trading.allow_shorting
 
     # ------------------------------------------------------------------ signals
     def _signal_row(self, sig, item: NewsItem, analysis_id: int, engine: str, now: datetime,
@@ -386,13 +432,16 @@ class Pipeline:
                              engine: str = "claude", decided_at: datetime | None = None, hold: str = "",
                              pro_direction: str | None = None) -> dict:
         """`hold`: Pro AI (judge mode) disagreed - send the signal to manual review with this reason instead of the
-        trader. `pro_direction`: Pro AI's call on this stock, when it read the story."""
+        trader (it is flagged PRO_HELD: only traded when approved). `pro_direction`: Pro AI's call on this stock, when
+        it read the story."""
         s = self.ctx.config.settings
         db = self.ctx.db
         now = utcnow()
         row = self._signal_row(sig, item, analysis_id, engine, now, decided_at)
         if pro_direction is not None:
             row["pro_direction"] = pro_direction
+        if hold:
+            row["flags"] = json.dumps([*(getattr(sig, "flags", None) or []), PRO_HELD])
         if dry_run:
             return {**row, "action": "test", "action_reason": "Test only - not traded", "traded": 0}
 
@@ -403,7 +452,7 @@ class Pipeline:
                 "AND COALESCE(engine, '') NOT IN ('pro', 'chart') ORDER BY id DESC LIMIT 1",
                 (sig.ticker, sig.direction, iso(now - timedelta(minutes=s.ai.signal_dedupe_minutes))))
         if existing is not None:
-            return await self._merge_into(existing, row, sig, reroute=not hold)
+            return await self._merge_into(existing, row, sig, held=bool(hold))
 
         row.update({"action": "pending", "action_reason": "", "traded": 0})
         row["id"] = db.insert("signals", row)
@@ -411,7 +460,9 @@ class Pipeline:
         await self._route(row, force_review=hold)
         return db.query_one("SELECT * FROM signals WHERE id = ?", (row["id"],)) or row
 
-    async def _merge_into(self, existing: dict, row: dict, sig, reroute: bool = True) -> dict:
+    async def _merge_into(self, existing: dict, row: dict, sig, held: bool = False) -> dict:
+        """Count a repeat of an earlier signal once. `held`: Pro AI held the new one back - it adds a source but never
+        raises the earlier signal's confidence (so it can't help trade it)."""
         db = self.ctx.db
         row.update({"action": "merged", "action_reason": f"Same signal as #{existing['id']} (counted once)",
                     "traded": 0, "merged_into": existing["id"]})
@@ -419,16 +470,16 @@ class Pipeline:
         seen = json.loads(existing["sources_seen"] or "[]")
         if row["source_name"] not in seen:
             seen.append(row["source_name"])
-        new_conf = max(int(existing["confidence"]), sig.confidence)
+        new_conf = int(existing["confidence"]) if held else max(int(existing["confidence"]), sig.confidence)
         db.execute("UPDATE signals SET corroborations = corroborations + 1, sources_seen = ?, confidence = ? WHERE id = ?",
                    (json.dumps(seen), new_conf, existing["id"]))
         merged = db.query_one("SELECT * FROM signals WHERE id = ?", (existing["id"],))
         self.ctx.bus.publish("signal_updated", {"id": existing["id"]})
         log.info("Merged %s %s signal from %s into #%s (now %d sources)", sig.ticker, sig.direction,
                  row["source_name"], existing["id"], len(seen))
-        # A stronger confirmation can turn an untraded review/blocked signal into a trade.
+        # A stronger confirmation can turn an untraded review/blocked signal into a trade - never one Pro AI held back.
         buy = self.ctx.config.settings.trading.buy_threshold
-        if (reroute and not merged["traded"] and new_conf >= buy
+        if (not held and not _pro_held(merged) and not merged["traded"] and new_conf >= buy
                 and merged["action"] in ("review", "blocked", "ignored", "error")):
             await self._route(merged)
         return row
@@ -517,14 +568,14 @@ class Pipeline:
             self.ctx.service("pro_ai").offer(job)
 
     @staticmethod
-    def _judge_signal(sig, verdict: dict | None) -> tuple[str, str | None]:
+    def _judge_signal(sig, verdict: dict | None, could_trade: bool = True) -> tuple[str, str | None]:
         """(why the signal goes to manual review instead of the trader, Pro AI's call on the stock) from Pro AI's
-        answer in judge mode ("", None without one)."""
+        answer in judge mode ("", None without one). Only a signal the trader could act on by itself is held."""
         if verdict is None:
             return "", None
         pro = verdict.get(sig.ticker)
         pro_dir = pro.direction if pro is not None else "neutral"
-        if sig.direction == "neutral" or pro_dir == sig.direction:
+        if not could_trade or sig.direction == "neutral" or pro_dir == sig.direction:
             return "", pro_dir
         conf = f" ({pro.confidence})" if pro is not None else ""
         why = f" Pro AI's reasoning: {pro.reasoning}" if pro is not None and pro.reasoning else ""
@@ -623,6 +674,13 @@ class Pipeline:
         return self.ctx.db.query_one(
             f"SELECT * FROM signals WHERE ticker = ? AND direction = ? AND merged_into IS NULL AND created_at >= ? "
             f"AND {kind} ORDER BY id DESC LIMIT 1", (sig.ticker, sig.direction, since))
+
+
+def _pro_held(signal: dict) -> bool:
+    try:
+        return PRO_HELD in json.loads(signal.get("flags") or "[]")
+    except (TypeError, ValueError):
+        return False
 
 
 def _watch_reason(main_dir: str | None, direction: str, reason: str) -> str:

@@ -187,7 +187,7 @@ delay happens before that, while the news is on its way to NewsTrader:
 | Checking interval | up to 15 s / 30 s / 5 min | How often each feed is checked: every 15 seconds for breaking-news wires (PR Newswire, GlobeNewswire, SEC 8-K filings, Federal Reserve press releases, Trump's Truth Social posts), every 30 seconds for other feeds, every 5 minutes for Google News. Alpaca/Benzinga news is pushed instantly. Each check only asks "anything new?", and a website that asks NewsTrader to slow down is left alone for as long as it asks. |
 | TV | about 10-20 s | The audio is cut into 10-second clips and turned into text. After a company is mentioned, NewsTrader waits 4 seconds so the sentence can finish, then the AI reads it. |
 | Thinking time | under 1 s (local) / a few s (Claude) | The AI engine reading the story. |
-| Chart check | usually under 1 s | Reading the stock's chart (see [Charts](#charts-patterns-and-indicators)). It downloads while your account is checked, and a signal never waits more than 8 s for it. |
+| Chart check | usually under 1 s | Reading the stock's chart (see [Charts](#charts-patterns-and-indicators)). A signal never waits more than 8 s for it, a sell of a stock you hold doesn't wait for it at all, and other trades and the kill switch never wait behind it. |
 | Order | about 1-2 s | The risk checks, a fresh look at your account and the price, and sending the order to Alpaca. |
 
 **Where to see it:** each row in **Signals** and **Trade Log** has a small line such as *"2.1 s from seeing the news
@@ -268,7 +268,8 @@ Pro AI is a second, bigger AI that runs **on your own graphics card** - free, an
 **It starts as watch-only.** In *Watch only* mode (the default) Pro AI writes down what it would have done, and that's all: its calls show up in the Signals tab with a purple **Pro AI - watching** badge, and they are **never traded, never alerted and never merged** with the main engine's signals. They *are* price-checked like every other signal, so after a week or two **Performance → By AI engine** shows whether Pro AI is right more often than the main engine on your own news. Signals the main engine made also show what Pro AI thought ("Pro AI agrees" / "Pro AI: bearish").
 
 Once the scoreboard says it's good, you can switch it to **Judge hard cases**. Then, on hard stories only:
-- if Pro AI disagrees with a main-engine signal, that signal goes to **manual review** instead of being traded (the trade waits a few seconds for Pro AI's answer, at most the "skip a story after" time; if Pro AI is too slow, the main engine's call stands)
+- if Pro AI disagrees with a main-engine signal, that signal goes to **manual review** instead of being traded (the trade waits a few seconds for Pro AI's answer, at most the "skip a story after" time; if Pro AI is too slow, the main engine's call stands). A signal Pro AI held back is only traded when you approve it - later reports of the same news don't trade it either.
+- only signals that would be traded automatically wait for Pro AI. Signals below the buy threshold go to manual review as usual, and **selling a stock you hold is never held back or delayed**. Other stories are analysed while a signal waits.
 - if Pro AI finds a stock the main engine missed, it raises a **new manual-review signal** for you to approve or dismiss
 
 In this version **Pro AI never places a trade by itself**, in either mode. Paper trading and the live-trading lock work exactly as before.
@@ -339,7 +340,7 @@ candlestick, never a price that's already stretched, confidence at most 75, and 
 every 30 minutes.
 
 **Chart signals start as watch-only.** They show in the Signals tab with a teal **Chart - watching** label (filter:
-*Only chart signals*), and they are **never traded and never alerted**. They are price-checked like every other
+*Only chart signals* - the list hides watch-only signals at first), and they are **never traded and never alerted**. They are price-checked like every other
 signal, so after a week or two **Performance → By AI engine** ("Chart patterns") and **By news type** ("Chart:
 Breakout", "Chart: Bull flag"...) show whether they actually work. If they do, switch to **Manual review**: each new
 chart signal then asks you to approve or dismiss it. **In this version chart signals never place a trade by
@@ -429,7 +430,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 **Charts** - see [Charts](#charts-patterns-and-indicators)
 | Setting | Default | Meaning |
 |---|---|---|
-| Check news signals against the chart | Soft | Soft = the chart nudges the confidence and a stretched move goes to manual review. Strict = a chart that disagrees also sends it to manual review. Off = no chart check. Sells of stocks you hold are never held back. |
+| Check news signals against the chart | Soft | Soft = the chart nudges the confidence and a stretched move goes to manual review. Strict = a chart that disagrees also sends it to manual review. Off = no chart check. Sells of stocks you hold are never held back or delayed (they skip the chart check). |
 | Signals from the chart alone | Watch only | Watch only = recorded and scored, never traded or alerted. Manual review = you approve or dismiss each one. Off = none. Never traded by themselves. |
 
 **Transcription**

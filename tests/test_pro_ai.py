@@ -447,6 +447,94 @@ async def test_judge_mode_on_an_easy_story_only_watches(env):
     assert ctx.db.query_one("SELECT action FROM signals WHERE engine = 'pro'")["action"] == "watch"
 
 
+async def test_a_held_signal_is_never_traded_by_a_later_confirmation(env):
+    ctx, p = env.ctx, env.pipeline
+    pro = pro_ready(ctx, FakeProEngine(signal_json(sig("NVDA", "bearish", 80))), mode="judge")
+    pro._start_workers()
+    env.claude.responses = [signal_json(sig("NVDA", confidence=92)), signal_json(sig("NVDA", confidence=62)),
+                            signal_json(sig("NVDA", confidence=90))]
+    held = (await run(p, tv()))["signals"][0]
+    assert held["action"] == "review" and "Pro AI disagreed" in held["action_reason"]
+    # ordinary English stories (not hard cases, so Pro AI isn't asked) about the same stock and direction
+    for title in ("Nvidia shares climb on chip demand", "Nvidia wins $10 billion government AI contract"):
+        out = await run(p, news(title))
+        assert out["signals"][0]["merged_into"] == held["id"]
+    row = ctx.db.query_one("SELECT * FROM signals WHERE id = ?", (held["id"],))
+    assert row["action"] == "review" and row["review_status"] == "pending" and row["corroborations"] == 3
+    assert trades(env.broker) == 0  # Pro AI's hold stands until you approve it
+    assert (await p.approve(held["id"]))["traded"] and trades(env.broker) == 1
+    pro._stop_workers()
+
+
+async def test_a_held_signal_never_lifts_the_one_it_merges_into(env):
+    ctx, p = env.ctx, env.pipeline
+    pro = pro_ready(ctx, FakeProEngine(signal_json(sig("NVDA", "bearish", 80))), mode="judge")
+    pro._start_workers()
+    env.claude.responses = [signal_json(sig("NVDA", confidence=72)), signal_json(sig("NVDA", confidence=92)),
+                            signal_json(sig("NVDA", confidence=62))]
+    first = (await run(p, news("Nvidia shares climb on chip demand")))["signals"][0]
+    assert first["action"] == "review" and first["confidence"] == 72
+    assert (await run(p, tv()))["signals"][0]["merged_into"] == first["id"]  # held by Pro AI, counted once
+    assert (await run(p, news("Nvidia keeps climbing")))["signals"][0]["merged_into"] == first["id"]
+    row = ctx.db.query_one("SELECT * FROM signals WHERE id = ?", (first["id"],))
+    assert row["confidence"] == 72 and row["corroborations"] == 3 and row["action"] == "review"
+    assert trades(env.broker) == 0
+    pro._stop_workers()
+
+
+async def test_judge_never_holds_back_or_delays_selling_a_stock_you_hold(env):
+    ctx, p = env.ctx, env.pipeline
+    trader = ctx.service("trader")
+    assert (await trader.handle_signal({"ticker": "NVDA", "direction": "bullish", "confidence": 90},
+                                       manual=True))["traded"]
+    pro = pro_ready(ctx, FakeProEngine(signal_json(sig("NVDA", "bullish", 70))), mode="judge", max_wait_seconds=5)
+    env.claude.responses = [signal_json(sig("NVDA", "bearish", 92))]
+    started = time.monotonic()
+    out = await run(p, tv("Nvidia CEO resigns amid an accounting probe"))
+    s = out["signals"][0]
+    assert s["action"] == "sold" and s["traded"] and time.monotonic() - started < 2  # no wait for Pro AI
+    assert not trader.holding_long("NVDA")
+    job = pro.take()  # Pro AI still reads it (and can raise stocks the main engine missed), without holding it
+    assert job.judge and not job.urgent
+    await pro.run_job(job)
+    assert ctx.db.query_one("SELECT pro_direction FROM signals WHERE id = ?", (s["id"],))["pro_direction"] == "bullish"
+
+
+async def test_judge_mode_only_waits_for_signals_that_could_trade_and_never_holds_up_the_queue(env):
+    ctx, p = env.ctx, env.pipeline
+    ctx.config.update({"ai": {"max_concurrent_calls": 1}})
+    pro = pro_ready(ctx, FakeProEngine(signal_json(sig("NVDA", "bullish", 85)), delay=2.0), mode="judge")
+    # under the buy threshold: manual review anyway, so judge mode doesn't wait for Pro AI
+    env.claude.responses = [signal_json(sig("AAPL", confidence=62))]
+    s = (await run(p, tv("Apple is the talk of the floor this morning", ext="a")))["signals"][0]
+    assert s["action"] == "review" and "Pro AI" not in s["action_reason"]
+    job = pro.take()
+    assert job.judge and not job.urgent  # still read (and may raise stocks the main engine missed), as a watch job
+    # a signal Pro AI must judge waits in its own task: the next story is analysed and traded meanwhile
+    env.claude.responses = [signal_json(sig("NVDA", confidence=92)), signal_json(sig("TSLA", confidence=90))]
+    pro._start_workers()
+    p._restart_workers()
+    try:
+        started = time.monotonic()
+        await p.submit(tv())
+        await p.submit(news("Tesla wins a big robotaxi contract"))
+
+        def action(ticker):
+            row = ctx.db.query_one("SELECT action FROM signals WHERE ticker = ? AND merged_into IS NULL "
+                                   "ORDER BY id DESC LIMIT 1", (ticker,))
+            return row and row["action"]
+
+        while action("TSLA") != "bought" and time.monotonic() - started < 5:
+            await asyncio.sleep(0.02)
+        assert action("TSLA") == "bought" and time.monotonic() - started < 1.5
+        while action("NVDA") != "bought" and time.monotonic() - started < 5:
+            await asyncio.sleep(0.02)
+        assert action("NVDA") == "bought"  # Pro AI agreed: traded once it answered
+    finally:
+        await p.stop()
+        pro._stop_workers()
+
+
 # ------------------------------------------------------------------------------------------------ queue
 async def test_queue_newest_first_drops_stale_and_full(ctx):
     pro = pro_ready(ctx, FakeProEngine(), max_wait_seconds=5)

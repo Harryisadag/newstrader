@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -95,9 +97,10 @@ def test_worth_checking_only_when_the_chart_could_change_something(ctx):
     assert not worth_checking("bullish", 49, False, t)    # even +10 can't reach manual review
     assert not worth_checking("neutral", 90, False, t)
     assert not worth_checking("bearish", 90, False, t)    # don't hold it, can't short it: ignored anyway
-    assert worth_checking("bearish", 90, True, t)         # a sell: checked, but never held back
+    assert not worth_checking("bearish", 90, True, t)     # a sell of a stock you hold: never held back, so never checked
     ctx.config.update({"trading": {"allow_shorting": True}})
     assert worth_checking("bearish", 90, False, ctx.config.settings.trading)
+    assert not worth_checking("bearish", 90, True, ctx.config.settings.trading)
 
 
 # ================================================================================ the check in the trader
@@ -190,13 +193,10 @@ async def test_selling_a_stock_you_hold_is_never_blocked_by_the_chart(env):
         chart_says(env, **reading)
         sig = news_signal(env.ctx, direction="bearish", confidence=85)
         res = await env.trader.handle_signal(sig)
+        assert res["action"] == "sold" and res["traded"], res
+        assert saved(env.ctx, sig)["chart_verdict"] is None  # not even checked: a sell never waits for the chart
         if mode == "soft":
-            assert res["action"] == "sold" and res["traded"], res
-            row = saved(env.ctx, sig)
-            assert row["chart_verdict"] == "stretched" and "never held back" in row["chart_reason"]
             assert (await env.trader.handle_signal(news_signal(env.ctx), manual=True))["traded"]  # buy it back
-        else:
-            assert res["action"] == "sold", res
 
 
 async def test_off_and_missing_chart_change_nothing(env):
@@ -236,6 +236,44 @@ async def test_a_slow_chart_is_skipped(env, monkeypatch):
     sig = news_signal(env.ctx)
     assert (await env.trader.handle_signal(sig))["action"] == "bought"
     assert saved(env.ctx, sig)["chart_verdict"] == "unavailable"
+
+
+async def test_selling_a_stock_you_hold_never_waits_for_the_chart(env, monkeypatch):
+    monkeypatch.setattr("newstrader.chart.service.CHECK_TIMEOUT", 2.0)
+    assert (await env.trader.handle_signal(news_signal(env.ctx), manual=True))["action"] == "bought"
+    asked = []
+
+    async def slow(*_a, **_k):
+        asked.append(1)
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(env.charts, "reading", slow)
+    sig = news_signal(env.ctx, direction="bearish", confidence=90)
+    started = time.monotonic()
+    res = await env.trader.handle_signal(sig)
+    assert res["action"] == "sold" and time.monotonic() - started < 1 and not asked
+    assert saved(env.ctx, sig)["chart_verdict"] is None
+
+
+async def test_a_slow_chart_never_holds_up_other_trades_or_the_kill_switch(env, monkeypatch):
+    monkeypatch.setattr("newstrader.chart.service.CHECK_TIMEOUT", 1.5)
+    env.broker.prices["MSFT"] = 500.0
+
+    async def slow(*_a, **_k):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(env.charts, "reading", slow)
+    started = time.monotonic()
+    results = await asyncio.gather(*(env.trader.handle_signal(news_signal(env.ctx, t)) for t in ("AAPL", "XYZ")))
+    assert [r["action"] for r in results] == ["bought", "bought"]
+    assert time.monotonic() - started < 2.5  # the two chart waits overlap: no queueing behind each other
+    waiting = [asyncio.create_task(env.trader.handle_signal(news_signal(env.ctx, "MSFT"))) for _ in range(3)]
+    await asyncio.sleep(0.1)  # all three are waiting for their chart
+    started = time.monotonic()
+    out = await env.trader.kill(close_positions=True)
+    assert time.monotonic() - started < 1 and out["closed"] == 2 and env.broker.positions() == []
+    assert [(await t)["action"] for t in waiting] == ["blocked"] * 3
+    assert len(orders(env.broker)) == 2
 
 
 @pytest.mark.parametrize("make, action, verdict", [(breakout_chart, "bought", "agrees"),
@@ -493,14 +531,39 @@ async def test_pacer_keeps_requests_under_the_limit():
 
     p = Pacer(3, clock=lambda: clock["t"], sleep=sleep)
     for _ in range(3):
-        await p.wait()
-    assert not slept and p.used() == 3
-    await p.wait()                                          # the 4th waits until the first is a minute old
+        await p.room()
+        p.take()
+    assert not slept and p.used() == 3 and not p.fits()
+    await p.room()                                          # the 4th waits until the first is a minute old
+    p.take()
     assert slept == [60.0]
     p.charge(2)                                             # a big answer that took 2 more pages
     clock["t"] += 1
-    await p.wait()
+    await p.room()
     assert slept[-1] == pytest.approx(59.0) and p.used() <= 3
+    q = Pacer(10, clock=lambda: clock["t"], sleep=sleep)
+    q.charge(5)                                             # chart signals leave a reserve for news checks
+    assert q.fits(3) and q.fits(3, reserve=2) and not q.fits(3, reserve=6)
+    assert Pacer(3).fits(3, reserve=6) and not q.fits(20)
+
+
+async def test_a_scan_waiting_for_the_pacer_never_holds_up_a_news_check(scan_env):
+    b = scan_env.broker
+    b.bar_data["AAA"], b.daily_data["AAA"] = scan_env.minutes, scan_env.daily
+    charts = ChartService(scan_env.ctx, pacer=Pacer(10))
+    scan_env.ctx.services["chart"] = charts
+    charts.pacer.charge(5)  # half this minute's requests used: room for a news check, but a scan leaves it to them
+    scan = asyncio.create_task(charts.readings(["XYZ"], scan_env.now))
+    try:
+        await asyncio.sleep(0.05)
+        assert not scan.done() and not charts._fetch_lock.locked() and not b.bar_calls  # waits outside the lock
+        await asyncio.wait_for(charts.reading("AAA", scan_env.now, urgent=True), 2)  # (what prefetch() asks for)
+        assert [c[1] for c in b.bar_calls] == [("AAA",), ("AAA",)] and not scan.done()
+        charts.pacer.charge(10)  # no room at all: a reading that needs no new bars still doesn't wait
+        r = await asyncio.wait_for(charts.reading("AAA", scan_env.now + timedelta(seconds=45)), 1)
+        assert r.price is not None and len(b.bar_calls) == 2
+    finally:
+        scan.cancel()
 
 
 def test_history_start_is_two_trading_sessions():
@@ -583,6 +646,21 @@ def test_signals_api_chart_filter(client, ctx):
     ctx.services["pipeline"] = Pipeline(ctx, tickers=make_tickers(ctx.db))
     r = client.post(f"/api/signals/{watch}/approve")
     assert r.status_code == 409 and "watch-only" in r.json()["detail"]
+
+
+def test_the_review_queue_is_loaded_on_its_own(client, ctx):
+    """A busy day of watch-only chart rows never pushes a signal waiting for review out of the Signals tab."""
+    common = {"created_at": iso(), "ticker": "NVDA", "direction": "bullish", "confidence": 70, "sources_seen": "[]"}
+    waiting = ctx.db.insert("signals", {**common, "engine": "claude", "action": "review", "review_status": "pending"})
+    ctx.db.insert("signals", {**common, "engine": "claude", "action": "review", "review_status": "dismissed"})
+    for _ in range(600):
+        ctx.db.insert("signals", {**common, "engine": "chart", "action": "watch"})
+    newest = [s["id"] for s in client.get("/api/signals?limit=500").json()["signals"]]
+    assert waiting not in newest  # (the old way: the queue was cut from this list)
+    queue = client.get("/api/signals?review_only=true&limit=1000").json()["signals"]
+    assert [s["id"] for s in queue] == [waiting]
+    js = (Path(__file__).resolve().parent.parent / "newstrader/web/js/signals.js").read_text(encoding="utf-8")
+    assert "/signals?review_only=true" in js and 'engine: "main"' in js
 
 
 async def test_monitor_hands_its_bars_to_the_chart_service(ctx):

@@ -8,12 +8,14 @@ Bars it keeps for each stock:
 - daily bars for about a year (the 200-day average needs 200 days), downloaded once per stock per day.
 
 Requests ask for many stocks at once and stay under CALLS_PER_MINUTE (each page of a big answer counts), well inside
-the 200 a minute the free Alpaca plan allows the whole app. Prices come from the same feed as the rest of the app: on
-the free IEX feed volume is only part of all trading, but relative volume compares IEX with IEX, so it is still a fair
-guide. A reading is kept for READING_AGE.
+the 200 a minute the free Alpaca plan allows the whole app. Chart signals leave CHECK_RESERVE of them for the checks on
+news signals, and nothing waits for the pacer while holding the download lock, so a check never queues behind a busy
+scan. Prices come from the same feed as the rest of the app: on the free IEX feed volume is only part of all trading,
+but relative volume compares IEX with IEX, so it is still a fair guide. A reading is kept for READING_AGE.
 
 Two jobs use the readings:
-- check(): the chart check on a news signal before the Trader acts on it (settings chart.confirm; rules in gate()).
+- the chart check on a news signal before the Trader acts on it (settings chart.confirm; rules in gate()): the
+  Trader waits for the reading (wait_reading) before it takes its trade lock, then applies it (assess).
 - chart signals (settings chart.signals): right after a market-monitor check while the market is open (at most about
   once a minute), every watched stock's chart is read and chart_signal() run. A new one - at most one per stock and
   direction every COOLDOWN - is stored as a signal from "Chart patterns" (engine "chart"): watch-only by default, or
@@ -60,6 +62,7 @@ FORGET_AFTER = timedelta(hours=2)      # a stock's bars are dropped when nothing
 SCAN_EVERY = timedelta(seconds=50)     # chart signals: at most one look per this long
 COOLDOWN = timedelta(minutes=30)       # at most one chart signal per stock and direction in this window
 CHECK_TIMEOUT = 8.0                    # seconds a news signal waits for its chart at most
+CHECK_RESERVE = 6                      # requests a minute chart signals leave free for the checks on news signals
 MAX_BOOST = 10                         # the most confidence a chart that agrees ever adds (reading.confirm)
 SOURCE_NAME = "Chart patterns"
 AGREES, NEUTRAL, AGAINST, STRETCHED, UNAVAILABLE = "agrees", "neutral", "against", "stretched", "unavailable"
@@ -130,37 +133,40 @@ def gate(direction: str, confidence: int, verdict: str, adjust: int, reason: str
 
 def worth_checking(direction: str, confidence: int, holding_long: bool, trading) -> bool:
     """Could the chart change what happens to this news signal? Not for a neutral one, one too weak to reach manual
-    review even with a boost, or a bearish one on a stock you don't hold while shorting is off (ignored anyway)."""
+    review even with a boost, a sell of a stock you hold (never held back, so it never waits for the chart either) or
+    a bearish one on a stock you don't hold while shorting is off (ignored anyway)."""
     if direction not in (BULLISH, BEARISH) or int(confidence) + MAX_BOOST < trading.review_threshold:
         return False
-    return direction == BULLISH or holding_long or trading.allow_shorting
+    return direction == BULLISH or (not holding_long and trading.allow_shorting)
 
 
 # ---------------------------------------------------------------------------------------------- helpers
 class Pacer:
-    """At most `per_minute` data requests in any rolling minute. An answer that came in several pages is charged for
-    the extra pages afterwards."""
+    """At most `per_minute` data requests in any rolling minute: wait for room() first, then take() one per request.
+    An answer that came in several pages is charged for the extra pages afterwards."""
 
     def __init__(self, per_minute: int = CALLS_PER_MINUTE, clock=time.monotonic, sleep=asyncio.sleep):
         self.per_minute = max(1, int(per_minute))
         self._clock = clock
         self._sleep = sleep
         self._times: deque[float] = deque()
-        self._lock = asyncio.Lock()
 
     def _prune(self, now: float) -> None:
         while self._times and now - self._times[0] >= 60:
             self._times.popleft()
 
-    async def wait(self) -> None:
-        async with self._lock:
-            while True:
-                now = self._clock()
-                self._prune(now)
-                if len(self._times) < self.per_minute:
-                    self._times.append(now)
-                    return
-                await self._sleep(max(0.05, 60 - (now - self._times[0])))
+    def fits(self, n: int = 1, reserve: int = 0) -> bool:
+        """Do `n` more requests fit in the rolling minute with `reserve` still to spare?"""
+        self._prune(self._clock())
+        return self.per_minute - len(self._times) >= min(self.per_minute, n + reserve)
+
+    async def room(self, n: int = 1, reserve: int = 0) -> None:
+        """Wait until fits(n, reserve) (taking nothing)."""
+        while not self.fits(n, reserve):
+            await self._sleep(max(0.05, 60 - (self._clock() - self._times[0])))
+
+    def take(self) -> None:
+        self._times.append(self._clock())
 
     def charge(self, pages: int) -> None:
         now = self._clock()
@@ -330,7 +336,7 @@ class ChartService:
         broker = self._broker()
         if broker is None:
             raise NoChartData("Not connected to a market-data account (Settings -> API keys).")
-        await self.pacer.wait()
+        self.pacer.take()  # (_ensure made sure there is room before it started)
         self.requests += 1
         rows = await asyncio.to_thread(broker.bars_multi, symbols, start, end, timeframe)
         out = {str(k).upper(): list(v or []) for k, v in (rows or {}).items()}
@@ -339,14 +345,23 @@ class ChartService:
         self.requests += extra
         return out
 
-    async def _ensure(self, symbols: list[str], now: datetime) -> None:
+    async def _ensure(self, symbols: list[str], now: datetime, urgent: bool = False) -> None:
         """Bring the bars of `symbols` up to date, a chunk at a time (so a news signal's check never waits long behind
-        a big batch). A chunk that fails is noted per stock and skipped."""
+        a big batch). A chunk that fails is noted per stock and skipped. `urgent` (a news signal's check) may use the
+        requests chart signals leave free."""
+        reserve = 0 if urgent else CHECK_RESERVE
         for i in range(0, len(symbols), BARS_CHUNK):
             chunk = symbols[i:i + BARS_CHUNK]
-            async with self._fetch_lock:
-                minutes, _daily = await asyncio.gather(self._ensure_minutes(chunk, now),
-                                                       self._ensure_daily(chunk, now), return_exceptions=True)
+            while True:
+                async with self._fetch_lock:
+                    full, tail = self._minutes_plan(chunk, now)
+                    daily = self._daily_plan(chunk, now)
+                    n = bool(full) + bool(tail) + bool(daily)
+                    if not n or self.pacer.fits(n, reserve):
+                        minutes, _daily = await asyncio.gather(self._fetch_minutes(full, tail, now),
+                                                               self._fetch_daily(daily, now), return_exceptions=True)
+                        break
+                await self.pacer.room(n, reserve)  # waiting for the pacer never holds the lock
             if isinstance(minutes, BaseException):
                 for sym in chunk:
                     self._errors[sym] = f"Couldn't get prices: {minutes}"
@@ -356,7 +371,9 @@ class ChartService:
                     self._errors.pop(sym, None)
                 self._warned.discard("minutes")
 
-    async def _ensure_minutes(self, symbols: list[str], now: datetime) -> None:
+    def _minutes_plan(self, symbols: list[str], now: datetime) -> tuple[list[str], list[str]]:
+        """(stocks with no 1-minute bars yet, stocks missing the newest minutes), after taking the newest minutes the
+        market monitor already has."""
         start = history_start(now)
         monitor = self.ctx.service("market")
         fresh_bars = getattr(monitor, "fresh_bars", None)
@@ -377,6 +394,10 @@ class ChartService:
                 if now - m.synced < MINUTES_FRESH:
                     continue
             tail.append(sym)
+        return full, tail
+
+    async def _fetch_minutes(self, full: list[str], tail: list[str], now: datetime) -> None:
+        start = history_start(now)
         if full:
             rows = await self._fetch(full, start, now, "1Min")
             for sym in full:
@@ -390,12 +411,16 @@ class ChartService:
             for sym, m in series.items():
                 _merge(m, rows.get(sym, []), since, now)
 
-    async def _ensure_daily(self, symbols: list[str], now: datetime) -> None:
+    def _daily_plan(self, symbols: list[str], now: datetime) -> list[str]:
+        """The stocks whose daily bars aren't downloaded yet today (or failed a while ago)."""
         day = trading_day(now)
-        need = [sym for sym in symbols if self._daily.get(sym, ("",))[0] != day
+        return [sym for sym in symbols if self._daily.get(sym, ("",))[0] != day
                 and not (sym in self._daily_failed and now - self._daily_failed[sym] < DAILY_RETRY)]
+
+    async def _fetch_daily(self, need: list[str], now: datetime) -> None:
         if not need:
             return
+        day = trading_day(now)
         try:
             rows = await self._fetch(need, now - timedelta(days=DAILY_DAYS), now, "1Day")
             self._warned.discard("daily")
@@ -419,12 +444,12 @@ class ChartService:
             self._readings.pop(sym, None)
 
     # ------------------------------------------------------------------ readings
-    async def reading(self, symbol: str, now: datetime | None = None) -> ChartReading:
+    async def reading(self, symbol: str, now: datetime | None = None, urgent: bool = False) -> ChartReading:
         """The chart reading for one stock (reused for READING_AGE)."""
-        return (await self.readings([symbol], now))[0]
+        return (await self.readings([symbol], now, urgent))[0]
 
-    async def readings(self, symbols: list[str], now: datetime | None = None) -> list[ChartReading]:
-        """Chart readings for several stocks, with their bars fetched together."""
+    async def readings(self, symbols: list[str], now: datetime | None = None, urgent: bool = False) -> list[ChartReading]:
+        """Chart readings for several stocks, with their bars fetched together (see _ensure for `urgent`)."""
         now = now or utcnow()
         wanted = list(dict.fromkeys(_clean(s) for s in symbols if _clean(s)))
         out: dict[str, ChartReading] = {}
@@ -436,7 +461,7 @@ class ChartService:
             else:
                 todo.append(sym)
         if todo:
-            await self._ensure(todo, now)
+            await self._ensure(todo, now, urgent)
             items = [(sym, self._minutes[sym].bars if sym in self._minutes else [],
                       self._daily.get(sym, ("", []))[1]) for sym in todo]
             for r in await asyncio.to_thread(_read_all, items, now):
@@ -474,27 +499,39 @@ class ChartService:
         sym = _clean(symbol)
         task = self._inflight.get(sym)
         if task is None or task.done():
-            task = asyncio.ensure_future(self.reading(sym))
+            task = asyncio.ensure_future(self.reading(sym, urgent=True))
             task.add_done_callback(_quiet)
             self._inflight = {k: t for k, t in self._inflight.items() if not t.done()}
             self._inflight[sym] = task
         return task
 
-    async def check(self, signal: dict, holding_long: bool = False) -> ChartCheck | None:
-        """Check a news signal against its chart before it is traded (None when the check is off or couldn't change
-        anything - see worth_checking()). The result is saved on the signal. Never waits more than CHECK_TIMEOUT."""
+    def wanted(self, signal: dict, holding_long: bool = False) -> bool:
+        """Is the chart check on and could it change what happens to this news signal (worth_checking())?"""
+        settings = self.ctx.config.settings
+        return settings.chart.confirm != "off" and bool(signal.get("ticker")) and worth_checking(
+            signal.get("direction"), signal["confidence"], holding_long, settings.trading)
+
+    async def wait_reading(self, symbol: str) -> ChartReading | None:
+        """The reading for a news signal's check, waiting CHECK_TIMEOUT at most (None if it took too long or failed -
+        then it finishes in the background and fills the cache anyway)."""
+        task = self.prefetch(symbol)  # (already running if the trader started it)
+        if task is None:
+            return None
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), CHECK_TIMEOUT)
+        except Exception as exc:
+            log.info("Chart check for %s skipped: %s", symbol, str(exc) or "the chart took too long")
+            return None
+
+    def assess(self, signal: dict, holding_long: bool, reading: ChartReading | None) -> ChartCheck | None:
+        """Check a news signal against its chart (the reading from wait_reading(); None = no up-to-date chart) before
+        it is traded. None when the check is off or couldn't change anything (wanted()). The result is saved on the
+        signal. Never waits."""
+        if not self.wanted(signal, holding_long):
+            return None
         settings = self.ctx.config.settings
         mode = settings.chart.confirm
         direction = signal.get("direction")
-        if mode == "off" or not signal.get("ticker") or not worth_checking(
-                direction, signal["confidence"], holding_long, settings.trading):
-            return None
-        reading = None
-        task = self.prefetch(signal["ticker"])  # (already running if the trader started it)
-        try:  # a reading that takes too long finishes in the background and fills the cache anyway
-            reading = await asyncio.wait_for(asyncio.shield(task), CHECK_TIMEOUT)
-        except Exception as exc:
-            log.info("Chart check for %s skipped: %s", signal["ticker"], str(exc) or "the chart took too long")
         if reading is None or reading.price is None or reading.stale:
             verdict, adjust, reason, score = UNAVAILABLE, 0, NO_CHART, None
         else:
