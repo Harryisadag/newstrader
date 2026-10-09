@@ -28,8 +28,9 @@ sys.path.insert(0, str(ROOT))
 from newstrader import __version__  # noqa: E402
 from newstrader.sources.presets import default_sources  # noqa: E402
 
-# the same User-Agent the app's feed reader sends (newstrader/sources/rss.py), without importing the whole app
+# the same User-Agents the app's feed reader sends (newstrader/sources/rss.py), without importing the whole app
 USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsTrader/{__version__} (personal news monitor)"
+SEC_USER_AGENT = f"NewsTrader/{__version__} personal news monitor (+https://github.com/Harryisadag/newstrader)"
 
 STALE_DAYS = 14
 BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
@@ -51,7 +52,8 @@ def _newest(entries) -> datetime | None:
 
 
 async def check_rss(client: httpx.AsyncClient, src: dict) -> dict:
-    r = await client.get(src["url"], headers={"User-Agent": USER_AGENT}, follow_redirects=True, timeout=25)
+    ua = SEC_USER_AGENT if ".sec.gov/" in src["url"] else USER_AGENT
+    r = await client.get(src["url"], headers={"User-Agent": ua}, follow_redirects=True, timeout=25)
     if r.status_code >= 400:
         return {"status": "broken", "detail": f"HTTP {r.status_code}"}
     parsed = feedparser.parse(r.content, response_headers={"content-type": r.headers.get("content-type", "")})

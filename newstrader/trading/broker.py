@@ -25,13 +25,13 @@ def _f(value: Any) -> float | None:
         return None
 
 
-def _iso(value: Any) -> str | None:
+def _iso(value: Any, timespec: str = "seconds") -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        return value.astimezone(UTC).isoformat(timespec=timespec).replace("+00:00", "Z")
     return str(value)
 
 
@@ -66,9 +66,10 @@ def order_to_dict(o: Any) -> dict:
         "limit_price": _f(o.limit_price),
         "stop_price": _f(o.stop_price),
         "time_in_force": _enum(o.time_in_force),
-        "submitted_at": _iso(o.submitted_at or o.created_at),
-        "filled_at": _iso(o.filled_at),
-        "updated_at": _iso(o.updated_at),
+        # to the millisecond, like the app's own times, so the speed timer isn't rounded to whole seconds
+        "submitted_at": _iso(o.submitted_at or o.created_at, "milliseconds"),
+        "filled_at": _iso(o.filled_at, "milliseconds"),
+        "updated_at": _iso(o.updated_at, "milliseconds"),
         "legs": legs,
     }
 

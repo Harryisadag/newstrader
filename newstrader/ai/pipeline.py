@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from ..context import AppContext
 from ..db import iso, utcnow
 from ..ml.engine import LocalMLEngine
+from ..performance.speed import signal_speed
 from ..sources.base import NewsItem, safe_url
 from ..sources.lang import detect_language
 from ..state import trading_day
@@ -184,6 +185,7 @@ class Pipeline:
         if not item.language:
             item.language = detect_language(item.text)
         now = utcnow()
+        item.received_at = now
         db = self.ctx.db
         row = {
             "source_id": item.source_id, "source_type": item.source_type, "source_name": item.source_name,
@@ -313,6 +315,7 @@ class Pipeline:
             return {"status": "skipped_cap", "signals": []}
         now = datetime.now(UTC)
         result = await self.engine(engine_name).analyze(item, pre, self._market_open(), now)
+        decided_at = utcnow()
         validation = validate_response(result.text, self.tickers, ai.max_signals_per_item) if result.ok else None
         if not result.ok:
             status, error = result.status, result.error
@@ -337,7 +340,8 @@ class Pipeline:
         out = []
         if validation is not None:
             for sig in validation.signals:
-                out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine))
+                out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine,
+                                                     decided_at=decided_at))
         if item.db_id and any(sig.direction != "neutral" for sig in (validation.signals if validation else [])):
             self.ctx.db.update("news_items", item.db_id, {"status": "signal"})
         return {"status": status, "error": error, "analysis_id": analysis_id, "signals": out,
@@ -345,10 +349,11 @@ class Pipeline:
 
     # ------------------------------------------------------------------ signals
     async def _handle_signal(self, sig, item: NewsItem, analysis_id: int, dry_run: bool = False,
-                             engine: str = "claude") -> dict:
+                             engine: str = "claude", decided_at: datetime | None = None) -> dict:
         s = self.ctx.config.settings
         db = self.ctx.db
         now = utcnow()
+        news_time = item.news_time
         row = {
             "analysis_id": analysis_id, "created_at": iso(now), "ticker": sig.ticker, "company": sig.company,
             "direction": sig.direction, "confidence": sig.confidence, "speaker": sig.speaker or item.speaker or item.source_name,
@@ -357,6 +362,9 @@ class Pipeline:
             "time_sensitivity": sig.time_sensitivity, "headline": item.title[:500], "url": item.url,
             "sources_seen": json.dumps([item.source_name]), "engine": engine,
             "event": getattr(sig, "event", "") or None, "flags": json.dumps(sig.flags) if getattr(sig, "flags", None) else None,
+            "news_published_at": iso(news_time) if news_time else None,
+            "news_received_at": iso(item.received_at) if item.received_at else None,
+            "decided_at": iso(decided_at or now),
         }
         if dry_run:
             return {**row, "action": "test", "action_reason": "Test only - not traded", "traded": 0}
@@ -412,6 +420,8 @@ class Pipeline:
                                             "order_id": order_id,
                                             "review_status": "pending" if action == "review" else None})
         event = db.query_one("SELECT * FROM signals WHERE id = ?", (signal["id"],))
+        order = db.query_one("SELECT submitted_at FROM orders WHERE id = ?", (order_id,)) if order_id else None
+        event["speed"] = signal_speed(event, order["submitted_at"] if order else None)
         self.ctx.bus.publish("signal", event)
         tag = "TRADED" if traded else action.upper()
         log.info("Signal #%s %s %s conf %s from %s -> %s: %s", signal["id"], signal["ticker"], signal["direction"],

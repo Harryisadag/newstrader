@@ -1,4 +1,9 @@
-"""RSS / Atom feed poller (also used for social accounts exposed as RSS, e.g. Truth Social)."""
+"""RSS / Atom feed poller (also used for social accounts exposed as RSS, e.g. Truth Social).
+
+Every check asks "anything new since last time?" (ETag / If-Modified-Since), so an unchanged feed answers with a tiny
+"304 Not Modified". A website that answers 429 / 503 is left alone for as long as it asks (Retry-After), and errors
+back off. See polling.py.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,7 @@ import calendar
 import logging
 import random
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 import feedparser
 import httpx
@@ -15,10 +21,13 @@ from .. import __version__
 from ..config import SourceConfig
 from .base import NewsItem, stable_id, strip_html
 from .lang import detect_language
+from .polling import SlowDown, next_wait, retry_after_seconds
 
 log = logging.getLogger(__name__)
 
 USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsTrader/{__version__} (personal news monitor)"
+# sec.gov refuses automated readers that don't say who they are and where to find out more
+SEC_USER_AGENT = f"NewsTrader/{__version__} personal news monitor (+https://github.com/Harryisadag/newstrader)"
 # On the very first poll, only items newer than this are analysed (the rest are just marked as seen).
 FIRST_POLL_MAX_AGE = timedelta(minutes=30)
 
@@ -32,6 +41,11 @@ def _entry_time(entry) -> datetime | None:
             except (OverflowError, ValueError, TypeError):
                 continue
     return None
+
+
+def user_agent_for(url: str) -> str:
+    host = (urlsplit(url).hostname or "").lower()
+    return SEC_USER_AGENT if host == "sec.gov" or host.endswith(".sec.gov") else USER_AGENT
 
 
 def parse_feed(content: bytes, src: SourceConfig, content_type: str = "") -> list[NewsItem]:
@@ -76,21 +90,27 @@ class FeedPoller:
         # spread the first checks out, so dozens of feeds don't all hit the network at the same moment
         await asyncio.sleep(random.uniform(0, min(10.0, self.src.poll_seconds / 6)))
         while True:
+            wait = None
             try:
                 await self.poll_once()
                 self.failures = 0
             except asyncio.CancelledError:
                 raise
+            except SlowDown as exc:
+                self.failures += 1
+                wait = next_wait(self.src.poll_seconds, self.failures, exc.wait)
+                self.set_status("warn", f"the website is busy or asked to be checked less often (HTTP {exc.status}) "
+                                        f"- next check in {wait:.0f} s")
             except Exception as exc:
                 self.failures += 1
                 self.set_status("error", f"{type(exc).__name__}: {str(exc)[:160]}")
                 log.debug("feed %s failed: %s", self.src.name, exc)
             # back off on repeated failures (max 15 min)
-            delay = self.src.poll_seconds * (2 ** min(self.failures, 4)) if self.failures else self.src.poll_seconds
-            await asyncio.sleep(min(delay, 900))
+            await asyncio.sleep(wait if wait is not None else next_wait(self.src.poll_seconds, self.failures))
 
     async def poll_once(self) -> int:
-        headers = {"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}
+        headers = {"User-Agent": user_agent_for(self.src.url),
+                   "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}
         if self.etag:
             headers["If-None-Match"] = self.etag
         if self.modified:
@@ -99,6 +119,8 @@ class FeedPoller:
         if r.status_code == 304:
             self.set_status("ok", f"no new items · {self.new_count} total")
             return 0
+        if r.status_code in (429, 503):
+            raise SlowDown(r.status_code, retry_after_seconds(r.headers))
         if r.status_code >= 400:
             raise RuntimeError(f"HTTP {r.status_code}")
         self.etag = r.headers.get("ETag")

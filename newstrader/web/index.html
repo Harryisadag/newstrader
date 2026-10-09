@@ -236,7 +236,7 @@
               <span class="pill small" :class="statusClass(n.status)" x-text="statusLabel(n.status)"></span>
             </div>
           </template>
-          <div x-show="!visible.length" class="muted pad">Waiting for news... (sources check every minute; the first check only analyses stories from the last 30 minutes)</div>
+          <div x-show="!visible.length" class="muted pad">Waiting for news... (sources are checked every 15-30 seconds, Google News every 5 minutes; the first check only analyses stories from the last 30 minutes)</div>
         </div>
       </div>
     </div>
@@ -301,6 +301,7 @@
                 <div><span class="pill small info" x-show="s.event" x-text="s.event"></span>
                   <template x-for="f in flagList(s)"><span class="pill small warn" x-text="f"></span></template>
                   <span x-text="s.reasoning"></span></div>
+                <div class="tiny muted" x-show="fmt.speed(s.speed)" x-text="fmt.speed(s.speed)" :title="fmt.speedTip(s.speed)"></div>
                 <div class="expand" x-show="expanded === s.id" @click.stop>
                   <div class="cases">
                     <div class="case bull"><b>Bull case</b><p x-text="s.bull_case"></p></div>
@@ -608,6 +609,7 @@
               <td class="num" x-text="t.confidence ?? ''"></td>
               <td class="why" @click="expanded = expanded === t.id ? null : t.id">
                 <div x-text="t.reason"></div>
+                <div class="tiny muted" x-show="fmt.speed(t.speed)" x-text="fmt.speed(t.speed)" :title="fmt.speedTip(t.speed)"></div>
                 <div class="small muted" x-show="expanded === t.id && t.signal_reasoning" x-text="'AI: ' + t.signal_reasoning"></div>
               </td>
               <td><span class="pill small" :class="t.mode === 'live' ? 'bad' : 'good'" x-text="t.mode"></span></td>
@@ -660,7 +662,7 @@
           <thead><tr><th>Source</th><th class="num">Signals</th><th class="num">Right</th><th class="num">Avg move</th></tr></thead>
           <tbody>
             <template x-for="g in (data?.by_source || [])" :key="g.key">
-              <tr><td x-text="g.key"></td><td class="num" x-text="g.count"></td><td class="num" x-text="winText(g)"></td>
+              <tr :class="{ dim: g.few }" :title="fewTitle(g)"><td x-text="g.key"></td><td class="num" x-text="g.count"></td><td class="num" x-text="winText(g)"></td>
                 <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
             </template>
           </tbody>
@@ -670,12 +672,83 @@
         <table class="table">
           <tbody>
             <template x-for="g in [...(data?.by_source_type || []), ...(data?.by_traded || []), ...(data?.by_direction || [])]" :key="g.key">
-              <tr><td x-text="g.key"></td><td class="num" x-text="g.count + ' signals'"></td><td class="num" x-text="winText(g) + ' right'"></td>
+              <tr :class="{ dim: g.few }" :title="fewTitle(g)"><td x-text="g.key"></td><td class="num" x-text="g.count + ' signals'"></td><td class="num" x-text="winText(g) + ' right'"></td>
                 <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
             </template>
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="perf-grid">
+      <div class="card">
+        <div class="card-head"><h2>By AI engine</h2></div>
+        <table class="table">
+          <thead><tr><th>Engine</th><th class="num">Signals</th><th class="num">Right</th><th class="num">Avg move</th></tr></thead>
+          <tbody>
+            <template x-for="g in (data?.by_engine || [])" :key="g.key">
+              <tr :class="{ dim: g.few }" :title="fewTitle(g)"><td x-text="g.key"></td><td class="num" x-text="g.count"></td><td class="num" x-text="winText(g)"></td>
+                <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="muted pad" x-show="!(data?.by_engine || []).length">No measured signals yet.</div>
+        <p class="note">If you switched engines, this shows which one has been right more often on your own signals.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>By news type</h2></div>
+        <table class="table">
+          <thead><tr><th>News event</th><th class="num">Signals</th><th class="num">Right</th><th class="num">Avg move</th></tr></thead>
+          <tbody>
+            <template x-for="g in (data?.by_event || [])" :key="g.key">
+              <tr :class="{ dim: g.few }" :title="fewTitle(g)"><td x-text="g.key"></td><td class="num" x-text="g.count"></td><td class="num" x-text="winText(g)"></td>
+                <td class="num" :class="retClass(g.avg_return)" x-text="fmt.pct(g.avg_return)"></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="muted pad" x-show="!(data?.by_event || []).length">No measured signals yet.</div>
+        <p class="note">The kind of news the local engine recognised (earnings beat, forecast cut, buyout...). Greyed-out
+          rows have fewer than 10 signals - too few to tell yet.</p>
+      </div>
+    </div>
+
+    <div class="card" x-show="speed">
+      <div class="card-head"><h2>Speed</h2><span class="small muted">Last 30 days</span></div>
+      <p class="muted small">How fast NewsTrader turns news into an order. <b>Feed delay</b> is how late the website
+        itself is: how old a story already was when NewsTrader first read it, going by the time the website put on it
+        (plus up to one check: 15-30 seconds for most feeds). NewsTrader can't make a website faster, but you can turn
+        slow sources off in Settings -> News sources.</p>
+      <div class="kpis">
+        <div class="kpi" title="From seeing the news to placing the order. Orders you approved by hand are left out.">
+          <div class="kpi-label">News → order</div><div class="kpi-value" x-text="fmt.secs(speed?.median_news_to_order_s)"></div>
+          <div class="kpi-sub" x-text="(speed?.orders || 0) + ' orders'"></div></div>
+        <div class="kpi"><div class="kpi-label">AI thinking</div><div class="kpi-value" x-text="fmt.secs(speed?.median_thinking_s)"></div></div>
+        <div class="kpi"><div class="kpi-label">Placing the order</div><div class="kpi-value" x-text="fmt.secs(speed?.median_order_s)"></div></div>
+        <div class="kpi"><div class="kpi-label">Feed delay</div><div class="kpi-value" x-text="fmt.secs(speed?.median_feed_delay_s)"></div></div>
+      </div>
+      <h3>Slowest sources</h3>
+      <table class="table">
+        <thead><tr><th>Source</th><th class="num">Typical feed delay</th><th class="num">Headlines</th></tr></thead>
+        <tbody>
+          <template x-for="g in (speed?.slowest || [])" :key="g.source">
+            <tr><td x-text="g.source"></td><td class="num" x-text="fmt.secs(g.median_feed_delay_s)"></td><td class="num" x-text="g.count"></td></tr>
+          </template>
+        </tbody>
+      </table>
+      <div class="muted pad" x-show="!(speed?.slowest || []).length">Not enough headlines yet - each source needs at least 10.</div>
+      <button class="btn ghost small" x-show="(speed?.by_source || []).length" @click="allSources = !allSources"
+              x-text="allSources ? 'Hide the other sources' : 'Show every source'"></button>
+      <table class="table" x-show="allSources">
+        <thead><tr><th>Source</th><th class="num">Typical feed delay</th><th class="num">Headlines</th></tr></thead>
+        <tbody>
+          <template x-for="g in (speed?.by_source || [])" :key="g.source">
+            <tr :class="{ dim: g.few }"><td x-text="g.source"></td><td class="num" x-text="fmt.secs(g.median_feed_delay_s)"></td><td class="num" x-text="g.count"></td></tr>
+          </template>
+        </tbody>
+      </table>
+      <p class="note">All numbers are typical values (the median: half were faster, half slower). For TV, feed delay is
+        the time to record the clip, turn the speech into text and wait a moment (4 seconds by default) for the
+        sentence to finish.</p>
     </div>
 
     <div class="card">

@@ -136,6 +136,35 @@
       if (v === null || v === undefined || isNaN(v) || Number(v) === 0) return "";
       return Number(v) > 0 ? "pos" : "neg";
     },
+    // 2.1 -> "2.1 s", 38 -> "38 s", 300 -> "5 min"
+    secs(v) {
+      if (v === null || v === undefined || isNaN(v)) return "—";
+      const n = Math.max(0, Number(v));
+      if (n < 10) return n.toFixed(1) + " s";
+      if (n < 120) return Math.round(n) + " s";
+      if (n < 7200) return Math.round(n / 60) + " min";
+      if (n < 172800) return (n / 3600).toFixed(1).replace(/\.0$/, "") + " h";
+      return Math.round(n / 86400) + " days";
+    },
+    // The speed timer on a signal or trade, in one line (see newstrader/performance/speed.py)
+    speed(sp) {
+      if (!sp) return "";
+      const has = (v) => v !== null && v !== undefined;
+      const old = has(sp.feed_delay_s) ? ` (the news was ${fmt.secs(sp.feed_delay_s)} old when it arrived)` : "";
+      if (has(sp.news_to_order_s)) {
+        return `${fmt.secs(sp.news_to_order_s)} from seeing the news to the order` +
+          (sp.manual ? " - it waited for your approval" : "") + old;
+      }
+      if (has(sp.thinking_s)) return `Decided ${fmt.secs(sp.thinking_s)} after seeing the news${old}`;
+      return has(sp.feed_delay_s) ? `The news was ${fmt.secs(sp.feed_delay_s)} old when it arrived` : "";
+    },
+    speedTip(sp) {
+      if (!sp) return "";
+      const step = (label, v) => (v === null || v === undefined ? null : `${label}: ${fmt.secs(v)}`);
+      return [step("News came out → NewsTrader saw it (how late the website or TV clip was)", sp.feed_delay_s),
+        step("NewsTrader saw it → the AI decided", sp.thinking_s),
+        step("The AI decided → the order was placed", sp.order_s)].filter(Boolean).join("\n");
+    },
   };
 
   window.NT = { api, fmt, ApiError, connect };

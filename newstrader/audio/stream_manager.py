@@ -6,7 +6,8 @@
 - Each stream reconnects by itself (re-resolving the URL, since YouTube stream links expire).
 - Non-English streams can be translated to English while they are transcribed (Settings -> News sources).
 - When new transcript lines mention a company, ticker or market keyword, the last ~60 seconds of
-  transcript are sent to the AI pipeline (after a short wait so the sentence can finish). Lines that were
+  transcript are sent to the AI pipeline after a short pause (4 s by default) so the rest of the sentence - and any
+  clip that finishes at the same moment - is included. Every line is analysed once as "new"; lines that were
   already analysed are only included as context.
 """
 
@@ -93,6 +94,7 @@ def build_item(src: SourceConfig, context: list[Line], new: list[Line]) -> NewsI
     return NewsItem(source_id=src.id, source_type="stream", source_name=src.name,
                     external_id=f"{src.id}:{new[0].id}-{new[-1].id}", title=new_text[:200],
                     body="\n".join(parts), url=src.url, published_at=datetime.fromtimestamp(new[0].start, UTC),
+                    spoken_at=datetime.fromtimestamp(new[-1].end, UTC),
                     kind="transcript", language="en" if src.translate else src.language.replace("auto", ""))
 
 
@@ -226,6 +228,8 @@ class StreamWorker:
         await asyncio.sleep(delay)
         seconds = self.m.ctx.config.settings.transcription.analysis_window_seconds
         context, new = self.rolling.take_for_analysis(seconds)
+        # these lines are taken: a hit in the next lines starts a new wait, even while this clip is still being sent
+        self._analysis_timer = None
         if not new:
             return
         pipeline = self.m.ctx.service("pipeline")

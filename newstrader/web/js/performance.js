@@ -7,12 +7,14 @@ document.addEventListener("alpine:init", () => {
     horizon: "1h",
     days: 30,
     data: null,
+    speed: null,
+    allSources: false,
     chart: null,
 
     init() {
-      window.addEventListener("nt:tab", (e) => { if (e.detail === "performance") this.load(); });
+      window.addEventListener("nt:tab", (e) => { if (e.detail === "performance") { this.load(); this.loadSpeed(); } });
       window.addEventListener("nt:performance_updated", () => { if (Alpine.store("nt").tab === "performance") this.load(); });
-      if (Alpine.store("nt").tab === "performance") this.load();
+      if (Alpine.store("nt").tab === "performance") { this.load(); this.loadSpeed(); }
     },
 
     async load() {
@@ -20,6 +22,10 @@ document.addEventListener("alpine:init", () => {
         this.data = await NT.api.get(`/performance?horizon=${this.horizon}&days=${this.days}`);
         this.$nextTick(() => this.draw());
       } catch (e) { Alpine.store("nt").error(e, "Couldn't load performance"); }
+    },
+
+    async loadSpeed() {
+      try { this.speed = await NT.api.get("/performance/speed?days=30"); } catch (e) { /* shown next time */ }
     },
 
     draw() {
@@ -42,7 +48,7 @@ document.addEventListener("alpine:init", () => {
           responsive: true, maintainAspectRatio: false, animation: false,
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: (c) => { const x = b[c.dataIndex]; return x.count ? `${x.win_rate}% right (${x.wins}/${x.count}), avg move ${x.avg_return}%` : "no data yet"; } } },
+            tooltip: { callbacks: { label: (c) => { const x = b[c.dataIndex]; return x.count ? `${x.win_rate}% right (${x.wins}/${x.count}), avg move ${x.avg_return}%${x.few ? " - too few to tell yet" : ""}` : "no data yet"; } } },
           },
           scales: {
             y: { min: 0, max: 100, ticks: { color: css("--muted"), callback: (v) => v + "%" }, grid: { color: "rgba(255,255,255,0.06)" } },
@@ -55,6 +61,7 @@ document.addEventListener("alpine:init", () => {
     retClass(v) { return v === null || v === undefined ? "" : v > 0 ? "pos" : v < 0 ? "neg" : ""; },
     ret(v) { return v === null || v === undefined ? "…" : NT.fmt.pct(v); },
     winText(g) { return g.count ? `${g.win_rate}%` : "—"; },
+    fewTitle(g) { return g.few ? "Fewer than 10 measured signals - too few to tell yet" : ""; },
   }));
 
   Alpine.data("backtestTab", () => ({

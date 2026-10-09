@@ -17,6 +17,7 @@ from typing import Any
 from ..context import AppContext
 from ..db import iso, parse_iso
 from ..performance.prices import directional_return, price_at
+from ..performance.speed import signal_speed
 from . import live_guard
 from .fake_broker import FakeBroker
 from .pnl import realized_pnl
@@ -27,6 +28,7 @@ log = logging.getLogger(__name__)
 OPEN_STATUSES = {"new", "accepted", "pending_new", "held", "partially_filled", "accepted_for_bidding",
                  "pending_replace", "replaced", "calculated"}
 CHASE_LOOKBACK = timedelta(minutes=60)  # "since the news" looks back at most this far
+SIGNAL_INTENTS = ("open_long", "open_short", "close_long", "close_short")
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -574,8 +576,9 @@ class Trader:
 
     # ------------------------------------------------------------------ trade log
     def trade_log(self, limit: int = 500, symbol: str | None = None, mode: str | None = None) -> list[dict]:
-        sql = ("SELECT o.*, s.confidence, s.direction, s.reasoning AS signal_reasoning, s.source_name "
-               "FROM orders o LEFT JOIN signals s ON s.id = o.signal_id WHERE 1=1")
+        sql = ("SELECT o.*, s.confidence, s.direction, s.reasoning AS signal_reasoning, s.source_name, "
+               "s.news_published_at, s.news_received_at, s.decided_at, s.created_at AS signal_created_at, "
+               "s.review_status FROM orders o LEFT JOIN signals s ON s.id = o.signal_id WHERE 1=1")
         params: list = []
         if symbol:
             sql += " AND o.symbol = ?"
@@ -590,6 +593,11 @@ class Trader:
         for r in rows:
             r.pop("raw", None)
             r["realized_pl"] = pnl.get(r["alpaca_order_id"])
+            sig = {k: r.pop(k) for k in ("news_published_at", "news_received_at", "decided_at", "review_status")}
+            sig["created_at"] = r.pop("signal_created_at")
+            # entries and sells made for a signal (not their stop-loss / take-profit legs)
+            entry = r["signal_id"] and not r.get("parent_alpaca_id") and r["intent"] in SIGNAL_INTENTS
+            r["speed"] = signal_speed(sig, r["submitted_at"]) if entry else None
         return rows
 
     def today_realized(self) -> float:

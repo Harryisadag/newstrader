@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from ...ai.costs import calls_today, spend_today
 from ...ai.prefilter import prefilter
 from ...context import AppContext
+from ...performance.speed import signal_speed
 from ...sources.base import NewsItem, stable_id
 from ..deps import bad_request, get_ctx
 
@@ -32,28 +33,30 @@ async def list_signals(
     review_only: bool = Query(False),
     ctx: AppContext = Depends(get_ctx),
 ):
-    sql = "SELECT * FROM signals WHERE confidence >= ?"
+    sql = ("SELECT s.*, o.submitted_at AS order_submitted_at FROM signals s LEFT JOIN orders o ON o.id = s.order_id "
+           "WHERE s.confidence >= ?")
     params: list = [min_confidence]
     if not include_merged:
-        sql += " AND merged_into IS NULL"
+        sql += " AND s.merged_into IS NULL"
     if ticker:
-        sql += " AND ticker = ?"
+        sql += " AND s.ticker = ?"
         params.append(ticker.upper().strip())
     if direction:
-        sql += " AND direction = ?"
+        sql += " AND s.direction = ?"
         params.append(direction)
     if action == "traded":
-        sql += " AND traded = 1"
+        sql += " AND s.traded = 1"
     elif action:
-        sql += " AND action = ?"
+        sql += " AND s.action = ?"
         params.append(action)
     if review_only:
-        sql += " AND action = 'review' AND (review_status IS NULL OR review_status = 'pending')"
-    sql += " ORDER BY id DESC LIMIT ?"
+        sql += " AND s.action = 'review' AND (s.review_status IS NULL OR s.review_status = 'pending')"
+    sql += " ORDER BY s.id DESC LIMIT ?"
     params.append(limit)
     rows = ctx.db.query(sql, params)
     for r in rows:
         r["sources_seen"] = json.loads(r["sources_seen"] or "[]")
+        r["speed"] = signal_speed(r, r.pop("order_submitted_at"))
     return {"signals": rows}
 
 
@@ -75,6 +78,7 @@ async def signal_detail(signal_id: int, ctx: AppContext = Depends(get_ctx)):
         order = ctx.db.query_one("SELECT * FROM orders WHERE id = ?", (sig["order_id"],))
         if order:
             order.pop("raw", None)
+    sig["speed"] = signal_speed(sig, order["submitted_at"] if order else None)
     return {"signal": sig, "analysis": analysis, "item": item, "merged": merged, "order": order}
 
 

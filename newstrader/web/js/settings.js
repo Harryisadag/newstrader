@@ -66,7 +66,7 @@ document.addEventListener("alpine:init", () => {
         F("transcription.chunk_seconds", "Audio chunk length", "number", { min: 3, max: 30, suffix: "seconds" }),
         F("transcription.vad_min_silence_ms", "Silence that splits speech", "number", { min: 100, max: 3000, suffix: "ms" }),
         F("transcription.analysis_window_seconds", "Transcript context analysed", "number", { min: 15, max: 300, suffix: "seconds" }),
-        F("transcription.analysis_debounce_seconds", "Wait for sentence to finish", "number", { min: 0, max: 60, suffix: "seconds" }),
+        F("transcription.analysis_debounce_seconds", "Wait for sentence to finish", "number", { min: 0, max: 60, suffix: "seconds", help: "After a company is mentioned on TV, wait this long before the AI reads the clip. Shorter = faster trades, longer = more of the sentence. Default 4." }),
         F("transcription.cookies_from_browser", "YouTube cookies from browser", "select", { options: { "": "None", chrome: "Chrome", edge: "Edge", firefox: "Firefox", brave: "Brave", safari: "Safari (Mac)" }, help: "Only if YouTube says 'Sign in to confirm you're not a bot'. On a Mac, Chrome asks for Keychain access and Safari needs Full Disk Access for NewsTrader." }),
       ],
     },
@@ -215,7 +215,7 @@ document.addEventListener("alpine:init", () => {
   // ---- Sources manager (used in Settings -> Sources) ----
   const CATEGORY_ORDER = ["Live events", "TV", "Business news", "Politics & Trump", "Regulators", "Central banks",
     "Press releases", "Social"];
-  const blankDraft = (type = "rss") => ({ type, name: "", url: "", speaker: "", poll_seconds: 60, region: "",
+  const blankDraft = (type = "rss") => ({ type, name: "", url: "", speaker: "", poll_seconds: 30, region: "",
     category: "", language: "", translate: false, live_events: false });
 
   Alpine.data("sourcesManager", () => ({

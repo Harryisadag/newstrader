@@ -165,14 +165,34 @@ The header always shows:
 | Tab | What it shows |
 |---|---|
 | **Live** | One pane per TV stream with the live transcript (on/off switch on each, and a language badge such as DE → EN when it's translated). Live-event channels that are off air wait in a compact row and get a pane when they go live. Headlines from every text source scroll below, tagged with the tickers found and what happened (not relevant, same story, analysed, signal…). |
-| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
+| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
 | **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
-| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L. **Export CSV** saves it to the exports folder. |
-| **Performance** | **Is the AI right?** Win rate by confidence level and by source, at +5 min / +1 hour / +1 trading day, for every signal (traded or not). |
+| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Export CSV** saves it to the exports folder. |
+| **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
 | **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw. **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
 | **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
 | **Logs** | System status (GPU, Alpaca, AI engine, every stream/feed), **Run diagnostics**, the full log, and **Rejected AI responses** (anything that failed validation). |
+
+### How fast is it?
+
+From the moment NewsTrader sees a story to the moment the order is placed usually takes a few seconds. Most of the
+delay happens before that, while the news is on its way to NewsTrader:
+
+| Step | Typical time | What it is |
+|---|---|---|
+| Website delay | seconds to minutes | How late the website or feed itself is: the time between when a story says it was published and when it shows up in the feed. NewsTrader can't change this. Google News feeds are a few minutes behind. |
+| Checking interval | up to 15 s / 30 s / 5 min | How often each feed is checked: every 15 seconds for breaking-news wires (PR Newswire, GlobeNewswire, SEC 8-K filings, Federal Reserve press releases, Trump's Truth Social posts), every 30 seconds for other feeds, every 5 minutes for Google News. Alpaca/Benzinga news is pushed instantly. Each check only asks "anything new?", and a website that asks NewsTrader to slow down is left alone for as long as it asks. |
+| TV | about 10-20 s | The audio is cut into 10-second clips and turned into text. After a company is mentioned, NewsTrader waits 4 seconds so the sentence can finish, then the AI reads it. |
+| Thinking time | under 1 s (local) / a few s (Claude) | The AI engine reading the story. |
+| Order | about 1-2 s | The risk checks, a fresh look at your account and the price, and sending the order to Alpaca. |
+
+**Where to see it:** each row in **Signals** and **Trade Log** has a small line such as *"2.1 s from seeing the news
+to the order (the news was 38 s old when it arrived)"*. Hover over it for each step. **Performance → Speed** shows the
+typical (median) times over the last 30 days, the typical delay of every source and the three slowest ones, so you
+can turn off sources that are always late. There, *feed delay* is how old a story already was when NewsTrader first
+read it: mostly the website's own delay, plus at most one checking interval. For TV, "published" means when the
+words were spoken, so its delay is the clip, the transcription and the 4-second pause.
 
 ---
 
@@ -283,9 +303,10 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Device | Windows: CUDA. Mac: Auto | Auto picks the NVIDIA GPU, the Apple GPU, or the CPU. |
 | Max streams at once | 4 | The rest wait for a free slot. |
 | Chunk length / context | 10 s / 60 s | How audio is cut, and how much recent transcript is analysed. |
+| Wait for sentence to finish | 4 s | After a company is mentioned, wait this long before the AI reads the clip. Shorter = faster trades. |
 | YouTube cookies from browser | none | Only needed if YouTube asks to "sign in to confirm you're not a bot". Chrome, Edge, Firefox, Brave or Safari. |
 
-**News sources:** each source has a region, a kind (TV, news, social, live events), a language and, for TV, a **Translate to English** switch. Live-event channels (White House, Fed…) only use one of the "max streams at once" slots while they're live, and take one from the lowest-priority always-on stream if needed.
+**News sources:** each source has a region, a kind (TV, news, social, live events), a language, a check interval (15 s for breaking-news wires, 30 s for other feeds, 5 min for Google News) and, for TV, a **Translate to English** switch. Live-event channels (White House, Fed…) only use one of the "max streams at once" slots while they're live, and take one from the lowest-priority always-on stream if needed.
 
 **Market monitor**
 | Setting | Default | Meaning |
@@ -444,7 +465,7 @@ For anything else, look at **Logs**. Logs → Open log files shows the log folde
 
 ## Truth Social and X (Twitter)
 
-**Truth Social** has no official API. NewsTrader comes with Donald Trump's posts preloaded through the free public archive feed at trumpstruth.org. Free feeds can lag a bit behind the real posts.
+**Truth Social** has no official API. NewsTrader comes with Donald Trump's posts preloaded through the free public archive feed at trumpstruth.org. Free feeds can lag a bit behind the real posts. NewsTrader checks it every 15 seconds.
 
 **Trump interviews and remarks** come in through:
 - live TV: The White House channel (briefings and remarks, on by default), Fox News and Fox Business live events, Right Side Broadcasting (rallies and speeches), Forbes Breaking News, PBS NewsHour, C-SPAN. These are "live event" channels: they only use a transcription slot while they're live.

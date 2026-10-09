@@ -47,6 +47,13 @@ class NewsItem:
     kind: str = "text"  # text | transcript
     db_id: int | None = None
     language: str = ""  # "en", another language code, or "" = not known yet (the pipeline guesses)
+    spoken_at: datetime | None = None  # live TV: when the newest words in the clip were spoken
+    received_at: datetime | None = None  # set by the pipeline when the item arrives
+
+    @property
+    def news_time(self) -> datetime | None:
+        """When the news came out, for the speed timer (see performance/speed.py)."""
+        return self.spoken_at if self.kind == "transcript" else self.published_at
 
     @property
     def text(self) -> str:

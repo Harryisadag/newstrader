@@ -47,6 +47,10 @@ def _gnews_business(hl: str, gl: str) -> str:
 
 
 GN = 300  # Google News: poll every 5 minutes
+# Breaking-news wires (press releases, SEC filings, the Fed, Trump's posts) are checked every 15 seconds; every other
+# feed every 30 seconds (the SourceConfig default). Feeds are asked "anything new since last time?", so a check
+# with no news costs almost nothing.
+FAST = 15
 
 _PRESETS: list[dict] = [
     # ================= Live TV / video streams (audio is transcribed) =================
@@ -184,7 +188,7 @@ _PRESETS: list[dict] = [
          poll=GN),
     # ---- US regulators and data ----
     _rss("fed-press", "Federal Reserve press releases", "https://www.federalreserve.gov/feeds/press_all.xml", "US",
-         "Central banks", on=True),
+         "Central banks", on=True, poll=FAST),
     _rss("fed-speeches", "Federal Reserve speeches", "https://www.federalreserve.gov/feeds/speeches.xml", "US",
          "Central banks"),
     _rss("fda-press", "FDA press releases (drug approvals)",
@@ -198,13 +202,13 @@ _PRESETS: list[dict] = [
     _rss("eia-press", "EIA energy data", "https://www.eia.gov/rss/press_rss.xml", "US", "Regulators"),
     # High-volume press-release / filing feeds - off by default
     _rss("prnewswire", "PR Newswire (all releases)", "https://www.prnewswire.com/rss/news-releases-list.rss", "US",
-         "Press releases"),
+         "Press releases", poll=FAST),
     _rss("globenewswire", "GlobeNewswire (public companies)",
          "https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies",
-         "US", "Press releases"),
+         "US", "Press releases", poll=FAST),
     _rss("sec-8k", "SEC EDGAR 8-K filings",
          "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=40&output=atom",
-         "US", "Press releases"),
+         "US", "Press releases", poll=FAST),  # SEC allows 10 requests a second; never poll it faster than 15 s
     # ---- Central banks around the world ----
     _rss("ecb-press", "European Central Bank", "https://www.ecb.europa.eu/rss/press.html", "Europe",
          "Central banks"),
@@ -269,7 +273,7 @@ _PRESETS: list[dict] = [
     # ================= Social posts =================
     # Truth Social has no public API. trumpstruth.org is a free public archive with an RSS feed.
     {"id": "truth-social-trump", "type": "social_rss", "name": "Donald Trump (Truth Social)",
-     "url": "https://www.trumpstruth.org/feed", "enabled": True, "speaker": "Donald Trump", "poll_seconds": 30,
+     "url": "https://www.trumpstruth.org/feed", "enabled": True, "speaker": "Donald Trump", "poll_seconds": FAST,
      "region": "US", "category": "Politics & Trump"},
 ]
 
@@ -279,6 +283,17 @@ PRESET_URL_FIXES: dict[str, str] = {
     "yahoo-finance-news": "https://finance.yahoo.com/news/rssindex",  # 404 since 2026
     "marketwatch-realtime": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines",  # stopped in 2025
 }
+
+
+# Check intervals before v0.4: every feed was checked each 60 s, except these (Google News feeds kept 300 s).
+_OLD_POLL = {"truth-social-trump": 30}
+
+
+def old_poll_seconds(preset: dict) -> int:
+    """A preset's check interval before v0.4 (saved configs still on it move to the new one)."""
+    if preset["id"] in _OLD_POLL:
+        return _OLD_POLL[preset["id"]]
+    return GN if preset.get("poll_seconds") == GN else 60
 
 
 def default_sources() -> list[dict]:

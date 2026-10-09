@@ -6,6 +6,7 @@
 
 The headline sets are described in tests/fixtures/eval/README.md. Labels say what a trader would expect the stock
 to do in the next hour (bullish / bearish / neutral); each item was labelled twice, blind, and disagreements settled.
+The holdout set is sealed: only its overall accuracy and wrong-direction count are shown unless --unseal is passed.
 """
 
 from __future__ import annotations
@@ -142,14 +143,41 @@ ROWS = [
 ]
 
 
-def main() -> int:
+SEALED_ROWS = [("accuracy_pct", "Right answer (good/bad/neutral, %)"),
+               ("opposite_direction", "Called the opposite direction")]
+
+
+def is_sealed(which: str, unseal: bool = False) -> bool:
+    """The holdout set (by name or as holdout*.jsonl) only shows its overall numbers unless --unseal is passed."""
+    return not unseal and Path(which).stem.lower().startswith("holdout")
+
+
+def report(runs: dict, which: str, n_items: int, describe: str, mistakes: int = 0, sealed: bool = False) -> str:
+    head = f"## Detection on the {which} set ({n_items} headlines, {describe})\n"
+    lines = [head, "| | " + " | ".join(runs) + " |", "|---|" + "---|" * len(runs)]
+    for key, label in SEALED_ROWS if sealed else ROWS:
+        lines.append(f"| {label} | " + " | ".join(str(r[key]) for r in runs.values()) + " |")
+    if sealed:
+        lines.append("\nSealed set: mistakes and the per-category table stay hidden (use --unseal to show them).")
+        return "\n".join(lines)
+    last = list(runs.values())[-1]
+    lines.append("\nBy kind of news (% right): " + ", ".join(f"{k} {v}" for k, v in last["by_category"].items()))
+    for m in last["mistakes"][:mistakes]:
+        lines.append(f"  {m['id']} {m['ticker']}: expected {m['label']}, got {m['pred']} ({m['conf']})"
+                     f"{'' if m['found'] else ' [company not found]'} - {m['title'][:110]}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default="dev", help="dev, set2, set3, holdout, or a path to a .jsonl file")
     ap.add_argument("--sentiment", default="lexicon", choices=["lexicon", "finbert"])
     ap.add_argument("--compare", action="store_true", help="also run without the event rules (v0.2 behaviour)")
     ap.add_argument("--mistakes", type=int, default=0, help="print this many wrong answers")
     ap.add_argument("--json", default="", help="write the full results to this file")
-    args = ap.parse_args()
+    ap.add_argument("--unseal", action="store_true", help="show the holdout set's mistakes and categories too")
+    args = ap.parse_args(argv)
+    sealed = is_sealed(args.set, args.unseal)
 
     items = load_items(args.set)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # Windows: the db is still open
@@ -164,17 +192,10 @@ def main() -> int:
         if args.compare:
             runs = {"v0.2 (wording only)": evaluate(items, make_engine(table, sentiment, False), table), **runs}
 
-    head = f"## Detection on the {args.set} set ({len(items)} headlines, {sentiment.describe()})\n"
-    lines = [head, "| | " + " | ".join(runs) + " |", "|---|" + "---|" * len(runs)]
-    for key, label in ROWS:
-        lines.append(f"| {label} | " + " | ".join(str(r[key]) for r in runs.values()) + " |")
-    print("\n".join(lines))
-    last = list(runs.values())[-1]
-    print("\nBy kind of news (% right): " + ", ".join(f"{k} {v}" for k, v in last["by_category"].items()))
-    for m in last["mistakes"][: args.mistakes]:
-        print(f"  {m['id']} {m['ticker']}: expected {m['label']}, got {m['pred']} ({m['conf']})"
-              f"{'' if m['found'] else ' [company not found]'} - {m['title'][:110]}")
+    print(report(runs, args.set, len(items), sentiment.describe(), args.mistakes, sealed))
     if args.json:
+        if sealed:
+            runs = {name: {k: r[k] for k, _label in SEALED_ROWS} for name, r in runs.items()}
         Path(args.json).write_text(json.dumps(runs, indent=2), encoding="utf-8")
     return 0
 

@@ -324,6 +324,19 @@ MIGRATIONS: list[str] = [
         equity REAL
     );
     """,
+    # 10 - speed timer: when the news came out, when the app got it and when the AI decided (orders already have
+    # submitted_at). Older signals are filled in from their news item; an old TV clip's "published" stays empty
+    # because only the start of the clip was saved, not when its newest words were spoken.
+    """
+    ALTER TABLE signals ADD COLUMN news_published_at TEXT;
+    ALTER TABLE signals ADD COLUMN news_received_at TEXT;
+    ALTER TABLE signals ADD COLUMN decided_at TEXT;
+    UPDATE signals SET decided_at = created_at;
+    UPDATE signals SET news_received_at = (SELECT n.received_at FROM analyses a JOIN news_items n ON n.id = a.item_id
+                                           WHERE a.id = signals.analysis_id);
+    UPDATE signals SET news_published_at = (SELECT n.published_at FROM analyses a JOIN news_items n ON n.id = a.item_id
+                                            WHERE a.id = signals.analysis_id AND a.item_kind = 'news');
+    """,
 ]
 
 

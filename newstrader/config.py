@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .sources.presets import PRESET_URL_FIXES, default_sources
+from .sources.presets import PRESET_URL_FIXES, default_sources, old_poll_seconds
 
 log = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class SourceConfig(_Model):
     enabled: bool = True
     builtin: bool = False
     # RSS / social polling interval
-    poll_seconds: int = Field(60, ge=10, le=3600)
+    poll_seconds: int = Field(30, ge=10, le=3600)
     # For social sources: who is posting (passed to Claude as the speaker)
     speaker: str = ""
     # Where the source is from and what it is (presets fill these in; used to group sources in the app)
@@ -175,7 +175,7 @@ class TranscriptionSettings(_Model):
     # How much recent transcript Claude sees when a stream mentions a company/keyword
     analysis_window_seconds: int = Field(60, ge=15, le=300)
     # Wait this long after a hit so the rest of the sentence gets included
-    analysis_debounce_seconds: int = Field(10, ge=0, le=60)
+    analysis_debounce_seconds: int = Field(4, ge=0, le=60)
     # If YouTube says "sign in to confirm you're not a bot": chrome / edge / firefox / safari / brave
     cookies_from_browser: str = ""
 
@@ -362,7 +362,7 @@ class UISettings(_Model):
 
 
 class AppSettings(_Model):
-    schema_version: int = 2
+    schema_version: int = 3
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
@@ -400,6 +400,29 @@ def _backfill_presets(raw: dict, settings: AppSettings) -> AppSettings:
                     data[key] = preset[key]
         out.append(data)
     return AppSettings.model_validate({**settings.model_dump(mode="json"), "schema_version": 2, "sources": out})
+
+
+def _speed_up(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before v0.4 (schema 2): feeds are checked more often and TV is analysed sooner. Only values
+    still at the old default move to the new one - a check interval or pause the user changed is kept."""
+    presets = {p["id"]: p for p in default_sources()}
+    raw_sources = {s.get("id"): s for s in raw.get("sources", []) if isinstance(s, dict)}
+    out = []
+    for src in settings.sources:
+        data = src.model_dump(mode="json")
+        preset = presets.get(src.id)
+        saved = raw_sources.get(src.id)
+        if src.builtin and preset is not None and saved is not None and src.type in ("rss", "social_rss"):
+            old = old_poll_seconds(preset)
+            if saved.get("poll_seconds", old) == old:
+                data["poll_seconds"] = preset.get("poll_seconds", SourceConfig.model_fields["poll_seconds"].default)
+        out.append(data)
+    dump = settings.model_dump(mode="json")
+    tr = raw.get("transcription")
+    if isinstance(tr, dict) and tr.get("analysis_debounce_seconds") == 10:
+        dump["transcription"]["analysis_debounce_seconds"] = TranscriptionSettings.model_fields[
+            "analysis_debounce_seconds"].default
+    return AppSettings.model_validate({**dump, "schema_version": 3, "sources": out})
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
@@ -559,12 +582,16 @@ class ConfigStore:
                     {**settings.model_dump(mode="json"),
                      "sources": [s.model_dump(mode="json") for s in settings.sources + added]})
             self._removed_presets = sorted(removed)
-            if int(raw.get("schema_version") or 1) < 2:
+            version = int(raw.get("schema_version") or 1)
+            if version < 2:
                 settings = _backfill_presets(raw, settings)
                 self.needs_save = True
             fixed = _fix_preset_urls(settings)
             if fixed is not None:
                 settings, self.needs_save = fixed, True
+            if version < 3:
+                settings = _speed_up(raw, settings)
+                self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]
             return settings

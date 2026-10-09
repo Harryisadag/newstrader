@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 import httpx
 
 from ..config import SourceConfig
 from .base import NewsItem
+from .polling import SlowDown, next_wait, retry_after_seconds
 
 log = logging.getLogger(__name__)
 
@@ -35,8 +37,12 @@ class XAccountSource:
     async def _get(self, path: str, params: dict | None = None) -> dict:
         r = await self.client.get(f"{API}{path}", params=params, timeout=20,
                                   headers={"Authorization": f"Bearer {self.token}"})
-        if r.status_code == 429:
-            raise RuntimeError("X API rate limit - checking less often")
+        if r.status_code in (429, 503):
+            wait = retry_after_seconds(r.headers)
+            reset = r.headers.get("x-rate-limit-reset", "")
+            if wait is None and reset.isdigit():  # X says when the limit resets (Unix time)
+                wait = max(0.0, int(reset) - time.time())
+            raise SlowDown(r.status_code, wait)
         if r.status_code in (401, 403):
             raise RuntimeError(f"X API refused the token (HTTP {r.status_code}) - reading posts needs a paid tier")
         r.raise_for_status()
@@ -73,9 +79,16 @@ class XAccountSource:
                                                published_at=created, speaker=self.src.speaker or f"@{self.username}"))
                 self.set_status("ok", f"@{self.username} checked")
                 failures = 0
+                wait = next_wait(interval)
             except asyncio.CancelledError:
                 raise
+            except SlowDown as exc:
+                failures += 1
+                wait = next_wait(interval, failures, exc.wait, cap=3600)
+                self.set_status("warn", f"X API limit reached or busy (HTTP {exc.status}) - next check in "
+                                        f"{max(1, round(wait / 60))} min")
             except Exception as exc:
                 failures += 1
+                wait = next_wait(interval, failures, cap=3600)
                 self.set_status("error", str(exc)[:200])
-            await asyncio.sleep(min(interval * (2 ** min(failures, 4)), 3600))
+            await asyncio.sleep(wait)
