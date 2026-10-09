@@ -48,6 +48,6 @@ async def speed(days: int = Query(30, ge=1, le=365), ctx: AppContext = Depends(g
     delays += ctx.db.query(
         "SELECT source_name, (julianday(news_received_at) - julianday(news_published_at)) * 86400.0 AS secs "
         "FROM signals WHERE created_at >= ? AND source_type = 'stream' AND news_published_at IS NOT NULL "
-        "AND merged_into IS NULL", (since,))
+        "AND merged_into IS NULL AND COALESCE(action, '') != 'watch'", (since,))
     summary = speed_summary(traded, [(r["source_name"], r["secs"]) for r in delays], min_count=MIN_COUNT)
     return {"days": days, **summary}

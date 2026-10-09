@@ -337,6 +337,18 @@ MIGRATIONS: list[str] = [
     UPDATE signals SET news_published_at = (SELECT n.published_at FROM analyses a JOIN news_items n ON n.id = a.item_id
                                             WHERE a.id = signals.analysis_id AND a.item_kind = 'news');
     """,
+    # 11 - Pro AI: which main-engine reading a Pro AI reading belongs to, why the story was sent to it and whether
+    # the two agreed. On a Pro AI signal main_direction is the main engine's call for that stock (NULL = the main
+    # engine didn't read the story); on a main-engine signal pro_direction is Pro AI's call.
+    """
+    ALTER TABLE analyses ADD COLUMN main_analysis_id INTEGER;
+    ALTER TABLE analyses ADD COLUMN pro_reason TEXT;
+    ALTER TABLE analyses ADD COLUMN agreement TEXT;
+    ALTER TABLE signals ADD COLUMN main_direction TEXT;
+    ALTER TABLE signals ADD COLUMN pro_direction TEXT;
+    CREATE INDEX idx_signals_analysis ON signals(analysis_id);
+    CREATE INDEX idx_analyses_engine ON analyses(engine, created_at);
+    """,
 ]
 
 

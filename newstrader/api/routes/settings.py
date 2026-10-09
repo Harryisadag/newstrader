@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends
 from ...ai.engine import ENGINES
 from ...config import CLAUDE_MODELS, WHISPER_LANGUAGES, WHISPER_MODELS
 from ...context import AppContext
+from ...llm.service import setting_options
 from ..deps import get_ctx
 
 router = APIRouter(tags=["settings"])
@@ -23,6 +24,7 @@ def _payload(ctx: AppContext) -> dict:
             "whisper_models": WHISPER_MODELS,
             "languages": {"auto": "Detect automatically", **WHISPER_LANGUAGES},
             "effort_note": "Effort only applies to Sonnet/Opus. Haiku 4.5 ignores it.",
+            **setting_options(),
         },
     }
 

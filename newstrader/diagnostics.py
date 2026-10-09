@@ -231,6 +231,55 @@ def _check_ml(ctx: AppContext) -> dict:
                   "" if st["price_model_active"] else "Optional: Backtest tab -> Local ML model -> Train.")
 
 
+async def _check_pro_ai(ctx: AppContext) -> list[dict]:
+    """Only when Pro AI is turned on: its downloads, its server, and whether the whole model is on the graphics
+    card."""
+    if not ctx.config.settings.ai.pro_ai.enabled:
+        return []
+    from .llm.catalog import MODELS_BY_KEY, SERVER_BUILDS
+
+    pro = ctx.service("pro_ai")
+    if pro is None:
+        return [_check("Pro AI", "warn", "turned on, but the engine isn't running yet")]
+    setup = "Settings -> Pro AI -> Set up Pro AI."
+    build, model, why = await asyncio.to_thread(pro.chosen)
+    if build is None or model is None:
+        return [_check("Pro AI files", "error", why or "no model chosen", setup)]
+    exe = await asyncio.to_thread(pro.files.installed_server_exe, build)
+    path = await asyncio.to_thread(pro.files.model_path, model)
+    names = f"{MODELS_BY_KEY[model].label} on the {SERVER_BUILDS[build].label} server"
+    if exe and path:
+        out = [_check("Pro AI files", "ok", f"{names}: downloaded, size and SHA-256 checked")]
+    else:
+        missing = " and ".join(x for x, ok in (("the server", exe), (MODELS_BY_KEY[model].label, path)) if not ok)
+        return [_check("Pro AI files", "error", f"{missing} not downloaded (or it failed its safety check)", setup)]
+    srv = pro.server
+    code = await asyncio.to_thread(srv.health) if pro.state == "ready" else None
+    if pro.state == "ready" and code == 200:
+        out.append(_check("Pro AI server", "ok", "running and answering (only this computer can reach it)"))
+    elif pro.state in ("starting", "downloading"):
+        out.append(_check("Pro AI server", "warn", pro.message, "Wait a minute and run diagnostics again."))
+    else:
+        detail = pro.message if pro.state != "ready" else f"not answering (HTTP {code})"
+        out.append(_check("Pro AI server", "error", detail,
+                          "Settings -> Pro AI -> Start. If it keeps stopping, pick a smaller model."))
+        return out
+    on_gpu = srv.fully_on_gpu if pro.state == "ready" else None
+    if on_gpu is True:
+        out.append(_check("Pro AI on the graphics card", "ok", f"the whole model is on the card ({srv.gpu_layers} "
+                                                               "layers)"))
+    elif on_gpu is False:
+        out.append(_check("Pro AI on the graphics card", "warn",
+                          f"only {srv.gpu_layers} of {srv.total_layers} layers fit - the rest runs on the processor, "
+                          "which is much slower",
+                          "Pick a smaller model in Settings -> Pro AI, close programs that use the graphics card, "
+                          "or turn off TV transcription."))
+    elif pro.state == "ready":
+        out.append(_check("Pro AI on the graphics card", "warn", "can't tell (this server build runs on the "
+                          "processor, or doesn't say)", "Settings -> Pro AI -> Test my PC shows how fast it is."))
+    return out
+
+
 async def run_diagnostics(ctx: AppContext) -> dict:
     checks: list[dict] = [_check("NewsTrader", "ok", f"version {__version__}, {ctx.state.mode.upper()} mode"),
                           _check_python(), _check_data_dir()]
@@ -243,6 +292,10 @@ async def run_diagnostics(ctx: AppContext) -> dict:
     checks.append(await asyncio.to_thread(_check_ffmpeg))
     checks += await asyncio.to_thread(_check_ytdlp)
     checks.append(_check_ml(ctx))
+    try:
+        checks += await _with_timeout(_check_pro_ai(ctx), 30)
+    except Exception as exc:
+        checks.append(_check("Pro AI", "error", f"{type(exc).__name__}: {exc}"))
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("ok", "warn", "error")}
     log.info("Diagnostics: %d ok, %d warnings, %d errors", summary["ok"], summary["warn"], summary["error"])
     return {"checks": checks, "summary": summary}

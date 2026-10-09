@@ -347,7 +347,7 @@ def test_old_check_intervals_speed_up_but_user_choices_stay(tmp_path):
     assert poll["google-news-business"] == 300 and poll["trump-interviews"] == 300
     assert store.settings.transcription.analysis_debounce_seconds == 4
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["schema_version"] == 3
+    assert saved["schema_version"] == 4
     assert {s["id"]: s["poll_seconds"] for s in saved["sources"]}["fed-press"] == 15  # saved straight away
 
     # after the upgrade, a value the user picks is kept - even the old default

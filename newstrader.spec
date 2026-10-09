@@ -16,7 +16,8 @@ VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', open("newstrader/__init__.py
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
-datas = [("newstrader/web", "newstrader/web")]
+datas = [("newstrader/web", "newstrader/web"),
+         ("newstrader/llm/samples.json", "newstrader/llm")]  # Pro AI's "Test my PC" headlines
 binaries = []
 hiddenimports = []
 

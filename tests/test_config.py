@@ -142,4 +142,4 @@ def test_old_config_gets_new_preset_fields_but_keeps_user_edits(tmp_path, monkey
     assert nk.region == "Japan" and nk.name == "My Nikkei" and nk.category == "Business news"
     assert store.settings.risk.max_dollars_per_trade == 250  # nothing else was reset
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["schema_version"] == 3 and saved["sources"][0]["region"] == "Europe"
+    assert saved["schema_version"] == 4 and saved["sources"][0]["region"] == "Europe"

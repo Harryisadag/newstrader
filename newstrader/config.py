@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .llm.catalog import MODELS_BY_KEY, SERVER_BUILDS
 from .sources.presets import PRESET_URL_FIXES, default_sources, old_poll_seconds
 
 log = logging.getLogger(__name__)
@@ -193,6 +194,46 @@ class TranscriptionSettings(_Model):
         return normalize_language(v, "en")
 
 
+def _catalog_choice(value: Any, known, what: str) -> str:
+    """"auto" or a key from newstrader/llm/catalog.py. A key an update removed falls back to "auto" (with a warning)
+    instead of resetting every other setting."""
+    v = str(value or "").strip().lower() or "auto"
+    if v == "auto" or v in known:
+        return v
+    log.warning("Unknown Pro AI %s '%s' in settings - using 'auto'", what, value)
+    return "auto"
+
+
+class ProAISettings(_Model):
+    """Pro AI: an optional local language model (llama.cpp) that reads the stories the main engine finds hard.
+    It never places a trade by itself."""
+
+    enabled: bool = False
+    # "watch" = only records what it would have done (never traded, never alerted - shown on the scoreboard);
+    # "judge" = on hard cases it can send a main-engine signal it disagrees with to manual review, or raise a new
+    # manual-review signal the main engine missed
+    mode: Literal["watch", "judge"] = "watch"
+    model: str = "auto"  # "auto" (the biggest that fits this PC) or a catalog key
+    build: str = "auto"  # "auto" (matched to the graphics card) or a catalog key
+    # "hard" = TV transcripts, wording-only or neutral local-engine calls, market-wide and non-English news;
+    # "all" = every story that names a company
+    scope: Literal["hard", "all"] = "hard"
+    # a story that waited longer than this for Pro AI is skipped (and Pro AI gets this long to answer)
+    max_wait_seconds: int = Field(20, ge=5, le=120)
+    # keep graphics memory free for TV transcription when TV sources are on
+    keep_tv_memory_free: bool = True
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _model(cls, v: Any) -> str:
+        return _catalog_choice(v, MODELS_BY_KEY, "model")
+
+    @field_validator("build", mode="before")
+    @classmethod
+    def _build(cls, v: Any) -> str:
+        return _catalog_choice(v, SERVER_BUILDS, "server build")
+
+
 class AISettings(_Model):
     # "local" = free on-device machine learning (FinBERT + price-trained model); "claude" = Anthropic API
     engine: Literal["local", "claude"] = "local"
@@ -211,6 +252,7 @@ class AISettings(_Model):
     # Also analyse text that only has market-moving keywords (e.g. "Fed cuts rates") with no company named.
     # Claude engine only - the local engine needs a named company to score.
     analyze_keyword_only: bool = True
+    pro_ai: ProAISettings = Field(default_factory=ProAISettings)
 
     @field_validator("model")
     @classmethod
@@ -362,7 +404,7 @@ class UISettings(_Model):
 
 
 class AppSettings(_Model):
-    schema_version: int = 3
+    schema_version: int = 4
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
@@ -423,6 +465,14 @@ def _speed_up(raw: dict, settings: AppSettings) -> AppSettings:
         dump["transcription"]["analysis_debounce_seconds"] = TranscriptionSettings.model_fields[
             "analysis_debounce_seconds"].default
     return AppSettings.model_validate({**dump, "schema_version": 3, "sources": out})
+
+
+def _add_pro_ai(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before v0.4 Pro AI (schema 3): add the ai.pro_ai section, switched off and watch-only, whatever
+    an older file says - Pro AI is only ever turned on by setting it up in Settings."""
+    dump = settings.model_dump(mode="json")
+    dump["ai"]["pro_ai"] = ProAISettings().model_dump(mode="json")
+    return AppSettings.model_validate({**dump, "schema_version": 4})
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
@@ -591,6 +641,9 @@ class ConfigStore:
                 settings, self.needs_save = fixed, True
             if version < 3:
                 settings = _speed_up(raw, settings)
+                self.needs_save = True
+            if version < 4:
+                settings = _add_pro_ai(raw, settings)
                 self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]

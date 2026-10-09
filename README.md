@@ -41,16 +41,17 @@ You don't need Python to use a release:
 2. [Setup on a Mac (one time, ~20 minutes)](#setup-on-a-mac-one-time-20-minutes)
 3. [Using NewsTrader](#using-newstrader)
 4. [The AI engine: local machine learning or Claude](#the-ai-engine-local-machine-learning-or-claude)
-5. [Settings explained](#settings-explained)
-6. [How a trade happens](#how-a-trade-happens)
-7. [Kill switch and live trading](#kill-switch-and-live-trading)
-8. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-9. [Updating](#updating)
-10. [Troubleshooting](#troubleshooting)
-11. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-12. [What it costs](#what-it-costs)
-13. [Where your files are](#where-your-files-are)
-14. [For developers](#for-developers)
+5. [Pro AI (for strong PCs)](#pro-ai-for-strong-pcs)
+6. [Settings explained](#settings-explained)
+7. [How a trade happens](#how-a-trade-happens)
+8. [Kill switch and live trading](#kill-switch-and-live-trading)
+9. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+10. [Updating](#updating)
+11. [Troubleshooting](#troubleshooting)
+12. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+13. [What it costs](#what-it-costs)
+14. [Where your files are](#where-your-files-are)
+15. [For developers](#for-developers)
 
 ---
 
@@ -253,6 +254,51 @@ You can backtest either engine on the Backtest tab. With the local engine, only 
 
 ---
 
+## Pro AI (for strong PCs)
+
+Pro AI is a second, bigger AI that runs **on your own graphics card** - free, and offline after a one-time download. It doesn't replace the main engine. It reads the stories the main engine finds hard:
+
+- **live TV** transcripts (people talk in half-sentences, and the main engine only reads the wording)
+- **market-wide news** that names no company ("Fed cuts rates", "new tariffs on chips"). Pro AI can answer with index, sector or country funds (SPY, QQQ, XLF, SMH, EWJ, FXI…) from a fixed list.
+- news that **isn't in English** (it reads any language)
+- stories where the local engine **only saw the wording** (no news event recognised), or **saw nothing** although a company was named
+
+**It starts as watch-only.** In *Watch only* mode (the default) Pro AI writes down what it would have done, and that's all: its calls show up in the Signals tab with a purple **Pro AI - watching** badge, and they are **never traded, never alerted and never merged** with the main engine's signals. They *are* price-checked like every other signal, so after a week or two **Performance → By AI engine** shows whether Pro AI is right more often than the main engine on your own news. Signals the main engine made also show what Pro AI thought ("Pro AI agrees" / "Pro AI: bearish").
+
+Once the scoreboard says it's good, you can switch it to **Judge hard cases**. Then, on hard stories only:
+- if Pro AI disagrees with a main-engine signal, that signal goes to **manual review** instead of being traded (the trade waits a few seconds for Pro AI's answer, at most the "skip a story after" time; if Pro AI is too slow, the main engine's call stands)
+- if Pro AI finds a stock the main engine missed, it raises a **new manual-review signal** for you to approve or dismiss
+
+In this version **Pro AI never places a trade by itself**, in either mode. Paper trading and the live-trading lock work exactly as before.
+
+**Which model for which computer?** "Auto" picks the biggest model that fits your graphics memory next to everything else (the desktop, other apps, and TV transcription, which needs about 5 GB on an NVIDIA card).
+
+| Your computer | Model Auto picks | Download | Graphics memory it needs |
+|---|---|---|---|
+| NVIDIA 8 GB (e.g. RTX 4060, 3060 Ti) with TV transcription off | Qwen3.5 4B | 2.7 GB | 4.2 GB |
+| NVIDIA 12–16 GB with TV on (e.g. **RTX 5070 Ti**, 4070 Ti Super, 4080) | **Qwen3.5 9B** | **~5.7 GB** | 7.4 GB |
+| NVIDIA 16 GB with TV transcription off | Qwen3.5 9B (higher quality) | 7.5 GB | 9.2 GB |
+| NVIDIA 24 GB (e.g. RTX 3090, 4090) | Gemma 4 26B-A4B | 14.2 GB | 16.8 GB |
+| NVIDIA 32 GB (e.g. RTX 5090), Mac with 48 GB+ | Qwen3.6 35B-A3B | 22.1 GB | 24.8 GB |
+| Mac (Apple Silicon) with 16 GB | Qwen3.5 9B | 5.7 GB | (shared memory) |
+
+With TV transcription on, an 8 GB card has no room left for Pro AI. You can also pick a model yourself (the list says whether each one fits this PC). Gemma 4 12B and Qwen3.8 27B are never picked automatically (the 27B is the most careful but about twice as slow). Qwen3.5 0.8B is only for checking that Pro AI runs - it is too small to judge news. Macs need Apple Silicon (M1 or newer); Intel Macs can't run Pro AI. Computers without an NVIDIA card can use the slower "any graphics card" (Vulkan) version or the processor, but you have to choose the model yourself.
+
+Besides the model, the app downloads the llama.cpp server that runs it: about 580–660 MB for NVIDIA cards on Windows (it includes NVIDIA's runtime), 33 MB for the "any graphics card" version, 12 MB on a Mac. For an RTX 5070 Ti that's about **6.3 GB in total**.
+
+**Set it up:** Settings → **Pro AI (for strong PCs)** → **Set up Pro AI**. It shows your graphics card, how its memory is shared out, the recommended model with its download size, and your free disk space. Click **Download and set up**. A progress bar shows the download (it continues where it stopped if the internet drops). Every file is checked against a fixed size and fingerprint (SHA-256), so a broken or tampered download is thrown away. When it's done Pro AI turns on in Watch-only mode and starts by itself, and from then on every time you open NewsTrader. A small **Pro AI** light in the top bar shows it's running (green = watching, yellow = starting, red = a problem - click it).
+
+**Test my PC** (on the same page) runs Pro AI on 20 test headlines with known answers and shows:
+- **seconds per story** - under ~3 s is fast enough for live news
+- **all on the graphics card** - "no" means part of the model runs on the processor, which is much slower; pick a smaller model
+- **right x/20** - how often it read the news the way a trader would
+
+Pro AI runs only on this computer (`127.0.0.1`, with a random password). If it crashes, it is restarted once; Logs → Run diagnostics checks its files, its server and whether the whole model is on the graphics card.
+
+**Delete it:** Settings → Pro AI → **Delete downloads** removes the server and every model (and turns Pro AI off). You can set it up again any time. The files are in the `models/llm` folder (see [Where your files are](#where-your-files-are)).
+
+---
+
 ## Settings explained
 
 All settings are saved to `config.json` and changed in the app (Settings tab). The defaults are listed here.
@@ -295,6 +341,17 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Max stocks per story | 3 | |
 | Recognise news events | on | The event rules above. Off = the v0.2 behaviour (wording score only). |
 | Country funds for world news | on | International macro news can create signals for country ETFs (always manual review). |
+
+**Pro AI (for strong PCs)** - see [Pro AI](#pro-ai-for-strong-pcs)
+| Setting | Default | Meaning |
+|---|---|---|
+| Use Pro AI | off | Turned on for you when you set it up. |
+| What Pro AI may do | Watch only | Watch only = it records its calls, never trades or alerts. Judge hard cases = it can send signals to manual review (never trades by itself). |
+| Model | Auto | The biggest model that fits your graphics card, or one you pick. |
+| Stories it reads | Only the hard ones | Or every story that names a company. |
+| Skip a story after | 20 s | When Pro AI is busy, newer stories go first and older ones are skipped. Also how long a signal waits for Pro AI in Judge mode. |
+| Keep room for TV transcription | on | Leaves graphics memory free for live-TV speech-to-text when TV sources are on. |
+| Server version | Auto | Matched to your graphics card and driver. |
 
 **Transcription**
 | Setting | Default | Meaning |
@@ -483,6 +540,7 @@ You can add more social accounts the same way (any RSS feed works as a "Social" 
 ## What it costs
 - **Alpaca paper trading, news and price history:** free.
 - **Local ML engine (default):** free. It uses your computer's CPU, and needs one ~110 MB download.
+- **Pro AI (optional):** free. It uses your graphics card, and needs a one-time download of about 3–23 GB depending on the model (about 6.3 GB for an RTX 5070 Ti).
 - **Claude (optional):** each analysed story costs roughly **$0.002–$0.02** with Sonnet 5.5 at low effort, and about half that with Haiku 4.5.
   - Most news is filtered out for free before reaching Claude.
   - A busy day with all default sources is typically **$1–$5**.
@@ -507,6 +565,7 @@ You can add more social accounts the same way (any RSS feed works as a "Social" 
 | Logs | `data/logs/` | `%LOCALAPPDATA%\NewsTrader\logs\` | `…/NewsTrader/logs/` |
 | CSV exports | `data/exports/` | `%LOCALAPPDATA%\NewsTrader\exports\` | `…/NewsTrader/exports/` |
 | Models (Whisper ~3 GB, FinBERT ~110 MB, your price model) | `data/models/` | `%LOCALAPPDATA%\NewsTrader\models\` | `…/NewsTrader/models/` |
+| Pro AI (its server and models) | `data/models/llm/` | `%LOCALAPPDATA%\NewsTrader\models\llm\` | `…/NewsTrader/models/llm/` |
 
 On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache/huggingface`).
 
@@ -522,6 +581,7 @@ On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache
 
   GitHub Actions runs them on Windows, Linux and macOS for every push. It also runs a job that downloads the real FinBERT model, checks it on known headlines, and checks that the Apple-GPU Whisper repos exist (`scripts/check_models.py`).
 - **Lint:** `ruff check .`
+- **Detection scores:** `python scripts/eval_detection.py --set set2 --compare` (local engine). For Pro AI: `--engine pro --pro-url http://127.0.0.1:8080` (a llama-server you started) or `--engine pro --pro-model model.gguf --pro-server path/to/llama-server` (starts and stops its own). The holdout set stays sealed either way.
 - **Modes:**
   - `run.bat --browser` / `./run.command --browser` opens the dashboard in your normal browser
   - `--headless` runs the server only
@@ -548,6 +608,7 @@ newstrader/
   audio/              yt-dlp resolver, ffmpeg capture, chunker, Whisper (CUDA / Apple GPU / CPU), stream manager
   ai/                 ticker table, pre-filter, de-dupe, engine choice, Claude client, prompts, validator, pipeline
   ml/                 local engine: FinBERT sentiment, text targeting, price model, training data, trainer
+  llm/                Pro AI: hardware check, pinned downloads, llama-server, engine, routing, service, Test my PC
   trading/            Alpaca broker, live-trading lock, risk checks, trader, P/L
   alerts/             desktop pop-ups (Windows / Mac), Discord, alert manager
   performance/        price checkpoints and win-rate stats

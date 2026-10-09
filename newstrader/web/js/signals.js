@@ -3,7 +3,7 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("signalsTab", () => ({
     fmt: NT.fmt,
     signals: [],
-    filters: { ticker: "", direction: "", action: "", min_confidence: 0 },
+    filters: { ticker: "", direction: "", action: "", engine: "", min_confidence: 0 },
     expanded: null,
     detail: {},
     stats: null,
@@ -22,7 +22,7 @@ document.addEventListener("alpine:init", () => {
 
     async load(quiet = false) {
       const f = this.filters;
-      const q = `limit=500&ticker=${encodeURIComponent(f.ticker)}&direction=${f.direction}&action=${f.action}&min_confidence=${f.min_confidence || 0}`;
+      const q = `limit=500&ticker=${encodeURIComponent(f.ticker)}&direction=${f.direction}&action=${f.action}&engine=${f.engine}&min_confidence=${f.min_confidence || 0}`;
       try { this.signals = (await NT.api.get("/signals?" + q)).signals; }
       catch (e) { if (!quiet) Alpine.store("nt").error(e, "Couldn't load signals"); }
     },
@@ -30,6 +30,8 @@ document.addEventListener("alpine:init", () => {
 
     upsert(s) {
       if (s.merged_into) return;
+      const f = this.filters;
+      if ((f.engine === "main" && s.action === "watch") || (f.engine === "pro" && s.engine !== "pro")) return;
       if (typeof s.sources_seen === "string") { try { s.sources_seen = JSON.parse(s.sources_seen); } catch (e) { s.sources_seen = []; } }
       const i = this.signals.findIndex((x) => x.id === s.id);
       if (i >= 0) this.signals.splice(i, 1, s); else this.signals.unshift(s);
@@ -39,7 +41,8 @@ document.addEventListener("alpine:init", () => {
     get reviewQueue() { return this.signals.filter((s) => s.action === "review" && (!s.review_status || s.review_status === "pending")); },
     get today() {
       const d = new Date().toDateString();
-      const t = this.signals.filter((s) => new Date(s.created_at).toDateString() === d);
+      // Pro AI's watch-only calls aren't counted (they are never traded)
+      const t = this.signals.filter((s) => new Date(s.created_at).toDateString() === d && s.action !== "watch");
       return { count: t.length, traded: t.filter((s) => s.traded).length,
         avg: t.length ? Math.round(t.reduce((a, s) => a + s.confidence, 0) / t.length) : null };
     },
@@ -88,13 +91,16 @@ document.addEventListener("alpine:init", () => {
     },
 
     actionClass(a) {
-      return { bought: "good", sold: "good", shorted: "good", review: "warn", blocked: "", ignored: "", error: "bad", merged: "" }[a] || "";
+      return { bought: "good", sold: "good", shorted: "good", review: "warn", blocked: "", ignored: "", error: "bad", merged: "",
+               watch: "pro" }[a] || "";
     },
     actionLabel(s) {
       if (s.traded) return { bought: "BOUGHT", sold: "SOLD", shorted: "SHORTED" }[s.action] || "TRADED";
       if (s.action === "review") return s.review_status === "dismissed" ? "dismissed" : "review";
+      if (s.action === "watch") return "Pro AI - watching";
       return s.action;
     },
+    engineName(e) { return { local: "", claude: "Claude ", pro: "Pro AI " }[e] ?? ""; },
     // short labels for the reading flags the local engine attaches to a signal
     flagList(s) {
       let flags = s.flags || [];

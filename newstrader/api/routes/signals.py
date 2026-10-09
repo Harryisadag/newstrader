@@ -31,6 +31,7 @@ async def list_signals(
     min_confidence: int = Query(0, ge=0, le=100),
     include_merged: bool = Query(False),
     review_only: bool = Query(False),
+    engine: str = Query("", description="'main' = leave out Pro AI's watch-only signals, 'pro' = only Pro AI's"),
     ctx: AppContext = Depends(get_ctx),
 ):
     sql = ("SELECT s.*, o.submitted_at AS order_submitted_at FROM signals s LEFT JOIN orders o ON o.id = s.order_id "
@@ -51,6 +52,10 @@ async def list_signals(
         params.append(action)
     if review_only:
         sql += " AND s.action = 'review' AND (s.review_status IS NULL OR s.review_status = 'pending')"
+    if engine == "main":
+        sql += " AND COALESCE(s.action, '') != 'watch'"
+    elif engine == "pro":
+        sql += " AND s.engine = 'pro'"
     sql += " ORDER BY s.id DESC LIMIT ?"
     params.append(limit)
     rows = ctx.db.query(sql, params)
@@ -79,7 +84,17 @@ async def signal_detail(signal_id: int, ctx: AppContext = Depends(get_ctx)):
         if order:
             order.pop("raw", None)
     sig["speed"] = signal_speed(sig, order["submitted_at"] if order else None)
-    return {"signal": sig, "analysis": analysis, "item": item, "merged": merged, "order": order}
+    # the other engine's reading of the same story: Pro AI's for a main-engine signal, the main engine's for Pro AI's
+    other = None
+    if analysis and analysis.get("engine") == "pro" and analysis.get("main_analysis_id"):
+        other = ctx.db.query_one("SELECT id, engine, model, status, latency_ms FROM analyses WHERE id = ?",
+                                 (analysis["main_analysis_id"],))
+    elif analysis:
+        other = ctx.db.query_one("SELECT id, engine, model, status, latency_ms, agreement, pro_reason FROM analyses "
+                                 "WHERE main_analysis_id = ? AND engine = 'pro' ORDER BY id DESC LIMIT 1",
+                                 (analysis["id"],))
+    return {"signal": sig, "analysis": analysis, "item": item, "merged": merged, "order": order,
+            "other_analysis": other}
 
 
 @router.post("/signals/{signal_id}/approve")
@@ -88,6 +103,8 @@ async def approve(signal_id: int, ctx: AppContext = Depends(get_ctx)):
         return await _pipeline(ctx).approve(signal_id)
     except KeyError as exc:
         raise bad_request("Unknown signal", 404) from exc
+    except PermissionError as exc:
+        raise bad_request(str(exc), 409) from exc
     except RuntimeError as exc:
         raise bad_request(str(exc), 503) from exc
 

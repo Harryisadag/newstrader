@@ -10,6 +10,7 @@
   <script src="/static/js/api.js"></script>
   <script src="/static/js/app.js"></script>
   <script src="/static/js/settings.js"></script>
+  <script src="/static/js/proai.js"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/portfolio.js"></script>
   <script src="/static/js/live.js"></script>
@@ -60,6 +61,12 @@
   <div class="stat" x-show="s.ai_engine !== 'claude'" title="The free local machine-learning engine is analysing the news (Settings -> AI engine)">
     <div class="stat-label">AI engine</div>
     <div class="stat-value">Local ML <span class="muted small">free</span></div>
+  </div>
+
+  <div class="stat clickable" x-show="s.pro_ai && (s.pro_ai.enabled || s.pro_ai.state === 'downloading')" @click="goto('settings', 'pro_ai')"
+       :title="'Pro AI: ' + ((s.pro_ai && s.pro_ai.message) || '') + ' (click for Settings)'">
+    <div class="stat-label">Pro AI</div>
+    <div class="stat-value"><span class="dot" :class="proLight.dot"></span> <span class="small" x-text="proLight.label"></span></div>
   </div>
 
   <div class="stat" :title="tradingState.tip">
@@ -260,7 +267,8 @@
           <b class="ticker" x-text="s.ticker"></b>
           <span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span>
           <span class="conf" :class="confClass(s.confidence)" x-text="s.confidence"></span>
-          <span class="reason"><span class="pill small info" x-show="s.event" x-text="s.event"></span>
+          <span class="reason"><span class="pill small pro" x-show="s.engine === 'pro'" title="Raised by Pro AI - it never trades by itself">Pro AI</span>
+            <span class="pill small info" x-show="s.event" x-text="s.event"></span>
             <template x-for="f in flagList(s)"><span class="pill small warn" x-text="f"></span></template>
             <span x-text="s.reasoning"></span></span>
           <span class="small muted" x-text="s.source_name + ' · ' + fmt.ago(s.created_at)"></span>
@@ -281,6 +289,10 @@
           <select class="small" x-model="filters.action" @change="load()">
             <option value="">Any outcome</option><option value="traded">Traded</option><option value="review">Review</option>
             <option value="blocked">Blocked by risk</option><option value="ignored">Ignored</option><option value="error">Error</option>
+            <option value="watch">Pro AI - watching</option>
+          </select>
+          <select class="small" x-model="filters.engine" @change="load()" title="Pro AI's watch-only calls are never traded">
+            <option value="">All engines</option><option value="main">Hide Pro AI watching</option><option value="pro">Only Pro AI</option>
           </select>
           <label class="row small">Min conf. <input type="number" class="small" min="0" max="100" x-model.number="filters.min_confidence" @change="load()" style="width:64px"></label>
         </div>
@@ -294,7 +306,10 @@
               <td><b x-text="s.ticker"></b></td>
               <td><span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span></td>
               <td><div class="confbar" :class="confClass(s.confidence)"><div :style="'width:' + s.confidence + '%'"></div><span x-text="s.confidence"></span></div></td>
-              <td><span class="pill small" :class="actionClass(s.action)" x-text="actionLabel(s)" :title="s.action_reason"></span></td>
+              <td><span class="pill small" :class="actionClass(s.action)" x-text="actionLabel(s)" :title="s.action_reason"></span>
+                <span class="pill small pro" x-show="s.engine === 'pro' && s.action !== 'watch'" title="Raised by Pro AI - it never trades by itself">Pro AI</span>
+                <span class="pill small pro" x-show="s.pro_direction" :title="'Pro AI read the same story as ' + s.pro_direction"
+                      x-text="s.pro_direction === s.direction ? 'Pro AI agrees' : 'Pro AI: ' + s.pro_direction"></span></td>
               <td class="small"><span x-text="s.source_name"></span>
                 <span class="pill small info" x-show="s.corroborations > 1" x-text="'+' + (s.corroborations - 1)" :title="(s.sources_seen || []).join(', ')"></span></td>
               <td class="reason-cell">
@@ -312,9 +327,12 @@
                   <div class="small"><b>Headline:</b> <a :href="fmt.url(s.url)" target="_blank" rel="noopener" x-text="s.headline"></a></div>
                   <div class="small" x-show="(s.sources_seen || []).length > 1"><b>Also reported by:</b> <span x-text="(s.sources_seen || []).join(', ')"></span></div>
                   <template x-if="detail[s.id] && detail[s.id].analysis">
-                    <div class="small muted" x-text="`${detail[s.id].analysis.engine === 'local' ? '' : 'Claude '}${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
+                    <div class="small muted" x-text="`${engineName(detail[s.id].analysis.engine)}${detail[s.id].analysis.model} · ${detail[s.id].analysis.latency_ms} ms · ${fmt.money(detail[s.id].analysis.cost_usd, 4)}`"></div>
                   </template>
-                  <div class="row gap" x-show="!s.traded && s.direction !== 'neutral'">
+                  <template x-if="detail[s.id] && detail[s.id].analysis && detail[s.id].analysis.pro_reason">
+                    <div class="small muted" x-text="`Sent to Pro AI because: ${detail[s.id].analysis.pro_reason}`"></div>
+                  </template>
+                  <div class="row gap" x-show="!s.traded && s.direction !== 'neutral' && s.action !== 'watch'">
                     <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)">Trade this signal now</button>
                   </div>
                 </div>
@@ -693,7 +711,8 @@
           </tbody>
         </table>
         <div class="muted pad" x-show="!(data?.by_engine || []).length">No measured signals yet.</div>
-        <p class="note">If you switched engines, this shows which one has been right more often on your own signals.</p>
+        <p class="note">If you switched engines, or Pro AI is watching, this shows which one has been right more often on
+          your own signals. Pro AI's watch-only calls are only counted here.</p>
       </div>
       <div class="card">
         <div class="card-head"><h2>By news type</h2></div>
@@ -768,7 +787,7 @@
               <td class="num" :class="retClass(r.ret_5m)" x-text="ret(r.ret_5m)"></td>
               <td class="num" :class="retClass(r.ret_1h)" x-text="ret(r.ret_1h)"></td>
               <td class="num" :class="retClass(r.ret_1d)" x-text="ret(r.ret_1d)"></td>
-              <td x-text="r.traded ? 'yes' : ''"></td>
+              <td x-text="r.traded ? 'yes' : (r.action === 'watch' ? 'Pro AI - watching' : '')"></td>
             </tr>
           </template>
         </tbody>
@@ -969,6 +988,85 @@
             <h2 x-text="currentSection.label"></h2>
             <button class="btn ghost small" @click="resetDefaults()">Reset all to defaults</button>
           </div>
+          <template x-if="section === 'pro_ai'">
+            <div x-data="proAI" class="pro-ai">
+              <p class="muted small">Pro AI is a bigger AI that runs on your own graphics card - free and offline after a
+                one-time download. It reads the stories the main engine finds hard: live TV, market-wide news, news that
+                isn't in English, and stories where the main engine only saw the wording or saw nothing. It starts in
+                <b>Watch only</b> mode: it records what it would have done so you can compare it with the main engine
+                (Performance → By AI engine). <b>It never places a trade by itself.</b> Best with an NVIDIA card with
+                12 GB or more (e.g. RTX 5070 Ti) or an Apple Silicon Mac with 16 GB or more.</p>
+              <div class="pro-status" x-show="st">
+                <span class="dot" :class="level"></span>
+                <b x-text="stateLabel"></b>
+                <span class="small" x-text="st && st.message"></span>
+              </div>
+              <div class="progress" x-show="downloading"><div class="bar" :style="`width:${progressPct}%`"></div></div>
+              <div class="small muted" x-show="st && st.state === 'ready'"
+                   x-text="st ? `Read ${st.queue.read} stories · skipped ${st.queue.too_old + st.queue.queue_full} (waited too long) · ${st.queue.waiting} waiting` : ''"></div>
+              <div class="small muted" x-show="agreement" x-text="agreement"></div>
+              <div class="row gap wrap pro-actions">
+                <button class="btn primary" x-show="st && !downloaded && !downloading" :disabled="planLoading" @click="openSetup()">Set up Pro AI</button>
+                <button class="btn ghost" x-show="downloading" @click="cancelSetup()">Cancel download</button>
+                <button class="btn primary" x-show="downloaded && st.enabled && ['off', 'error', 'not_set_up'].includes(st.state)" @click="start()">Start</button>
+                <button class="btn ghost" x-show="st && ['ready', 'starting'].includes(st.state)" @click="stop()">Stop</button>
+                <button class="btn ghost" x-show="downloaded" :disabled="!st || st.state !== 'ready' || st.selftest_running" @click="runTest()"
+                        x-text="st && st.selftest_progress ? `Testing... ${st.selftest_progress.done} of ${st.selftest_progress.total}` : 'Test my PC'"></button>
+                <button class="btn ghost" x-show="downloaded && !showSetup" :disabled="planLoading" @click="openSetup()">Check this PC</button>
+                <button class="btn ghost danger" x-show="st && st.disk_bytes > 0 && !downloading" :disabled="busy" @click="removeDownloads()"
+                        x-text="st ? `Delete downloads (${gb(st.disk_bytes)})` : ''"></button>
+              </div>
+
+              <div class="pro-setup" x-show="showSetup">
+                <div x-show="planLoading" class="muted small">Looking at this PC...</div>
+                <template x-if="plan && !planLoading">
+                  <div>
+                    <div><b>Your graphics:</b> <span x-text="plan.card"></span></div>
+                    <ul class="small muted"><template x-for="l in (plan.budget.lines || [])"><li x-text="l"></li></template></ul>
+                    <p class="warn-text" x-show="!plan.can_run" x-text="plan.build_why"></p>
+                    <template x-if="plan.can_run && setupModel">
+                      <div>
+                        <div><b>Model:</b> <span x-text="setupModel.label"></span> - <span x-text="setupModel.size_gb"></span> GB download,
+                          needs <span x-text="setupModel.vram_gb"></span> GB graphics memory
+                          <span class="pill small" :class="setupModel.fits ? 'good' : (setupModel.fits === false ? 'warn' : '')"
+                                x-text="setupModel.fits ? 'fits this PC' : (setupModel.fits === false ? 'too big - it would be slow' : 'fit unknown')"></span></div>
+                        <div class="small muted" x-text="setupModel.note"></div>
+                        <div class="small muted" x-show="setupModel.recommended" x-text="'Why: ' + plan.model_why"></div>
+                        <div><b>Server:</b> <span x-text="setupBuild ? setupBuild.label : ''"></span> <span class="small muted" x-text="plan.build_why"></span></div>
+                        <div><b>Download:</b> <span x-text="gb(plan.download_bytes)"></span> (about <span x-text="gb(plan.need_bytes)"></span> of disk space)
+                          · <span x-text="gb(plan.disk_free_bytes)"></span> free</div>
+                        <p class="warn-text" x-show="plan.enough_disk === false">Not enough free disk space - free some up, or pick a smaller model below.</p>
+                        <p class="small muted">Downloads come from GitHub (llama.cpp) and Hugging Face, are checked against a fixed
+                          size and fingerprint (SHA-256), and continue where they stopped if the internet drops.</p>
+                      </div>
+                    </template>
+                    <p class="warn-text" x-show="plan.can_run && !setupModel" x-text="plan.model_why + ' Pick one in the Model list below.'"></p>
+                    <div class="row gap">
+                      <button class="btn primary" :disabled="busy || !plan.can_run || !setupModel || plan.enough_disk === false || downloading"
+                              @click="confirmSetup()" x-text="plan.download_bytes ? 'Download and set up' : 'Set up (already downloaded)'"></button>
+                      <button class="btn ghost" @click="showSetup = false">Close</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <template x-if="test">
+                <div class="pro-test">
+                  <h3>Test my PC <span class="small muted" x-text="fmt.dateTime(test.at)"></span></h3>
+                  <div class="err" x-show="test.error" x-text="test.error"></div>
+                  <div class="kpis" x-show="!test.error">
+                    <div class="kpi"><div class="kpi-label">Seconds per story</div><div class="kpi-value" x-text="test.avg_seconds"></div></div>
+                    <div class="kpi"><div class="kpi-label">All on the graphics card</div><div class="kpi-value" x-text="yesNo(test.fully_on_gpu)"></div></div>
+                    <div class="kpi"><div class="kpi-label">Right</div><div class="kpi-value" x-text="`${test.right}/${test.total}`"></div></div>
+                    <div class="kpi"><div class="kpi-label">Valid answers</div><div class="kpi-value" x-text="`${test.json_ok}/${test.total}`"></div></div>
+                  </div>
+                  <p class="small" x-show="testVerdict" x-text="testVerdict"></p>
+                  <p class="small muted">20 test headlines with known answers. A tiny model can be fast but wrong - "Right" shows
+                    how often it read the news the way a trader would.</p>
+                </div>
+              </template>
+            </div>
+          </template>
           <div class="form-grid">
             <template x-for="f in currentSection.fields" :key="f.key">
               <div class="field" :class="f.type" x-show="visible(f)">

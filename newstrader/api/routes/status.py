@@ -49,6 +49,9 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     updates = ctx.service("updates")
     if updates is not None:
         out["update"] = updates.summary()
+    pro = ctx.service("pro_ai")
+    if pro is not None:
+        out["pro_ai"] = pro.summary()
     if not light:
         out["data_dir"] = str(paths.data_dir())
         out["env_file"] = str(paths.env_file())

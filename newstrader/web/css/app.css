@@ -397,3 +397,13 @@ td.reasons .tag { margin: 0 4px 2px 0; }
 .tag.t-live { color: var(--accent); }
 .events-waiting { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
 .events-waiting .chip { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Pro AI */
+.pill.pro { background: rgba(168,85,247,.16); color: #c99bff; }
+.pro-ai { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border-2); }
+.pro-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+.pro-actions { margin-top: 10px; }
+.pro-setup { margin-top: 12px; padding: 12px; border: 1px solid var(--border-2); border-radius: 8px; }
+.pro-setup > div > div { margin: 4px 0; }
+.pro-test { margin-top: 14px; }
+.pro-test h3 { margin: 0 0 8px; font-size: 14px; }

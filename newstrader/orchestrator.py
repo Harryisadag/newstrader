@@ -72,6 +72,7 @@ class Orchestrator:
         from .alerts.manager import AlertManager
         from .audio.stream_manager import StreamManager
         from .backtest.runner import BacktestRunner
+        from .llm.service import ProAIService
         from .market.monitor import MarketMonitor
         from .ml.trainer import ModelTrainer
         from .performance.tracker import PerformanceTracker
@@ -83,6 +84,7 @@ class Orchestrator:
         self.add(SystemMonitor(self.ctx))
         self.add(AlertManager(self.ctx))
         self.add(Trader(self.ctx))
+        self.add(ProAIService(self.ctx))  # before the pipeline, so it stops after it
         self.add(Pipeline(self.ctx))
         self.add(SourceManager(self.ctx))
         self.add(StreamManager(self.ctx))

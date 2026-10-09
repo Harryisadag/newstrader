@@ -460,7 +460,8 @@ class MarketMonitor:
             rows = await asyncio.to_thread(
                 self.ctx.db.query,
                 "SELECT ticker, MAX(created_at) AS last FROM signals WHERE created_at >= ? AND merged_into IS NULL "
-                "AND direction IN ('bullish', 'bearish') GROUP BY ticker ORDER BY last DESC", (since,))
+                "AND direction IN ('bullish', 'bearish') AND COALESCE(action, '') != 'watch' GROUP BY ticker "
+                "ORDER BY last DESC", (since,))
             groups.append(("signal", [r["ticker"] for r in rows]))
         if s.watch_movers:
             groups.append(("mover", [m["symbol"] for m in self.movers["gainers"] + self.movers["losers"]]))
@@ -625,7 +626,8 @@ class MarketMonitor:
         db = self.ctx.db
         since = iso(now - NEWS_WINDOW)
         sig = db.query_one("SELECT id, headline, url FROM signals WHERE ticker = ? AND created_at >= ? "
-                           "AND merged_into IS NULL ORDER BY created_at DESC, id DESC LIMIT 1", (sym, since))
+                           "AND merged_into IS NULL AND COALESCE(action, '') != 'watch' "
+                           "ORDER BY created_at DESC, id DESC LIMIT 1", (sym, since))
         if sig is not None:
             return {"signal_id": sig["id"], "headline": sig["headline"], "url": sig["url"], "source": "signal"}
         rows = db.query("SELECT id, title, url, symbols FROM news_items WHERE received_at >= ? AND symbols LIKE ? "

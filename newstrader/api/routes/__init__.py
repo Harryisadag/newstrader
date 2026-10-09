@@ -8,6 +8,7 @@ from . import (
     market,
     ml,
     performance,
+    pro_ai,
     settings,
     signals,
     sources,
@@ -33,5 +34,6 @@ ALL_ROUTERS = [
     performance.router,
     backtest.router,
     ml.router,
+    pro_ai.router,
     updates.router,
 ]

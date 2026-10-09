@@ -55,6 +55,17 @@ document.addEventListener("alpine:init", () => {
       ],
     },
     {
+      id: "pro_ai", label: "Pro AI (for strong PCs)", fields: [
+        F("ai.pro_ai.enabled", "Use Pro AI", "toggle", { help: "A bigger AI that runs on your graphics card for free and reads the stories the main engine finds hard. Set it up above first (one-time download)." }),
+        F("ai.pro_ai.mode", "What Pro AI may do", "select", { options: { watch: "Watch only (recommended) - it records its calls, never trades or alerts", judge: "Judge hard cases - it can send signals to manual review" }, help: "Start with Watch only and compare it with the main engine in Performance -> By AI engine. Judge: when Pro AI disagrees with a signal on a hard story, the signal waits for you instead of being traded, and Pro AI can suggest a signal the main engine missed (also for you to approve). Pro AI never places a trade by itself." }),
+        F("ai.pro_ai.model", "Model", "select", { optionsFrom: "pro_ai_models", help: "Auto picks the biggest model that fits your graphics card next to TV transcription. A model that doesn't fit spills onto the processor and gets much slower." }),
+        F("ai.pro_ai.scope", "Stories it reads", "select", { options: { hard: "Only the hard ones (recommended)", all: "Every story that names a company" }, help: "Hard ones: live TV, market-wide news (rates, inflation, tariffs), news that isn't in English, and stories where the main engine only saw the wording or saw nothing." }),
+        F("ai.pro_ai.max_wait_seconds", "Skip a story after", "number", { min: 5, max: 120, suffix: "seconds", help: "When Pro AI is busy, newer stories go first and a story that waited this long is skipped. In Judge mode a signal waits at most this long for Pro AI before the main engine's call stands." }),
+        F("ai.pro_ai.keep_tv_memory_free", "Keep room for TV transcription", "toggle", { help: "Leaves enough graphics memory free for live-TV speech-to-text when TV sources are on." }),
+        F("ai.pro_ai.build", "Server version", "select", { optionsFrom: "pro_ai_builds", help: "Leave on Auto. It is matched to your graphics card and driver." }),
+      ],
+    },
+    {
       id: "transcription", label: "Transcription", fields: [
         F("transcription.enabled", "Transcribe live streams", "toggle"),
         F("transcription.max_concurrent_streams", "Max streams at once", "number", { min: 1, max: 12 }),
@@ -135,6 +146,7 @@ document.addEventListener("alpine:init", () => {
     saving: false,
     alertTesting: false,
     alertResult: "",
+    proFits: {},  // Pro AI model -> fits this PC's graphics memory (filled in by the Pro AI card)
 
     async testAlert() {
       this.alertTesting = true; this.alertResult = "";
@@ -178,6 +190,11 @@ document.addEventListener("alpine:init", () => {
       const opts = { ...(src || {}) };
       const cur = this.get(f.key);
       if (cur !== undefined && cur !== null && !(cur in opts)) opts[cur] = cur + " (custom)";
+      if (f.optionsFrom === "pro_ai_models") {
+        for (const [k, fits] of Object.entries(this.proFits || {})) {
+          if (opts[k] && fits !== null) opts[k] += fits ? " - fits this PC" : " - too big for this PC";
+        }
+      }
       return opts;
     },
     get currentSection() { return SECTIONS.find((s) => s.id === this.section); },

@@ -62,6 +62,7 @@ document.addEventListener("alpine:init", () => {
         this.store.status.components = this.store.status.components.filter((c) => c.component !== e.detail.component);
       });
       window.addEventListener("nt:mode", (e) => { this.store.status.mode = e.detail.mode; });
+      window.addEventListener("nt:pro_ai", (e) => { this.store.status = { ...this.store.status, pro_ai: e.detail }; });
       window.addEventListener("nt:kill_switch", (e) => { this.store.status.kill_switch = e.detail; });
       window.addEventListener("nt:toast", (e) => this.store.toast(e.detail.kind || "info", e.detail.title, e.detail.message || ""));
       NT.connect();
@@ -93,6 +94,18 @@ document.addEventListener("alpine:init", () => {
       }
       if (!s.auto_trade) return { label: "MONITOR ONLY", cls: "warn", tip: "Auto-trade is off (Settings -> Trading)." };
       return { label: "ACTIVE", cls: "good", tip: "Auto-trading is on." };
+    },
+
+    // the small Pro AI light in the header (shown while Pro AI is turned on)
+    get proLight() {
+      const p = this.s.pro_ai || {};
+      const dot = { ready: "ok", starting: "starting", downloading: "starting", error: "error", not_set_up: "warn" }[p.state] || "off";
+      let label = { starting: "starting", error: "problem", not_set_up: "not set up", off: "stopped" }[p.state] || p.state || "";
+      if (p.state === "ready") label = p.mode === "judge" ? "judging" : "watching";
+      if (p.state === "downloading" && p.progress && p.progress.total) {
+        label = `downloading ${Math.round((100 * p.progress.done) / p.progress.total)}%`;
+      }
+      return { dot, label };
     },
 
     get spendPct() {

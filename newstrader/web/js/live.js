@@ -23,6 +23,7 @@ document.addEventListener("alpine:init", () => {
       });
       window.addEventListener("nt:signal", (e) => {
         const s = e.detail;
+        if (s.action === "watch") return;  // Pro AI only watching: not a signal for this story
         const n = this.news.find((x) => x.title && s.headline && x.title.startsWith(s.headline.slice(0, 60)));
         if (n) { n.signals = [...(n.signals || []), s]; n.status = "signal"; }
       });
