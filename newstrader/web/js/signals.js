@@ -1,4 +1,4 @@
-// Signals tab: every AI signal, the manual-review queue, and a "test the AI" box.
+// Signals tab: every AI signal (and every chart signal), the manual-review queue, and a "test the AI" box.
 document.addEventListener("alpine:init", () => {
   Alpine.data("signalsTab", () => ({
     fmt: NT.fmt,
@@ -31,7 +31,8 @@ document.addEventListener("alpine:init", () => {
     upsert(s) {
       if (s.merged_into) return;
       const f = this.filters;
-      if ((f.engine === "main" && s.action === "watch") || (f.engine === "pro" && s.engine !== "pro")) return;
+      if ((f.engine === "main" && s.action === "watch") || (f.engine === "pro" && s.engine !== "pro") ||
+          (f.engine === "chart" && s.engine !== "chart") || (f.engine === "news" && s.engine === "chart")) return;
       if (typeof s.sources_seen === "string") { try { s.sources_seen = JSON.parse(s.sources_seen); } catch (e) { s.sources_seen = []; } }
       const i = this.signals.findIndex((x) => x.id === s.id);
       if (i >= 0) this.signals.splice(i, 1, s); else this.signals.unshift(s);
@@ -41,7 +42,7 @@ document.addEventListener("alpine:init", () => {
     get reviewQueue() { return this.signals.filter((s) => s.action === "review" && (!s.review_status || s.review_status === "pending")); },
     get today() {
       const d = new Date().toDateString();
-      // Pro AI's watch-only calls aren't counted (they are never traded)
+      // watch-only calls (Pro AI's and the chart's) aren't counted - they are never traded
       const t = this.signals.filter((s) => new Date(s.created_at).toDateString() === d && s.action !== "watch");
       return { count: t.length, traded: t.filter((s) => s.traded).length,
         avg: t.length ? Math.round(t.reduce((a, s) => a + s.confidence, 0) / t.length) : null };
@@ -90,15 +91,33 @@ document.addEventListener("alpine:init", () => {
       finally { this.testing = false; }
     },
 
-    actionClass(a) {
-      return { bought: "good", sold: "good", shorted: "good", review: "warn", blocked: "", ignored: "", error: "bad", merged: "",
-               watch: "pro" }[a] || "";
+    actionClass(s) {
+      if (s.action === "watch") return s.engine === "chart" ? "chart" : "pro";
+      return { bought: "good", sold: "good", shorted: "good", review: "warn", blocked: "", ignored: "", error: "bad", merged: "" }[s.action] || "";
     },
     actionLabel(s) {
       if (s.traded) return { bought: "BOUGHT", sold: "SOLD", shorted: "SHORTED" }[s.action] || "TRADED";
       if (s.action === "review") return s.review_status === "dismissed" ? "dismissed" : "review";
-      if (s.action === "watch") return "Pro AI - watching";
+      if (s.action === "watch") return s.engine === "chart" ? "Chart - watching" : "Pro AI - watching";
       return s.action;
+    },
+    // what the chart said about a news signal before it was traded (see newstrader/chart/service.py)
+    chartChip(s) {
+      if (!s || !s.chart_verdict) return null;
+      const adj = s.chart_adjust ? ` ${s.chart_adjust > 0 ? "+" : ""}${s.chart_adjust}` : "";
+      if (s.chart_verdict === "agrees") return { label: "Chart agrees" + adj, cls: "good" };
+      if (s.chart_verdict === "against") return { label: "Chart disagrees" + adj, cls: "bad" };
+      if (s.chart_verdict === "neutral") return { label: "Chart mixed", cls: "" };
+      if (s.chart_verdict === "stretched") {
+        // "Chart says the move may already be done: RSI 84 and 2.3 ATR above VWAP. Buying now would be chasing it."
+        const m = /already be done: (.+?)\. (Buying|Selling) now/.exec(s.chart_reason || "");
+        return { label: "Stretched" + (m ? ": " + m[1].split(" and ")[0] : ""), cls: "warn" };
+      }
+      return { label: "No chart", cls: "" };
+    },
+    showChart(s) {
+      Alpine.store("nt").setTab("market");
+      window.dispatchEvent(new CustomEvent("nt:open-chart", { detail: s.ticker }));
     },
     engineName(e) { return { local: "", claude: "Claude ", pro: "Pro AI " }[e] ?? ""; },
     // short labels for the reading flags the local engine attaches to a signal

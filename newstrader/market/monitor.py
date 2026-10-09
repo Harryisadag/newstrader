@@ -168,6 +168,8 @@ class MarketMonitor:
         self.truncated = 0
         self.recent_bars: dict[str, list[dict]] = {}
         self._bars_at: datetime | None = None
+        self._bars_from: datetime | None = None   # the last check asked for bars from here to _bars_at...
+        self._bars_symbols: frozenset[str] = frozenset()  # ...for these symbols
         self.stats: dict[str, WindowStats] = {}
         self.index_moves: dict[str, float | None] = {}
         self.snapshots: dict[str, dict] = {}
@@ -341,6 +343,23 @@ class MarketMonitor:
                         "stale": st.stale if st else None, "bars": st.bars if st else 0})
         return out
 
+    def watched_stocks(self) -> list[str]:
+        """The stocks being watched (no market gauges or world-market funds)."""
+        return self._stock_symbols()
+
+    def fresh_bars(self, symbol: str, now: datetime | None = None,
+                   max_age: timedelta = timedelta(minutes=2)) -> tuple[list[dict], datetime, datetime] | None:
+        """(1-minute bars, from, to) the last check fetched for `symbol` - every bar between `from` and `to` (none at
+        all for a minute without trades) - when that check is at most `max_age` old and covered the symbol. The chart
+        service keeps its longer history up to date from these, so watched stocks cost no extra requests."""
+        sym = symbol.upper()
+        now = now or utcnow()
+        if self._bars_at is None or self._bars_from is None or sym not in self._bars_symbols:
+            return None
+        if now - self._bars_at > max_age or now < self._bars_at:
+            return None
+        return list(self.recent_bars.get(sym, [])), self._bars_from, self._bars_at
+
     def price_near(self, symbol: str, when: datetime, now: datetime | None = None) -> float | None:
         """The price at `when` from the bars the last check fetched (no API call). None when that check is more
         than a few minutes old or its bars don't reach back that far."""
@@ -417,7 +436,8 @@ class MarketMonitor:
             log.info("Market monitor: watching the first %d stocks; %d more were left out (Settings -> Market "
                      "monitor -> Max stocks watched)", s.max_symbols, self.truncated)
         try:
-            bars = await self._fetch_bars(broker, list(self.universe), now, s)
+            symbols = list(self.universe)
+            bars = await self._fetch_bars(broker, symbols, now, s)
             self._warned.discard("bars")
         except Exception as exc:
             self.last_error = f"Couldn't get prices: {exc}"
@@ -426,6 +446,7 @@ class MarketMonitor:
             return {"status": "error", "error": str(exc)}
         await self._fetch_snapshots(broker)
         self.recent_bars, self._bars_at = bars, now
+        self._bars_from, self._bars_symbols = now - self._lookback(s), frozenset(symbols)
         events = self._detect(bars, s, now)
         await self._attach_news(broker, events, s, now)
         for ev in events:
@@ -443,6 +464,9 @@ class MarketMonitor:
         extra = " (outside regular market hours)" if self.phase == "extended" else ""
         self._set_status("ok", f"Watching {n} stock{'' if n == 1 else 's'}{extra} · {self._feed()} · "
                                f"last check {self._clock_text(now)}")
+        charts = self.ctx.service("chart")
+        if charts is not None and hasattr(charts, "market_checked"):
+            charts.market_checked(now)  # chart signals use these fresh bars (it runs on its own, never waits here)
         return {"status": "ok", "phase": self.phase, "watching": len(self._stock_symbols()),
                 "events": len(stored), "alerts": len(to_alert)}
 
@@ -460,8 +484,8 @@ class MarketMonitor:
             rows = await asyncio.to_thread(
                 self.ctx.db.query,
                 "SELECT ticker, MAX(created_at) AS last FROM signals WHERE created_at >= ? AND merged_into IS NULL "
-                "AND direction IN ('bullish', 'bearish') AND COALESCE(action, '') != 'watch' GROUP BY ticker "
-                "ORDER BY last DESC", (since,))
+                "AND direction IN ('bullish', 'bearish') AND COALESCE(action, '') != 'watch' "
+                "AND COALESCE(engine, '') != 'chart' GROUP BY ticker ORDER BY last DESC", (since,))
             groups.append(("signal", [r["ticker"] for r in rows]))
         if s.watch_movers:
             groups.append(("mover", [m["symbol"] for m in self.movers["gainers"] + self.movers["losers"]]))
@@ -511,10 +535,13 @@ class MarketMonitor:
             out.append({**r, "symbol": sym, "name": "" if name == sym else name, "price": price})
         return out
 
+    @staticmethod
+    def _lookback(s) -> timedelta:
+        return timedelta(minutes=max(35, s.spike_window_minutes + BASELINE_MINUTES + 5, MARKET_WINDOW_MINUTES + 10))
+
     async def _fetch_bars(self, broker, symbols: list[str], now: datetime, s) -> dict[str, list[dict]]:
         """The last ~35 minutes of 1-minute bars for every watched symbol (one request per 50 symbols)."""
-        lookback = timedelta(minutes=max(35, s.spike_window_minutes + BASELINE_MINUTES + 5,
-                                         MARKET_WINDOW_MINUTES + 10))
+        lookback = self._lookback(s)
         out: dict[str, list[dict]] = {}
         for i in range(0, len(symbols), BARS_CHUNK):
             out.update(await asyncio.to_thread(broker.bars_multi, symbols[i:i + BARS_CHUNK], now - lookback, now,
@@ -627,7 +654,7 @@ class MarketMonitor:
         since = iso(now - NEWS_WINDOW)
         sig = db.query_one("SELECT id, headline, url FROM signals WHERE ticker = ? AND created_at >= ? "
                            "AND merged_into IS NULL AND COALESCE(action, '') != 'watch' "
-                           "ORDER BY created_at DESC, id DESC LIMIT 1", (sym, since))
+                           "AND COALESCE(engine, '') != 'chart' ORDER BY created_at DESC, id DESC LIMIT 1", (sym, since))
         if sig is not None:
             return {"signal_id": sig["id"], "headline": sig["headline"], "url": sig["url"], "source": "signal"}
         rows = db.query("SELECT id, title, url, symbols FROM news_items WHERE received_at >= ? AND symbols LIKE ? "

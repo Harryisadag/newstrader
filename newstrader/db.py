@@ -349,6 +349,14 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_signals_analysis ON signals(analysis_id);
     CREATE INDEX idx_analyses_engine ON analyses(engine, created_at);
     """,
+    # 12 - charts: what the chart said about a news signal before it was traded (agrees / neutral / against /
+    # stretched / unavailable, why, the chart's score -1..+1 and the confidence points it added or took away)
+    """
+    ALTER TABLE signals ADD COLUMN chart_verdict TEXT;
+    ALTER TABLE signals ADD COLUMN chart_reason TEXT;
+    ALTER TABLE signals ADD COLUMN chart_score REAL;
+    ALTER TABLE signals ADD COLUMN chart_adjust INTEGER;
+    """,
 ]
 
 

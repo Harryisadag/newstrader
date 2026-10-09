@@ -396,6 +396,20 @@ class MarketSettings(_Model):
         return int(v) if isinstance(v, str) and v.strip().isdigit() else v
 
 
+class ChartSettings(_Model):
+    """Charts: indicators and patterns (newstrader/chart). They never place a trade by themselves."""
+
+    # Check each news signal against its chart before it is traded. "soft" = a chart that agrees nudges the
+    # confidence up a little (never from manual review into an auto-trade), one that disagrees lowers it, and a
+    # move that already happened ("stretched") goes to manual review; "strict" = a chart that disagrees also sends
+    # it to manual review; "off" = no chart check. Selling a stock you hold is never held back by the chart.
+    confirm: Literal["off", "soft", "strict"] = "soft"
+    # Signals from the chart alone (breakouts, flags, double bottoms... on heavy volume) for the stocks the market
+    # monitor watches. "watch" = recorded and price-checked for the scoreboard, never traded or alerted;
+    # "review" = sent to manual review for you to approve; "off" = none.
+    signals: Literal["off", "watch", "review"] = "watch"
+
+
 class UISettings(_Model):
     # Times in the app: "local" = this computer's time zone, "market" = New York (ET), "utc"
     time_zone: Literal["local", "market", "utc"] = "local"
@@ -412,6 +426,7 @@ class AppSettings(_Model):
     risk: RiskSettings = Field(default_factory=RiskSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
+    chart: ChartSettings = Field(default_factory=ChartSettings)
     ui: UISettings = Field(default_factory=UISettings)
     sources: list[SourceConfig] = Field(default_factory=lambda: [SourceConfig(**s) for s in default_sources()])
 

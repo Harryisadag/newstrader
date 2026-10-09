@@ -268,6 +268,8 @@
           <span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span>
           <span class="conf" :class="confClass(s.confidence)" x-text="s.confidence"></span>
           <span class="reason"><span class="pill small pro" x-show="s.engine === 'pro'" title="Raised by Pro AI - it never trades by itself">Pro AI</span>
+            <span class="pill small chart" x-show="s.engine === 'chart'" title="From the chart alone - never traded by itself">Chart</span>
+            <span class="pill small" :class="chartChip(s)?.cls" x-show="chartChip(s)" x-text="chartChip(s)?.label" :title="s.chart_reason"></span>
             <span class="pill small info" x-show="s.event" x-text="s.event"></span>
             <template x-for="f in flagList(s)"><span class="pill small warn" x-text="f"></span></template>
             <span x-text="s.reasoning"></span></span>
@@ -289,10 +291,12 @@
           <select class="small" x-model="filters.action" @change="load()">
             <option value="">Any outcome</option><option value="traded">Traded</option><option value="review">Review</option>
             <option value="blocked">Blocked by risk</option><option value="ignored">Ignored</option><option value="error">Error</option>
-            <option value="watch">Pro AI - watching</option>
+            <option value="watch">Watching only (Pro AI / chart)</option>
           </select>
-          <select class="small" x-model="filters.engine" @change="load()" title="Pro AI's watch-only calls are never traded">
-            <option value="">All engines</option><option value="main">Hide Pro AI watching</option><option value="pro">Only Pro AI</option>
+          <select class="small" x-model="filters.engine" @change="load()" title="Watch-only calls (Pro AI's and the chart's) are never traded">
+            <option value="">All signals</option><option value="main">Hide watch-only signals</option>
+            <option value="news">Only news signals</option><option value="chart">Only chart signals</option>
+            <option value="pro">Only Pro AI</option>
           </select>
           <label class="row small">Min conf. <input type="number" class="small" min="0" max="100" x-model.number="filters.min_confidence" @change="load()" style="width:64px"></label>
         </div>
@@ -306,8 +310,10 @@
               <td><b x-text="s.ticker"></b></td>
               <td><span class="pill small" :class="dirClass(s.direction)" x-text="s.direction"></span></td>
               <td><div class="confbar" :class="confClass(s.confidence)"><div :style="'width:' + s.confidence + '%'"></div><span x-text="s.confidence"></span></div></td>
-              <td><span class="pill small" :class="actionClass(s.action)" x-text="actionLabel(s)" :title="s.action_reason"></span>
+              <td><span class="pill small" :class="actionClass(s)" x-text="actionLabel(s)" :title="s.action_reason"></span>
                 <span class="pill small pro" x-show="s.engine === 'pro' && s.action !== 'watch'" title="Raised by Pro AI - it never trades by itself">Pro AI</span>
+                <span class="pill small chart" x-show="s.engine === 'chart' && s.action !== 'watch'" title="From the chart alone - never traded by itself">Chart</span>
+                <span class="pill small" :class="chartChip(s)?.cls" x-show="chartChip(s)" x-text="chartChip(s)?.label" :title="s.chart_reason"></span>
                 <span class="pill small pro" x-show="s.pro_direction" :title="'Pro AI read the same story as ' + s.pro_direction"
                       x-text="s.pro_direction === s.direction ? 'Pro AI agrees' : 'Pro AI: ' + s.pro_direction"></span></td>
               <td class="small"><span x-text="s.source_name"></span>
@@ -318,11 +324,14 @@
                   <span x-text="s.reasoning"></span></div>
                 <div class="tiny muted" x-show="fmt.speed(s.speed)" x-text="fmt.speed(s.speed)" :title="fmt.speedTip(s.speed)"></div>
                 <div class="expand" x-show="expanded === s.id" @click.stop>
-                  <div class="cases">
+                  <div class="cases" x-show="s.bull_case || s.bear_case">
                     <div class="case bull"><b>Bull case</b><p x-text="s.bull_case"></p></div>
                     <div class="case bear"><b>Bear case</b><p x-text="s.bear_case"></p></div>
                   </div>
                   <div class="small"><b>Outcome:</b> <span x-text="s.action_reason"></span></div>
+                  <div class="small" x-show="s.chart_reason"><b x-text="s.engine === 'chart' ? 'The chart now:' : 'Chart check:'"></b>
+                    <span x-text="s.chart_reason"></span>
+                    <span class="muted" x-show="s.chart_adjust" x-text="` (confidence ${s.chart_adjust > 0 ? '+' : ''}${s.chart_adjust})`"></span></div>
                   <div class="small"><b>Speaker:</b> <span x-text="s.speaker"></span> · <b>Time-sensitivity:</b> <span x-text="s.time_sensitivity"></span></div>
                   <div class="small"><b>Headline:</b> <a :href="fmt.url(s.url)" target="_blank" rel="noopener" x-text="s.headline"></a></div>
                   <div class="small" x-show="(s.sources_seen || []).length > 1"><b>Also reported by:</b> <span x-text="(s.sources_seen || []).join(', ')"></span></div>
@@ -332,8 +341,10 @@
                   <template x-if="detail[s.id] && detail[s.id].analysis && detail[s.id].analysis.pro_reason">
                     <div class="small muted" x-text="`Sent to Pro AI because: ${detail[s.id].analysis.pro_reason}`"></div>
                   </template>
-                  <div class="row gap" x-show="!s.traded && s.direction !== 'neutral' && s.action !== 'watch'">
-                    <button class="btn good small" :disabled="!!busy[s.id]" @click="approve(s)">Trade this signal now</button>
+                  <div class="row gap">
+                    <button class="btn good small" x-show="!s.traded && s.direction !== 'neutral' && s.action !== 'watch'"
+                            :disabled="!!busy[s.id]" @click="approve(s)">Trade this signal now</button>
+                    <button class="btn ghost small" @click="showChart(s)">Show the chart</button>
                   </div>
                 </div>
               </td>
@@ -395,7 +406,8 @@
         <div class="kpi-sub" x-text="marketSub"></div>
       </div>
       <template x-for="t in indices" :key="t.symbol">
-        <div class="kpi" :title="t.name ? t.symbol + ' is a fund that tracks the ' + t.name : t.symbol">
+        <div class="kpi clickable" @click="openChart(t.symbol)"
+             :title="(t.name ? t.symbol + ' is a fund that tracks the ' + t.name : t.symbol) + ' - click for its chart'">
           <div class="kpi-label" x-text="tileName(t)"></div>
           <div class="kpi-value" :class="fmt.plClass(t.change_pct)" x-text="fmt.pct(t.change_pct)"></div>
           <div class="kpi-sub"><span x-text="t.symbol + ' · ' + fmt.money(t.price)"></span>
@@ -408,12 +420,71 @@
         <div class="kpi-sub" x-text="lastCheck"></div></div>
     </div>
 
+    <div class="card chart-card" x-show="chartSym" x-ref="chartCard">
+      <div class="card-head">
+        <h2><span x-text="chartSym"></span> <span class="small muted" x-text="chart && chart.name"></span>
+          <span class="small" x-show="chart && chart.reading.price !== null"
+                x-text="chart ? fmt.money(chart.reading.price) : ''"></span>
+          <span class="small" :class="fmt.plClass(chart && chart.reading.day_change_pct)"
+                x-show="chart && chart.reading.day_change_pct !== null"
+                x-text="chart ? fmt.pct(chart.reading.day_change_pct) + ' today' : ''"></span></h2>
+        <div class="row gap"><span class="small muted" x-text="chartWhen"></span>
+          <button class="btn ghost small" :disabled="chartLoading" @click="openChart(chartSym, true)"
+                  x-text="chartLoading ? 'Reading...' : 'Refresh'"></button>
+          <button class="btn ghost small" @click="closeChart()">Close</button></div>
+      </div>
+      <div class="err" x-show="chartError" x-text="chartError"></div>
+      <div class="muted pad" x-show="chartLoading && !chart">Reading the chart...</div>
+      <div x-show="chart">
+        <div class="chart-summary">
+          <b x-text="chart && chart.reading.summary"></b>
+          <span class="pill small" :class="lean.cls" x-text="lean.label" :title="lean.tip"></span>
+        </div>
+        <p class="small warn-text" x-show="chart && chart.reading.stale">No trades in the last 30 minutes (the market may be
+          closed) - this is the chart as of the last trade.</p>
+        <div class="chart-box" x-show="chart && chart.series.t.length"><canvas x-ref="priceChart"></canvas></div>
+        <p class="small muted" x-show="chart && !chart.series.t.length">No 1-minute prices for the latest session on this
+          data feed.</p>
+        <div class="chart-chips">
+          <template x-for="c in chartChips" :key="c.label">
+            <span class="pill small" :class="c.cls" x-text="c.label" :title="c.tip"></span>
+          </template>
+        </div>
+        <div class="chart-signal" x-show="chart && chart.signal">
+          <b>Chart signal:</b> <span class="pill small" :class="dirClass(chart && chart.signal && chart.signal.direction)"
+            x-text="chart && chart.signal && chart.signal.direction"></span>
+          <span class="small" x-text="chart && chart.signal ? 'confidence ' + chart.signal.confidence : ''"></span>
+          <div class="small" x-text="chart && chart.signal && chart.signal.reason"></div>
+          <div class="small muted" x-text="signalNote"></div>
+        </div>
+        <h3 class="small">What the chart shows</h3>
+        <ul class="pattern-list">
+          <template x-for="p in chartPatterns" :key="p.name + p.timeframe + p.at">
+            <li><span class="pill small" :class="dirClass(p.direction)" x-text="patternName(p)"></span>
+              <span class="tag" x-text="frameName(p.timeframe)"></span>
+              <span class="small" x-text="p.explain"></span></li>
+          </template>
+        </ul>
+        <div class="small muted" x-show="chart && !chartPatterns.length">No patterns on the chart right now.</div>
+        <div class="small levels" x-show="chartLevels.length"><b>Support and resistance nearby:</b>
+          <template x-for="lv in chartLevels" :key="lv.kind + lv.price">
+            <span class="tag" :class="lv.kind === 'support' ? 'lv-support' : 'lv-resistance'"
+                  :title="lv.source + (lv.touches > 1 ? ' (' + lv.touches + ' touches)' : '')"
+                  x-text="(lv.kind === 'support' ? 'Support ' : 'Resistance ') + fmt.money(lv.price)"></span>
+          </template></div>
+        <p class="note">Charts are a guide, not a promise: they show what the price has done, not what it will do. Hover
+          over a label for what it means. <span x-show="chart && chart.feed === 'IEX'">Prices come from Alpaca's free IEX
+          feed, which sees only part of all trading - "x normal" volume compares IEX with IEX, so it is still a fair
+          guide, but quiet stocks can go minutes without a trade.</span></p>
+      </div>
+    </div>
+
     <div class="card" x-show="world.length">
       <div class="card-head"><h2>World markets</h2>
         <span class="small muted">US-listed funds that hold each country's stocks - change today</span></div>
       <div class="world-grid">
         <template x-for="t in world" :key="t.symbol">
-          <div class="world-tile">
+          <div class="world-tile clickable" @click="openChart(t.symbol)" title="Click for its chart">
             <div class="row"><b x-text="tileName(t)"></b><span class="tiny muted" x-text="t.symbol"></span></div>
             <div class="world-val" :class="fmt.plClass(t.change_pct)" x-text="fmt.pct(t.change_pct)"></div>
             <div class="tiny muted" x-text="fmt.money(t.price)"></div>
@@ -432,7 +503,7 @@
           <template x-for="ev in events" :key="ev.id">
             <div class="event-row" :class="'lvl-' + (ev.level || 'info')">
               <span class="ts" x-text="fmt.time(ev.ts)" :title="fmt.dateTime(ev.ts)"></span>
-              <span class="chip" x-text="ev.symbol"></span>
+              <span class="chip clickable" x-text="ev.symbol" @click="openChart(ev.symbol)" title="Click for its chart"></span>
               <span class="pill small" :class="kind(ev).cls" x-text="kind(ev).label"></span>
               <div class="event-main">
                 <div class="row gap wrap">
@@ -467,7 +538,7 @@
             <th class="num" x-text="moversView === 'active' ? 'Trades' : 'Today'"></th></tr></thead>
           <tbody>
             <template x-for="m in moversRows" :key="m.symbol">
-              <tr>
+              <tr class="clickable" @click="openChart(m.symbol)" title="Click for its chart">
                 <td><b x-text="m.symbol"></b></td>
                 <td class="small muted mover-name" x-text="m.name" :title="m.name"></td>
                 <td class="num" x-text="moversView === 'active' ? fmt.compact(m.volume) : fmt.money(m.price)"></td>
@@ -484,13 +555,14 @@
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Watching</h2><span class="small muted" x-text="watchingNote"></span></div>
+      <div class="card-head"><h2>Watching</h2><span class="small muted" x-text="watchingNote + ' · click a stock for its chart'"></span></div>
       <table class="table" x-show="watching.length">
         <thead><tr><th>Ticker</th><th>Why</th><th class="num">Price</th><th class="num">Today</th>
           <th class="num" x-text="'Last ' + windowMin + ' min'"></th><th class="num">Volume vs usual</th></tr></thead>
         <tbody>
           <template x-for="w in watching" :key="w.symbol">
-            <tr :class="{ dim: w.stale }" :title="w.stale ? 'No trades in the last few minutes on this data feed' : ''">
+            <tr class="clickable" :class="{ dim: w.stale }" @click="openChart(w.symbol)"
+                :title="w.stale ? 'No trades in the last few minutes on this data feed' : 'Click for its chart'">
               <td class="nowrap"><b x-text="w.symbol"></b> <span class="small muted" x-text="w.name"></span></td>
               <td class="reasons"><template x-for="r in w.reasons" :key="r"><span class="tag" x-text="reasonText(r)"></span></template></td>
               <td class="num" x-text="fmt.money(w.price)"></td>
@@ -712,7 +784,8 @@
         </table>
         <div class="muted pad" x-show="!(data?.by_engine || []).length">No measured signals yet.</div>
         <p class="note">If you switched engines, or Pro AI is watching, this shows which one has been right more often on
-          your own signals. Pro AI's watch-only calls are only counted here.</p>
+          your own signals. Pro AI's watch-only calls are only counted here. "Chart patterns" are the signals from the
+          chart alone (Settings -> Charts) - they only count here and in the next table.</p>
       </div>
       <div class="card">
         <div class="card-head"><h2>By news type</h2></div>
@@ -726,8 +799,9 @@
           </tbody>
         </table>
         <div class="muted pad" x-show="!(data?.by_event || []).length">No measured signals yet.</div>
-        <p class="note">The kind of news the local engine recognised (earnings beat, forecast cut, buyout...). Greyed-out
-          rows have fewer than 10 signals - too few to tell yet.</p>
+        <p class="note">The kind of news the local engine recognised (earnings beat, forecast cut, buyout...), and for
+          chart signals the chart pattern behind them ("Chart: Breakout"...). Greyed-out rows have fewer than 10
+          signals - too few to tell yet.</p>
       </div>
     </div>
 
@@ -1117,6 +1191,13 @@
             <p class="note">See the Market tab for what is being watched and every spike found. Alerts use the "Sudden
               price spikes" and "Big market-wide moves" switches in Alerts. Volume on the free IEX feed is only part of all
               trading, so a stock with too little history needs a 1.5x bigger move to count as a spike.</p>
+          </template>
+          <template x-if="section === 'charts'">
+            <p class="note">Charts use the same prices as the Market tab (1-minute bars for the last two trading days and
+              a year of daily bars). Click any stock on the Market tab to see its chart, the indicators and the patterns
+              it shows right now. On a news signal a small label says what the chart thought: "Chart agrees +4",
+              "Chart disagrees -10", "Stretched: RSI 84" (the move may already be over) or "Chart mixed". Chart signals
+              need the market monitor (Settings -> Market monitor) - they look at the stocks it watches.</p>
           </template>
           <template x-if="section === 'ai' && get('ai.engine') === 'claude'">
             <p class="note">Cost estimate: each analysed story costs roughly $0.002–$0.02 with Sonnet 5.5 at low effort.

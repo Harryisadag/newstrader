@@ -121,6 +121,12 @@ document.addEventListener("alpine:init", () => {
       ],
     },
     {
+      id: "charts", label: "Charts", fields: [
+        F("chart.confirm", "Check news signals against the chart", "select", { options: { soft: "Soft (recommended) - the chart nudges the confidence", strict: "Strict - a chart that disagrees sends it to manual review", off: "Off - don't look at the chart" }, help: "Before a news signal is traded, NewsTrader reads the stock's chart. If the move already happened (RSI over 80, or far above VWAP) it goes to manual review instead - like \"don't chase\". A chart that agrees adds a few points of confidence (never enough to turn a manual review into an automatic trade); one that disagrees takes some off (Strict: sends it to manual review). Selling a stock you hold is never held back by the chart." }),
+        F("chart.signals", "Signals from the chart alone", "select", { options: { watch: "Watch only (recommended) - recorded and scored, never traded or alerted", review: "Manual review - you approve or dismiss each one", off: "Off" }, help: "About once a minute while the market is open, NewsTrader reads the chart of every stock the market monitor watches and looks for breakouts, flags, double bottoms and the like on heavy volume. Watch only lets Performance -> By AI engine show whether they work before you trust them. They are never traded by themselves." }),
+      ],
+    },
+    {
       id: "display", label: "Display", fields: [
         F("ui.time_zone", "Show times in", "select", { options: { local: "This computer's time zone", market: "New York time (ET, the US market)", utc: "UTC" } }),
         F("ui.check_updates", "Tell me when a new version is out", "toggle", { help: "Checks GitHub once a day and shows a banner with a download link. Nothing is installed by itself." }),

@@ -398,9 +398,9 @@ class Pipeline:
 
         existing = None
         if sig.direction != "neutral" and s.ai.signal_dedupe_minutes > 0:
-            existing = db.query_one(  # (Pro AI's own signals are kept apart: they never get traded through this)
+            existing = db.query_one(  # (Pro AI's and the chart's own signals are kept apart: never traded through this)
                 "SELECT * FROM signals WHERE ticker = ? AND direction = ? AND merged_into IS NULL AND created_at >= ? "
-                "AND COALESCE(engine, '') != 'pro' ORDER BY id DESC LIMIT 1",
+                "AND COALESCE(engine, '') NOT IN ('pro', 'chart') ORDER BY id DESC LIMIT 1",
                 (sig.ticker, sig.direction, iso(now - timedelta(minutes=s.ai.signal_dedupe_minutes))))
         if existing is not None:
             return await self._merge_into(existing, row, sig, reroute=not hold)
@@ -478,6 +478,9 @@ class Pipeline:
             return {"action": sig["action"], "reason": "Already traded", "traded": True}
         if sig.get("action") in ("watch", "merged") and sig.get("engine") == "pro":
             raise PermissionError("Pro AI is only watching this one - its watch-only signals are never traded.")
+        if sig.get("action") in ("watch", "merged") and sig.get("engine") == "chart":
+            raise PermissionError("This chart signal is only being watched - watch-only signals are never traded. "
+                                  "(Settings -> Charts can send new chart signals to manual review instead.)")
         trader = self.ctx.service("trader")
         if trader is None:
             raise RuntimeError("Trading engine not running")
@@ -615,7 +618,8 @@ class Pipeline:
     def _twin(self, sig, since: str, watch: bool) -> dict | None:
         """The newest signal on the same stock and direction since `since`: Pro AI's watch-only ones (watch=True) or
         every other kind (watch=False)."""
-        kind = "engine = 'pro' AND action = 'watch'" if watch else "COALESCE(action, '') != 'watch'"
+        kind = ("engine = 'pro' AND action = 'watch'" if watch
+                else "COALESCE(action, '') != 'watch' AND COALESCE(engine, '') != 'chart'")
         return self.ctx.db.query_one(
             f"SELECT * FROM signals WHERE ticker = ? AND direction = ? AND merged_into IS NULL AND created_at >= ? "
             f"AND {kind} ORDER BY id DESC LIMIT 1", (sig.ticker, sig.direction, since))

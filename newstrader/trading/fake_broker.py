@@ -72,6 +72,8 @@ class FakeBroker:
         self.calls: list[tuple] = []
         self.news_items: list[dict] = []  # for backtests
         self.bar_data: dict[str, list[dict]] = {}  # symbol -> 1-minute bars
+        self.daily_data: dict[str, list[dict]] = {}  # symbol -> daily bars (timeframe "1Day")
+        self.bar_calls: list[tuple[str, tuple, datetime, datetime]] = []  # (timeframe, symbols, start, end)
         self.prev_close: dict[str, float] = {}  # symbol -> yesterday's close (snapshots / movers)
         self.screener_error: str | None = None  # set to make movers() / most_actives() fail
 
@@ -162,9 +164,11 @@ class FakeBroker:
         return self.prices.get(symbol)
 
     def bars(self, symbol, start, end, timeframe="1Min") -> list[dict]:
-        if symbol in self.bar_data:
-            from ..db import parse_iso
+        from ..db import parse_iso
 
+        if timeframe == "1Day":
+            return [b for b in self.daily_data.get(symbol, []) if start <= parse_iso(b["t"]) <= end]
+        if symbol in self.bar_data:
             return [b for b in self.bar_data[symbol] if start <= parse_iso(b["t"]) <= end]
         p = self.prices.get(symbol)
         if p is None:
@@ -173,11 +177,12 @@ class FakeBroker:
 
     def bars_multi(self, symbols, start, end, timeframe="1Min", feed=None) -> dict[str, list[dict]]:
         self.calls.append(("bars_multi", tuple(symbols), feed))
+        self.bar_calls.append((timeframe, tuple(symbols), start, end))
         if feed == "sip" and getattr(self, "refuse_sip", False):
             raise RuntimeError("subscription does not permit querying recent SIP data")
         out = {}
         for sym in symbols:
-            if sym in self.bar_data:
+            if sym in (self.daily_data if timeframe == "1Day" else self.bar_data):
                 rows = self.bars(sym, start, end, timeframe)
                 if rows:
                     out[sym] = rows

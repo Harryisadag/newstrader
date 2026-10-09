@@ -72,6 +72,7 @@ class Orchestrator:
         from .alerts.manager import AlertManager
         from .audio.stream_manager import StreamManager
         from .backtest.runner import BacktestRunner
+        from .chart.service import ChartService
         from .llm.service import ProAIService
         from .market.monitor import MarketMonitor
         from .ml.trainer import ModelTrainer
@@ -90,6 +91,7 @@ class Orchestrator:
         self.add(StreamManager(self.ctx))
         self.add(PerformanceTracker(self.ctx))
         self.add(MarketMonitor(self.ctx))
+        self.add(ChartService(self.ctx))  # chart checks for the trader, chart signals after each market check
         self.add(BacktestRunner(self.ctx))
         self.add(ModelTrainer(self.ctx))
         self.add(UpdateChecker(self.ctx))

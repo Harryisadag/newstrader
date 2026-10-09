@@ -407,3 +407,19 @@ td.reasons .tag { margin: 0 4px 2px 0; }
 .pro-setup > div > div { margin: 4px 0; }
 .pro-test { margin-top: 14px; }
 .pro-test h3 { margin: 0 0 8px; font-size: 14px; }
+
+/* charts (Market tab chart card, chart labels on signals) */
+.pill.chart { background: rgba(20,184,166,.16); color: #5eead4; }
+.kpi.clickable:hover, .world-tile.clickable:hover { border-color: var(--accent); }
+.chip.clickable:hover { background: rgba(79,140,255,.28); }
+.chart-card .card-head h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.chart-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 15px; }
+.chart-box { position: relative; height: 280px; margin: 6px 0 10px; }
+.chart-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+.chart-chips .pill { cursor: help; }
+.chart-signal { background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.pattern-list { list-style: none; margin: 4px 0 8px; padding: 0; }
+.pattern-list li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid rgba(37,48,70,.6); }
+.levels .tag { margin: 0 4px 2px 0; }
+.tag.lv-support { color: var(--good); }
+.tag.lv-resistance { color: var(--bad); }

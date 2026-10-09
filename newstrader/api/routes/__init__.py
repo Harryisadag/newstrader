@@ -3,6 +3,7 @@ from __future__ import annotations
 from . import (
     alerts,
     backtest,
+    chart,
     keys,
     logs,
     market,
@@ -29,6 +30,7 @@ ALL_ROUTERS = [
     trading.router,
     signals.router,
     market.router,
+    chart.router,
     streams.router,
     alerts.router,
     performance.router,

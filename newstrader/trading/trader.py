@@ -1,5 +1,9 @@
 """The Trader service: keeps Alpaca account state fresh, turns signals into bracket orders through the
 risk checks, tracks order fills, and owns the kill switch.
+
+Before a news signal is acted on it is checked against its chart (chart/service.py, Settings -> Charts): the chart
+can nudge the confidence, or send a would-be trade to manual review like the "don't chase" check. It never blocks a
+sell of a stock you hold, and approving a signal by hand skips it.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from ..chart.service import worth_checking
 from ..context import AppContext
 from ..db import iso, parse_iso
 from ..performance.prices import directional_return, price_at
@@ -367,29 +372,54 @@ class Trader:
         symbol = signal["ticker"].upper()
         if self.broker is None:
             return self._result("blocked", "Not connected to a trading account (Settings -> Trading, or add Alpaca keys).")
+        if signal.get("engine") == "chart" and not manual:  # chart signals are only ever traded by hand
+            return self._result("review", "Signals from the chart alone are never traded automatically - approve it "
+                                          "to trade.")
+        charts = self.ctx.service("chart")
+        if not manual and charts is not None and hasattr(charts, "prefetch") and worth_checking(
+                signal["direction"], signal["confidence"], self.holding_long(symbol), self.ctx.config.settings.trading):
+            charts.prefetch(symbol)  # the chart downloads while the account is refreshed below
         async with self._lock:
             try:
                 await self.refresh()
-                action, why = decide_action(signal["direction"], int(signal["confidence"]),
-                                            self.ctx.config.settings.trading, self.holding_long(symbol))
+                holding = self.holding_long(symbol)
+                confidence = int(signal["confidence"])
+                chart = None if manual else await self._chart_check(signal, holding)
+                if chart is not None:
+                    confidence = chart.confidence
+                action, why = decide_action(signal["direction"], confidence, self.ctx.config.settings.trading, holding)
+                if chart is not None and chart.adjust:
+                    why += f" The chart changed the confidence {chart.adjust:+d} ({signal['confidence']} -> {confidence})."
                 if manual and action in ("review", "ignore") and signal["direction"] in ("bullish", "bearish"):
                     # You approved it by hand: act as if it cleared the buy threshold.
-                    action = "buy" if signal["direction"] == "bullish" else (
-                        "sell" if self.holding_long(symbol) else "short")
+                    action = "buy" if signal["direction"] == "bullish" else ("sell" if holding else "short")
                     why = "Manually approved."
                 if action == "review":
-                    return self._result("review", why)
+                    return self._result("review", why + (f" {chart.reason}" if chart is not None and chart.reason
+                                                         and chart.verdict != "unavailable" else ""))
                 if action == "ignore":
                     return self._result("ignored", why)
-                if action == "sell":
+                if action == "sell":  # closing a position you hold: the chart never holds this back
                     return await self._close_long(symbol, signal, manual, why)
-                return await self._open(symbol, "buy" if action == "buy" else "short", signal, manual, why)
+                return await self._open(symbol, "buy" if action == "buy" else "short", signal, manual, why,
+                                        chart_review=chart.review if chart is not None else "")
             except Exception as exc:
                 log.exception("Trade for %s failed", symbol)
                 await self._alert("error", f"Trade error ({symbol})", str(exc), "error")
                 return self._result("error", f"Error: {exc}")
 
-    async def _open(self, symbol: str, side: str, signal: dict, manual: bool, why: str) -> dict:
+    async def _chart_check(self, signal: dict, holding: bool):
+        """The chart check on a news signal (None when it is off, there is no chart service, or it failed)."""
+        charts = self.ctx.service("chart")
+        if charts is None or not hasattr(charts, "check"):
+            return None
+        try:
+            return await charts.check(signal, holding)
+        except Exception as exc:
+            log.warning("Chart check for %s failed (traded without it): %s", signal.get("ticker"), exc)
+            return None
+
+    async def _open(self, symbol: str, side: str, signal: dict, manual: bool, why: str, chart_review: str = "") -> dict:
         rctx = await self._risk_context(symbol)
         price = await asyncio.to_thread(self.broker.latest_price, symbol)
         direction = "bullish" if side == "buy" else "bearish"
@@ -406,6 +436,9 @@ class Trader:
         if chase:
             log.info("Sent %s %s to manual review: %s", side, symbol, chase)
             return self._result("review", chase)
+        if chart_review and not manual:  # the chart says the move already happened (or, in strict mode, disagrees)
+            log.info("Sent %s %s to manual review: %s", side, symbol, chart_review)
+            return self._result("review", chart_review)
         coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
         try:
             order = await asyncio.to_thread(self.broker.submit_bracket, symbol, "buy" if side == "buy" else "sell",

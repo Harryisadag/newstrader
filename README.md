@@ -42,16 +42,17 @@ You don't need Python to use a release:
 3. [Using NewsTrader](#using-newstrader)
 4. [The AI engine: local machine learning or Claude](#the-ai-engine-local-machine-learning-or-claude)
 5. [Pro AI (for strong PCs)](#pro-ai-for-strong-pcs)
-6. [Settings explained](#settings-explained)
-7. [How a trade happens](#how-a-trade-happens)
-8. [Kill switch and live trading](#kill-switch-and-live-trading)
-9. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-10. [Updating](#updating)
-11. [Troubleshooting](#troubleshooting)
-12. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-13. [What it costs](#what-it-costs)
-14. [Where your files are](#where-your-files-are)
-15. [For developers](#for-developers)
+6. [Charts: patterns and indicators](#charts-patterns-and-indicators)
+7. [Settings explained](#settings-explained)
+8. [How a trade happens](#how-a-trade-happens)
+9. [Kill switch and live trading](#kill-switch-and-live-trading)
+10. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+11. [Updating](#updating)
+12. [Troubleshooting](#troubleshooting)
+13. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+14. [What it costs](#what-it-costs)
+15. [Where your files are](#where-your-files-are)
+16. [For developers](#for-developers)
 
 ---
 
@@ -166,8 +167,8 @@ The header always shows:
 | Tab | What it shows |
 |---|---|
 | **Live** | One pane per TV stream with the live transcript (on/off switch on each, and a language badge such as DE → EN when it's translated). Live-event channels that are off air wait in a compact row and get a pane when they go live. Headlines from every text source scroll below, tagged with the tickers found and what happened (not relevant, same story, analysed, signal…). |
-| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
-| **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. |
+| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A second label says what the chart thought before it was traded ("Chart agrees +4", "Stretched: RSI 84"... see [Charts](#charts-patterns-and-indicators)), and chart signals have a teal **Chart** label. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
+| **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. **Click any stock** for its chart: price with VWAP and support/resistance, indicator labels and the patterns showing now, each explained (see [Charts](#charts-patterns-and-indicators)). |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
 | **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Export CSV** saves it to the exports folder. |
 | **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
@@ -186,6 +187,7 @@ delay happens before that, while the news is on its way to NewsTrader:
 | Checking interval | up to 15 s / 30 s / 5 min | How often each feed is checked: every 15 seconds for breaking-news wires (PR Newswire, GlobeNewswire, SEC 8-K filings, Federal Reserve press releases, Trump's Truth Social posts), every 30 seconds for other feeds, every 5 minutes for Google News. Alpaca/Benzinga news is pushed instantly. Each check only asks "anything new?", and a website that asks NewsTrader to slow down is left alone for as long as it asks. |
 | TV | about 10-20 s | The audio is cut into 10-second clips and turned into text. After a company is mentioned, NewsTrader waits 4 seconds so the sentence can finish, then the AI reads it. |
 | Thinking time | under 1 s (local) / a few s (Claude) | The AI engine reading the story. |
+| Chart check | usually under 1 s | Reading the stock's chart (see [Charts](#charts-patterns-and-indicators)). It downloads while your account is checked, and a signal never waits more than 8 s for it. |
 | Order | about 1-2 s | The risk checks, a fresh look at your account and the price, and sending the order to Alpaca. |
 
 **Where to see it:** each row in **Signals** and **Trade Log** has a small line such as *"2.1 s from seeing the news
@@ -299,6 +301,77 @@ Pro AI runs only on this computer (`127.0.0.1`, with a random password). If it c
 
 ---
 
+## Charts: patterns and indicators
+
+NewsTrader reads each stock's price chart the way a day trader would - with fixed rules, no AI and no extra cost. It
+looks at:
+
+- **1-minute bars** for the last two trading days (the live price, VWAP, gaps, the day's highs and lows), **5-minute
+  bars** built from them (most patterns - single 1-minute candles are mostly noise), and **daily bars** for about a year
+  (the bigger trend, the 50- and 200-day averages, how much the stock normally moves in a day).
+- **Indicators:** RSI, MACD, VWAP, moving averages, Bollinger Bands, ATR (a normal day's move) and relative volume
+  (trading compared with normal for that time of day).
+- **Patterns:** candlesticks (hammer, engulfing, morning/evening star, three soldiers/crows...), indicator events (RSI
+  overbought/oversold and divergence, MACD crosses, back above / fell below VWAP, golden/death cross, squeeze
+  breakouts) and chart structure (breakouts and breakdowns through support/resistance, opening-range breakouts, gaps,
+  new highs/lows of the day, double tops/bottoms, bull/bear flags, volume climaxes).
+
+It does two jobs, both careful by default.
+
+**1. A second opinion on news signals** (Settings → Charts → *Check news signals against the chart*, default **Soft**).
+Just before a news signal would be traded, NewsTrader reads that stock's chart:
+
+| What the chart says | What happens |
+|---|---|
+| **Stretched**: RSI over 80, or the price 2+ normal days' moves away from VWAP | The signal goes to **manual review** instead of being traded - the move may already be over (like "don't chase"). |
+| **Disagrees** | Soft: the confidence goes down 5–15 points (so it may need your review). Strict: manual review. |
+| **Agrees** | The confidence goes up 2–10 points - but **never** enough to turn a manual review into an automatic trade. |
+| **Mixed**, or no up-to-date chart | Nothing changes. |
+
+Selling a stock you hold is **never held back** by the chart, and approving a signal by hand skips the check. If the
+chart can't be read in 8 seconds, the signal carries on as if the check were off.
+
+**2. Signals from the chart alone** (Settings → Charts → *Signals from the chart alone*, default **Watch only**). About
+once a minute while the market is open, NewsTrader reads the chart of every stock the market monitor watches. A chart
+signal needs a fresh trigger (a breakout, a flag, a double bottom, a VWAP reclaim...), heavy volume (1.5x normal or
+more) and at least one more thing agreeing (the trend, the side of VWAP, momentum, a candle). Never a lone
+candlestick, never a price that's already stretched, confidence at most 75, and at most one per stock and direction
+every 30 minutes.
+
+**Chart signals start as watch-only.** They show in the Signals tab with a teal **Chart - watching** label (filter:
+*Only chart signals*), and they are **never traded and never alerted**. They are price-checked like every other
+signal, so after a week or two **Performance → By AI engine** ("Chart patterns") and **By news type** ("Chart:
+Breakout", "Chart: Bull flag"...) show whether they actually work. If they do, switch to **Manual review**: each new
+chart signal then asks you to approve or dismiss it. **In this version chart signals never place a trade by
+themselves.**
+
+**See a chart:** on the Market tab, click any stock (the watched list, top movers, spikes or the market gauges). The
+chart card shows today's price with VWAP (dashed) and the nearest support and resistance, labels for the indicators,
+every pattern showing right now with a plain explanation, and a one-line summary such as *"Uptrend, above VWAP,
+breaking out on heavy volume"*. On the Signals tab, open a signal and click **Show the chart**.
+
+**Reading the labels** (hover over any label in the app for the same explanation):
+
+| Label | What it means |
+|---|---|
+| RSI 63 | How fast the price has been moving (0–100, 5-minute chart). Over 70 = it ran up fast, under 30 = it fell fast. Over 80 (or under 20) = stretched. |
+| MACD: momentum up / down | Whether the move is speeding up or slowing down. |
+| +0.8% vs VWAP | Above or below the average price everyone paid today. Above = buyers in control today; far above = stretched. |
+| Volume 2.1x normal | Trading compared with normal for this time of day. 1.5x or more = heavy, which makes a move more believable. |
+| Uptrend / Daily: uptrend | The trend on the 5-minute chart and on the daily chart. |
+| Normal day's move 2.3% | ATR: how much the stock usually moves in a day. |
+| Leans bullish / Leans bearish / Mixed | Everything above added up (a score from -1 to +1). |
+| On a signal: **Chart agrees +4**, **Chart disagrees -10**, **Stretched: RSI 84**, **Chart mixed**, **No chart** | What the chart check said, and how many confidence points it added or took off. The confidence shown on the signal is the news engine's own; the label shows the change. |
+
+**Data and limits:** prices come from your Alpaca account (or the simulator's free prices), the same feed as the
+Market tab. Stocks the market monitor already watches cost no extra requests (the chart reuses its minute-by-minute
+prices); any other stock needs two, and daily bars are downloaded once a day. Charts stay under 60 requests a minute
+(the free plan allows 200 for the whole app). On the free **IEX** feed volume is only part of all trading: "x normal"
+compares IEX with IEX, so it's still a fair guide, but quiet stocks can go minutes without a trade (with no trade in
+30 minutes the chart check is skipped). Charts show what the price has done, not what it will do.
+
+---
+
 ## Settings explained
 
 All settings are saved to `config.json` and changed in the app (Settings tab). The defaults are listed here.
@@ -352,6 +425,12 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Skip a story after | 20 s | When Pro AI is busy, newer stories go first and older ones are skipped. Also how long a signal waits for Pro AI in Judge mode. |
 | Keep room for TV transcription | on | Leaves graphics memory free for live-TV speech-to-text when TV sources are on. |
 | Server version | Auto | Matched to your graphics card and driver. |
+
+**Charts** - see [Charts](#charts-patterns-and-indicators)
+| Setting | Default | Meaning |
+|---|---|---|
+| Check news signals against the chart | Soft | Soft = the chart nudges the confidence and a stretched move goes to manual review. Strict = a chart that disagrees also sends it to manual review. Off = no chart check. Sells of stocks you hold are never held back. |
+| Signals from the chart alone | Watch only | Watch only = recorded and scored, never traded or alerted. Manual review = you approve or dismiss each one. Off = none. Never traded by themselves. |
 
 **Transcription**
 | Setting | Default | Meaning |
@@ -408,7 +487,10 @@ News item ──► Stage 1: local pre-filter (free)
           ──► Validation: real tradable US ticker, confidence 0-100, allowed values
               (anything else is rejected and listed in Logs → Rejected AI responses)
           ──► Same ticker + direction in the last 15 min? → merged into one signal
+          ──► Chart check: agrees → a few points more confidence (never past the buy threshold
+                               from below), disagrees → a few points less (strict: review)
           ──► Bullish ≥ buy threshold   → risk checks → price already ran > 3%? → review
+                                          → chart says the move already happened? → review
                                           → bracket BUY (stop-loss + take-profit)
               between the thresholds    → "manual review" alert (Approve/Dismiss in Signals)
               Bearish ≥ buy threshold   → sell if you hold it (or short, if you turned that on)
@@ -609,6 +691,9 @@ newstrader/
   ai/                 ticker table, pre-filter, de-dupe, engine choice, Claude client, prompts, validator, pipeline
   ml/                 local engine: FinBERT sentiment, text targeting, price model, training data, trainer
   llm/                Pro AI: hardware check, pinned downloads, llama-server, engine, routing, service, Test my PC
+  chart/              indicators, candlestick / chart patterns, chart reading, chart service (bar cache, chart
+                      check on news signals, watch-only chart signals)
+  market/             market monitor: spikes, market-wide moves, top movers
   trading/            Alpaca broker, live-trading lock, risk checks, trader, P/L
   alerts/             desktop pop-ups (Windows / Mac), Discord, alert manager
   performance/        price checkpoints and win-rate stats

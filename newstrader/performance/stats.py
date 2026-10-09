@@ -2,7 +2,8 @@
 and traded vs not. A group with fewer than MIN_COUNT measured signals is marked "few": its win rate is mostly luck.
 
 Pro AI's watch-only signals (action "watch") only count in the by-engine table, so they can be compared with the
-main engine without changing any other number.
+main engine without changing any other number. Chart signals (engine "chart", from the chart alone) count only in
+the by-engine table and in the by-event table under their chart pattern ("Chart: Breakout"...).
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from collections import defaultdict
 BUCKETS = [(0, 59, "under 60"), (60, 69, "60-69"), (70, 79, "70-79"), (80, 89, "80-89"), (90, 100, "90-100")]
 HORIZONS = {"5m": "ret_5m", "1h": "ret_1h", "1d": "ret_1d"}
 MIN_COUNT = 10
-ENGINE_NAMES = {"local": "Local machine learning", "claude": "Claude", "pro": "Pro AI"}
+ENGINE_NAMES = {"local": "Local machine learning", "claude": "Claude", "pro": "Pro AI", "chart": "Chart patterns"}
 NO_EVENT = "No news event recognised"
 
 
@@ -40,7 +41,8 @@ def compute_stats(rows: list[dict], horizon: str = "1h") -> dict:
     """rows: signals joined with their directional returns (ret_5m / ret_1h / ret_1d, already direction-adjusted)."""
     col = HORIZONS[horizon]
     measured = [r for r in rows if r.get(col) is not None and r.get("direction") in ("bullish", "bearish")]
-    usable = [r for r in measured if r.get("action") != "watch"]
+    usable = [r for r in measured if _news_call(r)]
+    charted = [r for r in measured if r.get("engine") == "chart"]
 
     def group(key_fn, among=None) -> list[dict]:
         groups: dict[str, list[dict]] = defaultdict(list)
@@ -59,7 +61,8 @@ def compute_stats(rows: list[dict], horizon: str = "1h") -> dict:
     directions = sorted(group(lambda r: r["direction"]), key=lambda g: g["key"])
     engines = sorted(group(lambda r: ENGINE_NAMES.get(r.get("engine") or "", r.get("engine") or "?"), measured),
                      key=lambda g: -g["count"])
-    events = sorted(group(lambda r: r.get("event") or NO_EVENT), key=lambda g: (g["key"] == NO_EVENT, -g["count"]))
+    events = sorted(group(lambda r: r.get("event") or NO_EVENT, usable + charted),
+                    key=lambda g: (g["key"] == NO_EVENT, -g["count"]))
     return {
         "horizon": horizon,
         "overall": _summarise([r[col] for r in usable], [r["confidence"] for r in usable]),
@@ -70,5 +73,10 @@ def compute_stats(rows: list[dict], horizon: str = "1h") -> dict:
         "by_direction": directions,
         "by_engine": engines,
         "by_event": events,
-        "pending": sum(1 for r in rows if r.get(col) is None and r.get("action") != "watch"),
+        "pending": sum(1 for r in rows if r.get(col) is None and _news_call(r)),
     }
+
+
+def _news_call(r: dict) -> bool:
+    """A signal from the news engines that counts everywhere (not Pro AI watching, not a chart signal)."""
+    return r.get("action") != "watch" and r.get("engine") != "chart"

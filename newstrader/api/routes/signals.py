@@ -31,7 +31,8 @@ async def list_signals(
     min_confidence: int = Query(0, ge=0, le=100),
     include_merged: bool = Query(False),
     review_only: bool = Query(False),
-    engine: str = Query("", description="'main' = leave out Pro AI's watch-only signals, 'pro' = only Pro AI's"),
+    engine: str = Query("", description="'main' = leave out watch-only signals (Pro AI's and the chart's), 'pro' = "
+                                        "only Pro AI's, 'chart' = only chart signals, 'news' = no chart signals"),
     ctx: AppContext = Depends(get_ctx),
 ):
     sql = ("SELECT s.*, o.submitted_at AS order_submitted_at FROM signals s LEFT JOIN orders o ON o.id = s.order_id "
@@ -56,6 +57,10 @@ async def list_signals(
         sql += " AND COALESCE(s.action, '') != 'watch'"
     elif engine == "pro":
         sql += " AND s.engine = 'pro'"
+    elif engine == "chart":
+        sql += " AND s.engine = 'chart'"
+    elif engine == "news":
+        sql += " AND COALESCE(s.engine, '') != 'chart'"
     sql += " ORDER BY s.id DESC LIMIT ?"
     params.append(limit)
     rows = ctx.db.query(sql, params)
