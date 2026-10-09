@@ -111,7 +111,14 @@ class H(BaseHTTPRequestHandler):
                         "usage": {"prompt_tokens": 900, "completion_tokens": 80}})
 
 
-ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+class S(ThreadingHTTPServer):
+    def server_bind(self):  # skip HTTPServer's reverse-DNS lookup: it can take 20+ s on macOS runners
+        import socketserver
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+
+S(("127.0.0.1", port), H).serve_forever()
 '''
 
 
