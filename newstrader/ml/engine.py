@@ -6,6 +6,10 @@ For each company the pre-filter found:
   3. if a price model has been trained and passed its test, it turns those scores + the words into the
      probability the stock beats the S&P 500 over the next hour (model.py)
 The answer is written in the same JSON shape Claude uses, so the same validator and trade rules apply.
+
+Crypto pairs (with crypto on) are read by a small set of crypto rules instead (events.crypto_reading: spot ETF
+approvals and big fund flows, hacks, regulators, country bans, exchange listings, companies buying for a treasury)
+plus FinBERT; the price model learned from stocks, so it is never used for them.
 """
 
 from __future__ import annotations
@@ -25,7 +29,8 @@ from ..ai.keywords import BROKERS, PERSON_ALIASES, PRIVATE_EQUITY
 from ..ai.prefilter import Candidate, PrefilterResult
 from ..ai.tickers import TickerTable
 from ..sources.base import NewsItem
-from .events import Reading, ascii_fold, find_spans, macro_reading, read_events
+from ..trading import crypto
+from .events import Reading, ascii_fold, crypto_reading, find_spans, macro_reading, read_events
 from .model import PriceModel, SampleFeatures
 from .sentiment import SentimentScores, SentimentService
 from .text import Target, analysable_body, mask_company, mention_for, relevance, target_text
@@ -93,14 +98,21 @@ def readings_for(item: NewsItem, targets: list[tuple[Candidate, Target]], table:
     text = (body if item.kind == "transcript" else f"{item.title}\n{body[:3000]}")
     folded = ascii_fold(text)
     terms = {i: mention_for(c, table).terms for i, (c, _t) in enumerate(targets)}
-    spans = {i: find_spans(folded, c.symbol, terms[i]) for i, (c, _t) in enumerate(targets)}
-    if len(targets) == 1 and not spans[0] and targets[0][0].why == "tagged by source":
-        spans[0] = [(0, 0)]  # the source says the item is about this company: read it as the subject
+    coins = {i for i, (c, _t) in enumerate(targets) if crypto.is_crypto(c.symbol)}
+    # crypto pairs have their own rules: the stock rules only see the companies (as they did before crypto)
+    spans = {i: find_spans(folded, c.symbol, terms[i]) for i, (c, _t) in enumerate(targets) if i not in coins}
+    stocks = [i for i in range(len(targets)) if i not in coins]
+    if len(stocks) == 1 and not spans[stocks[0]] and targets[stocks[0]][0].why == "tagged by source":
+        spans[stocks[0]] = [(0, 0)]  # the source says the item is about this company: read it as the subject
     actors = {i: ("analyst", "target", "guidance") if c.symbol in BROKERS else ("mna",) if c.symbol in PRIVATE_EQUITY else ()
-              for i, (c, _t) in enumerate(targets)}
+              for i, (c, _t) in enumerate(targets) if i not in coins}
     readings = read_events(folded, spans, url=item.url, actors=actors)
+    companies = [(targets[i][0].symbol, terms[i]) for i in stocks]
     out = []
     for i, (cand, _t) in enumerate(targets):
+        if i in coins:
+            out.append(crypto_reading(text, crypto.terms(cand.symbol), companies))
+            continue
         r = readings[i]
         if cand.why.startswith("country:"):
             r = macro_reading(text)
@@ -259,20 +271,23 @@ class LocalMLEngine:
         p_up = pm.predict_up(feats) if pm is not None else None
         horizon = int(pm.meta.get("horizon_minutes", 60)) if pm is not None else 60
         cap_reason = self.sentiment_cap_reason() if pm is None else ""
+        coins = {c.symbol for c, _t in targets if crypto.is_crypto(c.symbol)}
+        coin_cap = (cap_reason if pm is None else self.sentiment_cap_reason()) if coins else ""
         buy = self.ctx.config.settings.trading.buy_threshold
 
         signals, details = [], []
         for i, ((cand, target), s, f, rd) in enumerate(zip(targets, scores, feats, readings, strict=True)):
             info = table.get(cand.symbol)
             name = info.name if info else cand.symbol
-            short = _short_name(name, cand.symbol)
+            coin = cand.symbol in coins
+            short = crypto.display_name(cand.symbol, name) if coin else _short_name(name, cand.symbol)
             rel = f.relevance
             why_neutral = ""
-            review = cap_reason
+            review = coin_cap if coin else cap_reason  # the price model learned from stocks: never for crypto
             label = s.label
             p_dir = s.positive if label == "positive" else s.negative if label == "negative" else s.neutral
             fin = {"positive": 1, "negative": -1}.get(label, 0)
-            if p_up is not None:
+            if p_up is not None and not coin:
                 p = float(p_up[i])
                 conf = round(100 * max(p, 1 - p))
                 direction = "neutral" if conf < MODEL_NEUTRAL_BELOW else ("bullish" if p >= 0.5 else "bearish")
@@ -335,7 +350,7 @@ class LocalMLEngine:
                 "bull_case": _bull(s, p, horizon, rd), "bear_case": _bear(s, p, horizon, rd),
                 "direction": direction, "confidence": conf,
                 "time_sensitivity": ev.horizon if ev else "hours",
-                "reasoning": (_reasoning(short, s, p, horizon, target, rd)
+                "reasoning": (_reasoning(short, s, p, horizon, target, rd, coin)
                               + (f" Sent for review: {review}." if capped else ""))[:400],
                 "event": rd.label if ev else "", "flags": rd.flags if rd is not None else [],
             })
@@ -362,7 +377,7 @@ _FLAG_NOTES = {"unconfirmed": "Not confirmed yet (a report or rumour) - confiden
 
 
 def _reasoning(short: str, s: SentimentScores, p: float | None, horizon: int, t: Target,
-               rd: Reading | None = None) -> str:
+               rd: Reading | None = None, coin: bool = False) -> str:
     where = "" if t.in_headline else " (named in the article, not the headline)"
     ev = rd.event if rd is not None and rd.direction else None
     lead = ""
@@ -374,6 +389,8 @@ def _reasoning(short: str, s: SentimentScores, p: float | None, horizon: int, t:
         text += "".join(f" {_FLAG_NOTES[f]}" for f in rd.flags if f in _FLAG_NOTES)
     if p is not None:
         text += f" Price model: {_pct(p)}% chance it beats the S&P 500 over the next {horizon} min."
+    elif coin:
+        text += " Crypto: the crypto news rules and the wording (the price model is for stocks)."
     else:
         text += " Sentiment only (no price model in use)."
     return text[:400]

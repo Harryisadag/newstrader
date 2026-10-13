@@ -357,6 +357,31 @@ MIGRATIONS: list[str] = [
     ALTER TABLE signals ADD COLUMN chart_score REAL;
     ALTER TABLE signals ADD COLUMN chart_adjust INTEGER;
     """,
+    # 13 - crypto exits: Alpaca has no bracket orders for crypto, so each crypto buy gets an exit plan - a safety stop
+    # held at Alpaca (stop_order_id) and a take-profit NewsTrader watches itself. status: pending (waiting for the
+    # buy to fill) | active | closing (a sell was sent) | closed
+    """
+    CREATE TABLE crypto_exits (
+        id INTEGER PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        mode TEXT,
+        signal_id INTEGER,
+        entry_order_id TEXT,
+        entry_price REAL,
+        qty REAL,
+        stop_price REAL,
+        stop_limit_price REAL,
+        take_profit_price REAL,
+        stop_order_id TEXT,
+        exit_order_id TEXT,
+        status TEXT NOT NULL,
+        reason TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        closed_at TEXT
+    );
+    CREATE INDEX idx_crypto_exits_status ON crypto_exits(status, symbol);
+    """,
 ]
 
 

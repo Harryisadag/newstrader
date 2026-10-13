@@ -1,5 +1,6 @@
 """Records the stock price when each signal fired, then again +5 minutes, +1 hour and +1 trading day later,
-so the Performance tab can show whether the AI's calls actually worked.
+so the Performance tab can show whether the AI's calls actually worked. Crypto trades every day around the clock,
+so its "next day" is simply 24 hours later (prices from Alpaca's crypto bars).
 
 Works from the database, so it catches up after a restart (missed checkpoints are filled from history).
 """
@@ -13,6 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from ..context import AppContext
 from ..db import iso, parse_iso, utcnow
+from ..trading import crypto
 from .prices import directional_return, fallback_next_day, next_session_same_time, price_at
 
 log = logging.getLogger(__name__)
@@ -85,9 +87,12 @@ class PerformanceTracker:
         n = 0
         for r in rows:
             t0 = parse_iso(r["created_at"]) or now
-            sessions = await self._sessions(broker, t0)
-            due_1d = next_session_same_time(t0, sessions) if sessions else None
-            due_1d = due_1d or fallback_next_day(t0)
+            if crypto.is_crypto(r["ticker"]):
+                due_1d = t0 + timedelta(days=1)
+            else:
+                sessions = await self._sessions(broker, t0)
+                due_1d = next_session_same_time(t0, sessions) if sessions else None
+                due_1d = due_1d or fallback_next_day(t0)
             if now - t0 < timedelta(minutes=2):
                 p0 = await asyncio.to_thread(broker.latest_price, r["ticker"])
             else:

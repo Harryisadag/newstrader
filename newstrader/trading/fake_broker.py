@@ -10,6 +10,8 @@ import math
 import random
 from datetime import UTC, date, datetime, timedelta
 
+from . import crypto
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -26,6 +28,7 @@ DEMO_MARKET = {
     "INDA": (53.1, 0.5), "EWZ": (29.2, 1.1), "EZU": (59.8, -0.7), "EWY": (74.9, 0.8),
     "AAPL": (233.1, 0.8), "NVDA": (176.9, -1.7), "TSLA": (262.5, 7.0), "MSFT": (510.0, 0.3),
     "AMD": (164.8, 3.2), "PLTR": (179.6, -4.1), "AMZN": (221.3, 0.6), "META": (709.4, -0.2),
+    "BTC/USD": (61234.5, 2.1), "ETH/USD": (2987.4, -1.3), "SOL/USD": (151.2, 4.4),  # crypto (Settings -> Crypto)
 }
 DEMO_SPIKE = "TSLA"  # jumps ~5% in the last few minutes on heavy volume
 
@@ -56,6 +59,7 @@ def demo_bars(end: datetime, minutes: int = 60, seed: int = 7) -> tuple[dict[str
 class FakeBroker:
     paper = True
     mode = "paper"
+    supports_crypto = True  # crypto pairs ("BTC/USD") in `prices` trade 24/7 like Alpaca's paper crypto
 
     def __init__(self, equity: float = 100_000.0, prices: dict[str, float] | None = None, market_open: bool = True):
         self.cash = equity
@@ -76,6 +80,9 @@ class FakeBroker:
         self.bar_calls: list[tuple[str, tuple, datetime, datetime]] = []  # (timeframe, symbols, start, end)
         self.prev_close: dict[str, float] = {}  # symbol -> yesterday's close (snapshots / movers)
         self.screener_error: str | None = None  # set to make movers() / most_actives() fail
+        self.crypto_info: dict[str, dict] = {}  # extra asset fields per pair (min_order_size, price_increment...)
+        self.crypto_fee_pct = 0.0  # Alpaca takes its crypto fee in coins, so the position is a little smaller
+        self.hold_crypto_fills = False  # True: crypto buys wait until fill_order() (like a slow fill)
 
     @classmethod
     def demo(cls) -> FakeBroker:
@@ -98,7 +105,8 @@ class FakeBroker:
         return {"account_number": "PA-FAKE", "status": "ACTIVE", "equity": eq, "last_equity": self.last_equity,
                 "day_pl": eq - self.last_equity,
                 "day_pl_pct": (eq - self.last_equity) / self.last_equity * 100 if self.last_equity else 0,
-                "cash": self.cash, "buying_power": max(self.cash, 0) * 2, "long_market_value": 0,
+                "cash": self.cash, "buying_power": max(self.cash, 0) * 2,
+                "non_marginable_buying_power": max(self.cash, 0), "long_market_value": 0,
                 "short_market_value": 0, "shorting_enabled": self.shorting_enabled,
                 "trading_blocked": self.trading_blocked, "pattern_day_trader": False, "daytrade_count": 0}
 
@@ -121,7 +129,10 @@ class FakeBroker:
             price = self.prices.get(s, p["avg"])
             mv = p["qty"] * price
             upl = (price - p["avg"]) * p["qty"]
-            out.append({"symbol": s, "qty": p["qty"], "qty_available": p["qty"], "side": "long" if p["qty"] > 0 else "short",
+            held = sum(o["qty"] or 0 for o in self._orders if o["symbol"] == s and o["side"] == "sell"
+                       and o["status"] in ("new", "accepted", "held") and o.get("parent") is None)
+            out.append({"symbol": s, "asset_class": "crypto" if crypto.is_crypto(s) else "us_equity",
+                        "qty": p["qty"], "qty_available": p["qty"] - held, "side": "long" if p["qty"] > 0 else "short",
                         "avg_entry_price": p["avg"], "current_price": price, "market_value": mv,
                         "cost_basis": p["avg"] * p["qty"], "unrealized_pl": upl,
                         "unrealized_plpc": upl / abs(p["avg"] * p["qty"]) * 100 if p["qty"] else 0,
@@ -145,11 +156,22 @@ class FakeBroker:
             return self.assets[symbol]
         if symbol not in self.prices:
             return None
+        if crypto.is_crypto(symbol):
+            return self._crypto_asset(symbol)
         return {"symbol": symbol, "name": symbol, "exchange": "NASDAQ", "tradable": True, "shortable": True,
                 "easy_to_borrow": True, "fractionable": True, "status": "active"}
 
     def all_assets(self) -> list[dict]:
-        return [self.asset(s) for s in self.prices]
+        return [self.asset(s) for s in self.prices if not crypto.is_crypto(s)]
+
+    def _crypto_asset(self, symbol: str) -> dict:
+        return {"symbol": symbol, "name": crypto.display_name(symbol), "exchange": crypto.EXCHANGE, "tradable": True,
+                "shortable": False, "easy_to_borrow": False, "fractionable": True, "status": "active",
+                "min_order_size": 0.0001, "min_trade_increment": 1e-9, "price_increment": 0.01,
+                **self.crypto_info.get(symbol, {})}
+
+    def crypto_assets(self) -> list[dict]:
+        return [self.assets.get(s) or self._crypto_asset(s) for s in self.prices if crypto.is_crypto(s)]
 
     def portfolio_history(self, period: str = "1M", timeframe: str | None = None) -> dict:
         now = datetime.now(UTC)
@@ -291,6 +313,70 @@ class FakeBroker:
         self._fill(symbol, side, qty, price)
         return dict(order)
 
+    def _order_row(self, symbol, side, qty, order_type, status, client_order_id, **extra) -> dict:
+        now = _now()
+        return {"id": f"fake-{next(self._ids)}", "client_order_id": client_order_id, "symbol": symbol, "side": side,
+                "qty": qty, "notional": None, "filled_qty": 0, "filled_avg_price": None, "order_type": order_type,
+                "order_class": "simple", "status": status, "limit_price": None, "stop_price": None,
+                "time_in_force": "gtc", "submitted_at": now, "filled_at": None, "updated_at": now, "legs": [],
+                "parent": None, **extra}
+
+    def submit_crypto_buy(self, symbol: str, notional: float, client_order_id: str) -> dict:
+        self.calls.append(("submit_crypto_buy", symbol, round(notional, 2)))
+        if self.fail_next_submit:
+            msg, self.fail_next_submit = self.fail_next_submit, None
+            raise RuntimeError(msg)
+        order = self._order_row(symbol, "buy", None, "market", "accepted", client_order_id, notional=round(notional, 2))
+        self._orders.append(order)
+        if not self.hold_crypto_fills:
+            self.fill_order(order["id"])
+        return dict(order)
+
+    def fill_order(self, order_id: str, price: float | None = None) -> dict:
+        """Fill an open order now at `price` (default: the current price)."""
+        o = next(x for x in self._orders if x["id"] == order_id)
+        price = price or self.prices[o["symbol"]]
+        qty = o["qty"] if o["qty"] else round(o["notional"] / price, 9)
+        o.update(status="filled", filled_qty=qty, filled_avg_price=price, filled_at=_now(), updated_at=_now())
+        if o["side"] == "buy" and crypto.is_crypto(o["symbol"]):
+            received = round(qty * (1 - self.crypto_fee_pct / 100), 9)
+            self._fill(o["symbol"], "buy", received, price)
+            self.cash -= (qty - received) * price
+        else:
+            self._fill(o["symbol"], o["side"], qty, price)
+        return dict(o)
+
+    def submit_crypto_stop(self, symbol: str, qty: float, stop_price: float, limit_price: float,
+                           client_order_id: str) -> dict:
+        self.calls.append(("submit_crypto_stop", symbol, qty, stop_price, limit_price))
+        if self.fail_next_submit:
+            msg, self.fail_next_submit = self.fail_next_submit, None
+            raise RuntimeError(msg)
+        pos = next((p for p in self.positions() if p["symbol"] == symbol), None)
+        if pos is None or qty > (pos["qty_available"] or 0) + 1e-12:
+            raise RuntimeError(f"insufficient qty available for order (requested: {qty})")
+        order = self._order_row(symbol, "sell", qty, "stop_limit", "new", client_order_id, stop_price=stop_price,
+                                limit_price=limit_price)
+        self._orders.append(order)
+        return dict(order)
+
+    def check_stops(self) -> int:
+        """Fill the stop-limit sells the current prices reach (between the limit and the stop)."""
+        n = 0
+        for o in self._orders:
+            if o["order_type"] == "stop_limit" and o["status"] in ("new", "accepted", "held"):
+                price = self.prices.get(o["symbol"])
+                if price is not None and o["limit_price"] <= price <= o["stop_price"]:
+                    self.fill_order(o["id"], price)
+                    n += 1
+        return n
+
+    def order(self, order_id: str) -> dict:
+        o = next((x for x in self._orders if x["id"] == order_id), None)
+        if o is None:
+            raise RuntimeError(f"order {order_id} not found")
+        return dict(o)
+
     def cancel_order(self, order_id: str) -> None:
         for o in self._orders:
             if o["id"] == order_id and o["status"] not in ("filled", "canceled"):
@@ -322,7 +408,7 @@ class FakeBroker:
         side = "sell" if pos["qty"] > 0 else "buy"
         price = self.prices[symbol]
         oid = f"fake-{next(self._ids)}"
-        order = {"id": oid, "client_order_id": f"close-{oid}", "symbol": symbol, "side": side, "qty": qty,
+        order = {"id": oid, "client_order_id": f"close-{oid}", "symbol": symbol, "side": side, "qty": qty, "notional": None,
                  "filled_qty": qty, "filled_avg_price": price, "order_type": "market", "order_class": "simple",
                  "status": "filled", "limit_price": None, "stop_price": None, "time_in_force": "day",
                  "submitted_at": _now(), "filled_at": _now(), "updated_at": _now(), "legs": [], "parent": None}

@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .llm.catalog import MODELS_BY_KEY, SERVER_BUILDS
 from .sources.presets import PRESET_URL_FIXES, default_sources, old_poll_seconds
+from .trading import crypto
 
 log = logging.getLogger(__name__)
 
@@ -410,6 +411,26 @@ class ChartSettings(_Model):
     signals: Literal["off", "watch", "review"] = "watch"
 
 
+class CryptoSettings(_Model):
+    """Crypto (paper) through Alpaca. It trades 24/7 and moves fast: every buy gets a safety stop held at Alpaca, and
+    a take-profit NewsTrader watches while it is open. Crypto is never shorted, and needs an Alpaca account (the
+    built-in simulator has no crypto prices)."""
+
+    enabled: bool = False
+    # coins NewsTrader may trade (only ones Alpaca lists as tradable are used)
+    symbols: list[str] = Field(default_factory=lambda: list(crypto.DEFAULT_SYMBOLS))
+    max_per_trade: float = Field(500.0, gt=0, le=1_000_000)
+    stop_loss_pct: float = Field(3.0, gt=0, le=50)
+    take_profit_pct: float = Field(6.0, gt=0, le=200)
+    # False = crypto news signals wait for your approval instead of being traded automatically
+    trade_on_news: bool = True
+
+    @field_validator("symbols", mode="before")
+    @classmethod
+    def _symbols(cls, v: Any) -> list[str]:
+        return crypto.parse_symbols(v)
+
+
 class UISettings(_Model):
     # Times in the app: "local" = this computer's time zone, "market" = New York (ET), "utc"
     time_zone: Literal["local", "market", "utc"] = "local"
@@ -418,7 +439,7 @@ class UISettings(_Model):
 
 
 class AppSettings(_Model):
-    schema_version: int = 4
+    schema_version: int = 5
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
@@ -427,6 +448,7 @@ class AppSettings(_Model):
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
     chart: ChartSettings = Field(default_factory=ChartSettings)
+    crypto: CryptoSettings = Field(default_factory=CryptoSettings)
     ui: UISettings = Field(default_factory=UISettings)
     sources: list[SourceConfig] = Field(default_factory=lambda: [SourceConfig(**s) for s in default_sources()])
 
@@ -488,6 +510,14 @@ def _add_pro_ai(raw: dict, settings: AppSettings) -> AppSettings:
     dump = settings.model_dump(mode="json")
     dump["ai"]["pro_ai"] = ProAISettings().model_dump(mode="json")
     return AppSettings.model_validate({**dump, "schema_version": 4})
+
+
+def _add_crypto(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before crypto (schema 4): add the crypto section, switched off, whatever an older file says -
+    crypto is only ever turned on in Settings -> Crypto."""
+    dump = settings.model_dump(mode="json")
+    dump["crypto"] = CryptoSettings().model_dump(mode="json")
+    return AppSettings.model_validate({**dump, "schema_version": 5})
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
@@ -659,6 +689,9 @@ class ConfigStore:
                 self.needs_save = True
             if version < 4:
                 settings = _add_pro_ai(raw, settings)
+                self.needs_save = True
+            if version < 5:
+                settings = _add_crypto(raw, settings)
                 self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]

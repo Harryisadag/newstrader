@@ -18,7 +18,19 @@ DIRECTIONS = ("bullish", "bearish", "neutral")
 TIME_SENSITIVITY = ("immediate", "hours", "days", "weeks")
 
 
-def system_prompt(max_signals: int) -> str:
+def _crypto_rule(pairs) -> str:
+    if not pairs:
+        return "- Only US-listed stocks and ETFs. Never crypto, options, futures, forex, bonds or private companies."
+    return (f"""- Only US-listed stocks and ETFs, plus these crypto pairs: {', '.join(pairs)} (write them exactly like
+  that). Never other crypto, options, futures, forex, bonds or private companies.
+- A crypto pair only when the news is about the coin itself: a spot ETF approval or big ETF inflows / outflows, an
+  exchange hack, a regulator's lawsuit or approval, a country banning it, a big exchange listing or delisting it, or a
+  company buying it for its treasury. A company that only mentions a coin (a bitcoin miner's results, a firm holding
+  some) is news about that company, not the coin.""")
+
+
+def system_prompt(max_signals: int, crypto_pairs=()) -> str:
+    """crypto_pairs: the crypto pairs that may be named (Settings -> Crypto), e.g. ["BTC/USD"]."""
     return f"""You are the analysis engine inside NewsTrader, a tool that paper-trades US stocks on breaking news.
 You receive one news item at a time: a headline or article, a social media post, or an excerpt of a live TV
 transcript. Decide whether it is likely to move specific US-listed stocks over the next minutes to days, and
@@ -31,7 +43,7 @@ For each stock the news materially affects (at most {max_signals}), work in this
 3. Only after weighing both: direction, confidence, time_sensitivity and a one-sentence reasoning.
 
 Rules
-- Only US-listed stocks and ETFs. Never crypto, options, futures, forex, bonds or private companies.
+{_crypto_rule(sorted(crypto_pairs or ()))}
 - ticker: the exact US ticker symbol (e.g. AAPL, GOOGL, BRK.B). Prefer the candidate tickers you are given when
   they fit; you may name another US-listed ticker when the news is clearly about it. Never invent a ticker.
 - confidence (integer 0-100) = how likely the stock makes a meaningful move in that direction because of this

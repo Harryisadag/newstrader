@@ -1,7 +1,8 @@
 """Check every Claude response before anything can act on it.
 
 A signal is only accepted if the JSON is valid, the ticker exists in the US-listed ticker table and is
-tradable on Alpaca, confidence is a whole number from 0 to 100, and every field has an allowed value.
+tradable on Alpaca (or is a crypto pair in your crypto list, with crypto on), confidence is a whole number from 0 to
+100, and every field has an allowed value.
 Anything else is rejected with a reason (shown in Logs -> Rejected AI responses).
 """
 
@@ -12,6 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..trading import crypto
 from .prompts import DIRECTIONS, TIME_SENSITIVITY
 from .tickers import TickerTable
 
@@ -107,12 +109,19 @@ def validate_response(raw: str, tickers: TickerTable, max_signals: int = 3) -> V
             res.problems.append(f"{label}: not an object")
             continue
         ticker = str(item.get("ticker") or "").strip().upper().lstrip("$")
+        coin = crypto.is_crypto(ticker)
+        if coin:
+            ticker = crypto.normalize(ticker)  # "BTCUSD" -> "BTC/USD"
         label = f"{label} ({ticker or 'no ticker'})"
         if not ticker:
             res.problems.append(f"{label}: missing ticker")
             continue
-        if not _TICKER_RE.match(ticker):
+        if not coin and not _TICKER_RE.match(ticker):
             res.problems.append(f"{label}: '{ticker}' isn't a valid ticker format")
+            continue
+        if coin and ticker not in tickers.crypto_symbols:
+            res.problems.append(f"{label}: {ticker} isn't in your crypto list, or crypto trading is off "
+                                "(Settings -> Crypto)")
             continue
         info = tickers.get(ticker)
         if info is None:

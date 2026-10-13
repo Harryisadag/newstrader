@@ -9,7 +9,7 @@ from ..deps import bad_request, get_ctx
 router = APIRouter(tags=["chart"])
 
 
-@router.get("/chart/{symbol}")
+@router.get("/chart/{symbol:path}")  # crypto pairs have a slash ("BTC/USD")
 async def chart_card(symbol: str, ctx: AppContext = Depends(get_ctx)):
     """One stock's chart for the Market tab: the latest session's price and VWAP, the indicator values, the patterns
     showing now (each explained in plain English), nearby support / resistance, the summary and any chart signal."""

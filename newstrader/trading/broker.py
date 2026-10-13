@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from ..state import MARKET_TZ, AppState
+from . import crypto
 from .live_guard import AlpacaCredentials, assert_mode_allowed
 
 log = logging.getLogger(__name__)
@@ -55,9 +56,10 @@ def order_to_dict(o: Any) -> dict:
     return {
         "id": str(o.id),
         "client_order_id": o.client_order_id,
-        "symbol": o.symbol,
+        "symbol": crypto.normalize(o.symbol, getattr(o, "asset_class", None)),
         "side": _enum(o.side),
         "qty": _f(o.qty),
+        "notional": _f(getattr(o, "notional", None)),
         "filled_qty": _f(o.filled_qty),
         "filled_avg_price": _f(o.filled_avg_price),
         "order_type": _enum(o.order_type or o.type),
@@ -75,8 +77,10 @@ def order_to_dict(o: Any) -> dict:
 
 
 def position_to_dict(p: Any) -> dict:
+    symbol = crypto.normalize(p.symbol, getattr(p, "asset_class", None))
     return {
-        "symbol": p.symbol,
+        "symbol": symbol,
+        "asset_class": "crypto" if crypto.is_crypto(symbol) else "us_equity",
         "qty": _f(p.qty),
         "qty_available": _f(getattr(p, "qty_available", None)),
         "side": _enum(p.side),
@@ -126,6 +130,45 @@ def snapshot_to_dict(snap: Any) -> dict:
             "time": _iso(trade_time), "minute_bar": minute, "daily_bar": daily, "prev_daily_bar": prev}
 
 
+def crypto_snapshot_to_dict(snap: Any) -> dict:
+    """One Alpaca crypto snapshot as a plain dict. Crypto days are UTC days, so the change is today's (UTC) move from
+    yesterday's daily close; the market monitor works out the change over 24 hours itself."""
+    trade = getattr(snap, "latest_trade", None)
+    minute, daily, prev = (_bar(getattr(snap, "minute_bar", None)), _bar(getattr(snap, "daily_bar", None)),
+                           _bar(getattr(snap, "previous_daily_bar", None)))
+    price = _f(getattr(trade, "price", None)) if trade is not None else None
+    price = price or (minute or {}).get("c") or (daily or {}).get("c")
+    prev_close = (prev or {}).get("c")
+    change = (price - prev_close) / prev_close * 100 if price and prev_close else None
+    return {"price": price, "prev_close": prev_close, "change_pct": change, "day_volume": (daily or {}).get("v"),
+            "time": _iso(getattr(trade, "timestamp", None)) if trade is not None else None, "minute_bar": minute,
+            "daily_bar": daily, "prev_daily_bar": prev}
+
+
+def crypto_asset_to_dict(a: Any) -> dict:
+    symbol = crypto.normalize(a.symbol, "crypto")
+    return {"symbol": symbol, "name": crypto.display_name(symbol, a.name or ""), "exchange": crypto.EXCHANGE,
+            "tradable": bool(a.tradable), "shortable": False, "easy_to_borrow": False, "fractionable": True,
+            "status": _enum(a.status), "min_order_size": _f(getattr(a, "min_order_size", None)),
+            "min_trade_increment": _f(getattr(a, "min_trade_increment", None)),
+            "price_increment": _f(getattr(a, "price_increment", None))}
+
+
+def _timeframe(timeframe: str):
+    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
+    return {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute),
+            "1Hour": TimeFrame(1, TimeFrameUnit.Hour), "1Day": TimeFrame(1, TimeFrameUnit.Day)}[timeframe]
+
+
+def _bar_rows(rows) -> list[dict]:
+    return [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
+             "v": _f(b.volume)} for b in rows or []]
+
+
+CRYPTO_ASSETS_FRESH = 3600  # seconds the crypto asset list is reused
+
+
 def _market_date(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
@@ -145,7 +188,10 @@ def blocked_reason(a) -> str:
     return ""
 
 class Broker:
-    """Real Alpaca connection (paper by default; live only through live_guard)."""
+    """Real Alpaca connection (paper by default; live only through live_guard). Crypto pairs ("BTC/USD") go to
+    Alpaca's crypto market data and are traded 24/7 with plain orders (Alpaca has no bracket orders for crypto)."""
+
+    supports_crypto = True
 
     def __init__(self, creds: AlpacaCredentials, state: AppState, data_feed: str = "iex"):
         assert_mode_allowed(state, creds.paper)
@@ -160,6 +206,8 @@ class Broker:
         _patient(self.data)
         self._news = None
         self._screener = None
+        self._crypto = None
+        self._crypto_assets: tuple[float, list[dict]] | None = None
 
     @property
     def mode(self) -> str:
@@ -180,6 +228,8 @@ class Broker:
             "day_pl_pct": (day_pl / last_equity * 100) if last_equity else 0.0,
             "cash": _f(a.cash),
             "buying_power": _f(a.buying_power),
+            # crypto can't be bought on margin: Alpaca uses this for crypto buys
+            "non_marginable_buying_power": _f(getattr(a, "non_marginable_buying_power", None)),
             "long_market_value": _f(a.long_market_value),
             "short_market_value": _f(a.short_market_value),
             "shorting_enabled": bool(a.shorting_enabled),
@@ -221,6 +271,12 @@ class Broker:
         return [order_to_dict(o) for o in self.trading.get_orders(req)]
 
     def asset(self, symbol: str) -> dict | None:
+        if crypto.is_crypto(symbol):
+            sym = crypto.normalize(symbol)
+            try:
+                return next((a for a in self.crypto_assets() if a["symbol"] == sym), None)
+            except Exception:
+                return None
         try:
             a = self.trading.get_asset(symbol)
         except Exception:
@@ -239,6 +295,19 @@ class Broker:
                  "shortable": bool(a.shortable), "easy_to_borrow": bool(a.easy_to_borrow),
                  "fractionable": bool(a.fractionable)} for a in assets]
 
+    def crypto_assets(self) -> list[dict]:
+        """Every active crypto pair Alpaca lists (reused for an hour)."""
+        cached = self._crypto_assets
+        if cached is not None and time.monotonic() - cached[0] < CRYPTO_ASSETS_FRESH:
+            return cached[1]
+        from alpaca.trading.enums import AssetClass, AssetStatus
+        from alpaca.trading.requests import GetAssetsRequest
+
+        assets = self.trading.get_all_assets(GetAssetsRequest(status=AssetStatus.ACTIVE, asset_class=AssetClass.CRYPTO))
+        rows = [crypto_asset_to_dict(a) for a in assets]
+        self._crypto_assets = (time.monotonic(), rows)
+        return rows
+
     def portfolio_history(self, period: str = "1M", timeframe: str | None = None) -> dict:
         from alpaca.trading.requests import GetPortfolioHistoryRequest
 
@@ -255,7 +324,50 @@ class Broker:
 
         return DataFeed.SIP if self.data_feed == "sip" else DataFeed.IEX
 
+    def _crypto_client(self):
+        from alpaca.data.historical import CryptoHistoricalDataClient
+
+        if self._crypto is None:
+            self._crypto = CryptoHistoricalDataClient(self.creds.api_key, self.creds.secret_key)
+            _patient(self._crypto)
+        return self._crypto
+
+    def _crypto_latest_price(self, symbol: str) -> float | None:
+        from alpaca.data.requests import CryptoLatestQuoteRequest, CryptoLatestTradeRequest
+
+        sym = crypto.normalize(symbol)
+        client = self._crypto_client()
+        try:
+            trades = client.get_crypto_latest_trade(CryptoLatestTradeRequest(symbol_or_symbols=sym))
+            t = trades.get(sym) if isinstance(trades, dict) else None
+            if t is not None and _f(t.price):
+                return _f(t.price)
+        except Exception as exc:
+            log.debug("latest crypto trade failed for %s: %s", sym, exc)
+        try:
+            quotes = client.get_crypto_latest_quote(CryptoLatestQuoteRequest(symbol_or_symbols=sym))
+            q = quotes.get(sym) if isinstance(quotes, dict) else None
+            if q is not None:
+                bid, ask = _f(q.bid_price) or 0, _f(q.ask_price) or 0
+                if bid and ask:
+                    return (bid + ask) / 2
+                return ask or bid or None
+        except Exception as exc:
+            log.debug("latest crypto quote failed for %s: %s", sym, exc)
+        return None
+
+    def _crypto_bars(self, symbols: list[str], start: datetime, end: datetime, timeframe: str) -> dict[str, list[dict]]:
+        from alpaca.data.requests import CryptoBarsRequest
+
+        wanted = [crypto.normalize(s) for s in symbols]
+        res = self._crypto_client().get_crypto_bars(CryptoBarsRequest(symbol_or_symbols=wanted, start=start, end=end,
+                                                                      timeframe=_timeframe(timeframe)))
+        data = res.data if hasattr(res, "data") else {}
+        return {crypto.normalize(sym): _bar_rows(rows) for sym, rows in data.items()}
+
     def latest_price(self, symbol: str) -> float | None:
+        if crypto.is_crypto(symbol):
+            return self._crypto_latest_price(symbol)
         from alpaca.data.requests import StockLatestQuoteRequest, StockLatestTradeRequest
 
         try:
@@ -278,16 +390,14 @@ class Broker:
         return None
 
     def bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min") -> list[dict]:
+        if crypto.is_crypto(symbol):
+            return self._crypto_bars([symbol], start, end, timeframe).get(crypto.normalize(symbol), [])
         from alpaca.data.requests import StockBarsRequest
-        from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
-        tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute),
-              "1Hour": TimeFrame(1, TimeFrameUnit.Hour), "1Day": TimeFrame(1, TimeFrameUnit.Day)}[timeframe]
         res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=symbol, start=start, end=end,
-                                                        timeframe=tf, feed=self._feed()))
+                                                        timeframe=_timeframe(timeframe), feed=self._feed()))
         rows = res.data.get(symbol, []) if hasattr(res, "data") else []
-        return [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
-                 "v": _f(b.volume)} for b in rows]
+        return _bar_rows(rows)
 
     def bars_multi(self, symbols: list[str], start: datetime, end: datetime, timeframe: str = "1Min",
                    feed: str | None = None) -> dict[str, list[dict]]:
@@ -295,19 +405,22 @@ class Broker:
         by the market monitor.
 
         feed="sip" asks for the full consolidated tape, which free accounts may use for history that ended more
-        than 15 minutes ago (denser than IEX for smaller stocks)."""
+        than 15 minutes ago (denser than IEX for smaller stocks). Crypto pairs come from the crypto data (24/7)."""
         from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
-        from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
-        tf = {"1Min": TimeFrame(1, TimeFrameUnit.Minute), "5Min": TimeFrame(5, TimeFrameUnit.Minute),
-              "1Hour": TimeFrame(1, TimeFrameUnit.Hour), "1Day": TimeFrame(1, TimeFrameUnit.Day)}[timeframe]
-        chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
-        res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=list(symbols), start=start, end=end,
-                                                        timeframe=tf, feed=chosen))
-        data = res.data if hasattr(res, "data") else {}
-        return {sym: [{"t": _iso(b.timestamp), "o": _f(b.open), "h": _f(b.high), "l": _f(b.low), "c": _f(b.close),
-                       "v": _f(b.volume)} for b in rows] for sym, rows in data.items()}
+        coins = [s for s in symbols if crypto.is_crypto(s)]
+        stocks = [s for s in symbols if not crypto.is_crypto(s)]
+        out: dict[str, list[dict]] = {}
+        if stocks:
+            chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
+            res = self.data.get_stock_bars(StockBarsRequest(symbol_or_symbols=stocks, start=start, end=end,
+                                                            timeframe=_timeframe(timeframe), feed=chosen))
+            data = res.data if hasattr(res, "data") else {}
+            out.update({sym: _bar_rows(rows) for sym, rows in data.items()})
+        if coins:
+            out.update(self._crypto_bars(coins, start, end, timeframe))
+        return out
 
     def snapshots(self, symbols: list[str], feed: str | None = None) -> dict[str, dict]:
         """Latest price and today's / the previous day's bars for many symbols (one request per 100 symbols).
@@ -318,8 +431,17 @@ class Broker:
         from alpaca.data.requests import StockSnapshotRequest
 
         chosen = {"sip": DataFeed.SIP, "iex": DataFeed.IEX}.get(feed or "", None) or self._feed()
-        wanted = list(dict.fromkeys(s.upper() for s in symbols if s))
+        wanted = list(dict.fromkeys(crypto.normalize(s) for s in symbols if s))
+        coins = [s for s in wanted if crypto.is_crypto(s)]
+        wanted = [s for s in wanted if not crypto.is_crypto(s)]
         out: dict[str, dict] = {}
+        if coins:
+            from alpaca.data.requests import CryptoSnapshotRequest
+
+            res = self._crypto_client().get_crypto_snapshot(CryptoSnapshotRequest(symbol_or_symbols=coins))
+            if isinstance(res, dict):
+                out.update({crypto.normalize(sym): crypto_snapshot_to_dict(snap) for sym, snap in res.items()
+                            if snap is not None})
         for i in range(0, len(wanted), SNAPSHOT_CHUNK):
             res = self.data.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=wanted[i:i + SNAPSHOT_CHUNK],
                                                                     feed=chosen))
@@ -395,11 +517,40 @@ class Broker:
         )
         return order_to_dict(self.trading.submit_order(req))
 
+    def submit_crypto_buy(self, symbol: str, notional: float, client_order_id: str) -> dict:
+        """Buy `notional` dollars of a coin at market (fractional; good until cancelled - crypto trades 24/7)."""
+        from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
+        from alpaca.trading.requests import MarketOrderRequest
+
+        req = MarketOrderRequest(symbol=crypto.normalize(symbol), notional=round(float(notional), 2),
+                                 side=OrderSide.BUY, type=OrderType.MARKET, time_in_force=TimeInForce.GTC,
+                                 client_order_id=client_order_id)
+        return order_to_dict(self.trading.submit_order(req))
+
+    def submit_crypto_stop(self, symbol: str, qty: float, stop_price: float, limit_price: float,
+                           client_order_id: str) -> dict:
+        """The safety stop for a crypto position: a stop-limit sell, good until cancelled, held at Alpaca (so it works
+        while NewsTrader is closed)."""
+        from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
+        from alpaca.trading.requests import StopLimitOrderRequest
+
+        req = StopLimitOrderRequest(symbol=crypto.normalize(symbol), qty=qty, side=OrderSide.SELL,
+                                    type=OrderType.STOP_LIMIT, time_in_force=TimeInForce.GTC, stop_price=stop_price,
+                                    limit_price=limit_price, client_order_id=client_order_id)
+        return order_to_dict(self.trading.submit_order(req))
+
+    def order(self, order_id: str) -> dict:
+        return order_to_dict(self.trading.get_order_by_id(order_id))
+
     def cancel_order(self, order_id: str) -> None:
         self.trading.cancel_order_by_id(order_id)
 
     def cancel_orders_for(self, symbol: str) -> int:
-        open_orders = self.orders("open", symbols=[symbol])
+        if crypto.is_crypto(symbol):  # filtered here: order symbols are "BTC/USD", positions "BTCUSD"
+            sym = crypto.normalize(symbol)
+            open_orders = [o for o in self.orders("open", limit=500) if o["symbol"] == sym]
+        else:
+            open_orders = self.orders("open", symbols=[symbol])
         n = 0
         for o in open_orders:
             try:
@@ -410,13 +561,15 @@ class Broker:
         return n
 
     def close_position(self, symbol: str, wait_seconds: float = 8.0) -> dict:
-        """Cancel the symbol's open orders (bracket legs hold the shares), then close at market."""
+        """Cancel the symbol's open orders (bracket legs and crypto safety stops hold the shares), then close at
+        market."""
         self.cancel_orders_for(symbol)
+        target = crypto.api_symbol(symbol) if crypto.is_crypto(symbol) else symbol
         deadline = time.time() + wait_seconds
         last_exc: Exception | None = None
         while time.time() < deadline:
             try:
-                return order_to_dict(self.trading.close_position(symbol))
+                return order_to_dict(self.trading.close_position(target))
             except Exception as exc:  # legs may still be cancelling
                 last_exc = exc
                 time.sleep(0.5)

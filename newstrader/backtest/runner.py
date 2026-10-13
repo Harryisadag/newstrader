@@ -169,7 +169,7 @@ class BacktestRunner:
             item.source_type = "backtest"
             if not item.title or item.published_at is None:
                 continue
-            pre = prefilter(item.text, pipeline.tickers, item.symbols, keyword_only)
+            pre = prefilter(item.text, pipeline.tickers, item.symbols, keyword_only, crypto=False)  # stocks only
             if pre.hit:
                 items.append((item, pre))
             if len(items) >= params.max_articles:

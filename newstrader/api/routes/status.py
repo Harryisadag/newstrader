@@ -55,6 +55,9 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     pro = ctx.service("pro_ai")
     if pro is not None:
         out["pro_ai"] = pro.summary()
+    exits = ctx.service("crypto_exits")
+    if exits is not None:
+        out["crypto"] = exits.summary()
     if not light:
         out["data_dir"] = str(paths.data_dir())
         out["env_file"] = str(paths.env_file())

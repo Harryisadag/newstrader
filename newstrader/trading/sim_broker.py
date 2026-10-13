@@ -47,6 +47,7 @@ class SimBroker:
     mode = "paper"  # never live: real money always goes through Alpaca and the live-trading lock
     kind = "simulator"
     has_news_history = False  # backtests / model training need Alpaca's historical news
+    supports_crypto = False  # crypto needs an Alpaca account (the free price data here has no crypto)
 
     def __init__(self, db: Database, data: FreeMarketData | None = None, starting_cash: float = 100_000.0,
                  slippage_pct: float = 0.05, clock=_now):

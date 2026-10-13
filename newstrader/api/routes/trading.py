@@ -10,7 +10,7 @@ from fastapi.responses import Response
 
 from ... import paths
 from ...context import AppContext
-from ...trading import live_guard
+from ...trading import crypto, crypto_exits, live_guard
 from ..deps import bad_request, get_ctx
 
 router = APIRouter(tags=["trading"])
@@ -43,6 +43,17 @@ async def portfolio(ctx: AppContext = Depends(get_ctx)):
             if leg.get("order_type") in ("stop", "stop_limit") and leg.get("stop_price"):
                 d["stop_loss"] = leg["stop_price"]
     positions = [{**p, **legs_by_symbol.get(p["symbol"], {})} for p in t.positions]
+    plans = {p["symbol"]: p for p in crypto_exits.open_plans(ctx.db, getattr(t.broker, "mode", None))}
+    for p in positions:
+        if not crypto.is_crypto(p["symbol"]):
+            continue
+        plan = plans.get(p["symbol"])
+        p["crypto"] = True
+        p["exit_plan"] = None if plan is None else {
+            "status": plan["status"], "stop_price": plan["stop_price"], "take_profit": plan["take_profit_price"],
+            "stop_live": bool(p.get("stop_loss")), "note": plan["reason"] or ""}
+        if plan is not None:
+            p["take_profit"] = plan["take_profit_price"]  # watched by NewsTrader, not an order at Alpaca
     return {
         "mode": ctx.state.mode,
         "connected": t.account is not None,
@@ -72,7 +83,7 @@ async def portfolio_history(period: str = Query("1M"), ctx: AppContext = Depends
         raise bad_request(f"Couldn't load account history: {exc}", 502) from exc
 
 
-@router.post("/positions/{symbol}/close")
+@router.post("/positions/{symbol:path}/close")
 async def close_position(symbol: str, ctx: AppContext = Depends(get_ctx)):
     try:
         order = await _trader(ctx).manual_close(symbol)

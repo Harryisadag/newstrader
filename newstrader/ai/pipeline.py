@@ -30,6 +30,7 @@ from ..performance.speed import signal_speed
 from ..sources.base import NewsItem, safe_url
 from ..sources.lang import detect_language
 from ..state import trading_day
+from ..trading import crypto
 from .claude_client import ClaudeAnalyzer
 from .costs import spend_today
 from .dedupe import StoryDeduper
@@ -57,6 +58,7 @@ class Pipeline:
         self.analyzer = analyzer or ClaudeAnalyzer(ctx)
         self.local = local or LocalMLEngine(ctx)
         self.local.tickers = self.tickers
+        self.tickers.crypto_wanted = self._crypto_wanted
         self.deduper = StoryDeduper()
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         self._workers: list[asyncio.Task] = []
@@ -79,6 +81,7 @@ class Pipeline:
         loop = asyncio.get_running_loop()
         seen = {"engine": self.ctx.config.settings.ai.engine, "sentiment": self.ctx.config.settings.ml.sentiment_model,
                 "use": self.ctx.config.settings.ml.use_trained_model}
+        coins = {"crypto": self._crypto_key(self.ctx.config.settings)}
 
         def on_settings(settings) -> None:  # called from whichever thread saved the settings
             if loop.is_closed():
@@ -91,6 +94,12 @@ class Pipeline:
                 seen.update(now)
                 loop.call_soon_threadsafe(lambda: self._tasks.append(
                     asyncio.create_task(self.warm_local_engine(), name="ml-warmup")))
+            key = self._crypto_key(settings)
+            if key != coins["crypto"]:
+                coins["crypto"] = key
+                if settings.crypto.enabled:  # fetch Alpaca's crypto pairs now, not at the next daily refresh
+                    loop.call_soon_threadsafe(lambda: self._tasks.append(
+                        asyncio.create_task(self.sync_crypto(), name="crypto-sync")))
 
         self.ctx.config.on_change(on_settings)
 
@@ -170,10 +179,12 @@ class Pipeline:
             try:
                 if self.tickers.needs_refresh():
                     await self.sync_tickers()
+                elif self._crypto_missing():
+                    await self.sync_crypto()
             except Exception:
                 log.exception("ticker refresh failed")
-            # retry every minute until the list has loaded once, then check twice an hour
-            await asyncio.sleep(1800 if self.tickers.loaded else 60)
+            # retry every minute until the list (and the crypto pairs, with crypto on) has loaded, then twice an hour
+            await asyncio.sleep(1800 if self.tickers.loaded and not self._crypto_missing() else 60)
 
     async def sync_tickers(self) -> int:
         trader = self.ctx.service("trader")
@@ -186,11 +197,47 @@ class Pipeline:
             assets = await asyncio.to_thread(broker.all_assets)
             n = await asyncio.to_thread(self.tickers.replace_all, assets)
             self.ctx.state.set_status("tickers", "ok", f"{n:,} US-listed tickers loaded")
+            await self.sync_crypto()
             return n
         except Exception as exc:
             self.ctx.state.set_status("tickers", "error", f"Couldn't download ticker list: {exc}")
             log.warning("Ticker sync failed: %s", exc)
             return 0
+
+    # ------------------------------------------------------------------ crypto
+    @staticmethod
+    def _crypto_key(settings) -> tuple:
+        return settings.crypto.enabled, tuple(settings.crypto.symbols)
+
+    def _crypto_wanted(self) -> list[str]:
+        """The crypto pairs news may be about: your crypto list, while crypto is on and the account can trade it (the
+        built-in simulator can't). The ticker table keeps the ones Alpaca lists as tradable."""
+        s = self.ctx.config.settings.crypto
+        broker = getattr(self.ctx.service("trader"), "broker", None)
+        if not s.enabled or not getattr(broker, "supports_crypto", False):
+            return []
+        return list(s.symbols)
+
+    def _crypto_missing(self) -> bool:
+        """Crypto is on but Alpaca's crypto pairs aren't in the ticker table yet."""
+        return bool(self._crypto_wanted()) and not any(
+            info.exchange == crypto.EXCHANGE for info in self.tickers.by_symbol.values())
+
+    async def sync_crypto(self) -> int:
+        """Alpaca's crypto pairs into the ticker table (only while crypto is on)."""
+        broker = getattr(self.ctx.service("trader"), "broker", None)
+        if not self.ctx.config.settings.crypto.enabled or not getattr(broker, "supports_crypto", False):
+            return 0
+        try:
+            assets = await asyncio.to_thread(broker.crypto_assets)
+            n = await asyncio.to_thread(self.tickers.replace_crypto, assets)
+        except Exception as exc:
+            log.warning("Couldn't download Alpaca's crypto list: %s", exc)
+            return 0
+        missing = [s for s in self.ctx.config.settings.crypto.symbols if s not in self.tickers.crypto_symbols]
+        if missing:
+            log.warning("Crypto: Alpaca doesn't list %s as tradable - left out (Settings -> Crypto)", ", ".join(missing))
+        return n
 
     # ------------------------------------------------------------------ intake
     async def submit(self, item: NewsItem) -> dict:
@@ -406,6 +453,8 @@ class Pipeline:
         trader = self.ctx.service("trader")
         if trader is None or sig.direction not in ("bullish", "bearish") or sig.confidence < trading.buy_threshold:
             return False
+        if crypto.is_crypto(sig.ticker):
+            return False  # Pro AI reads stocks only: it never holds a crypto signal back
         if sig.direction == "bullish":
             return True
         holding = trader.holding_long(sig.ticker) if hasattr(trader, "holding_long") else False

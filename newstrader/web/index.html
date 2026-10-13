@@ -96,6 +96,8 @@
             <li>cancels <b>every open order</b> on your Alpaca account.</li>
           </ul>
           <p class="warn-text">Cancelling orders also removes the stop-loss / take-profit protecting your open positions.</p>
+          <p class="muted small">Crypto: its safety stops are cancelled too, and NewsTrader stops watching the take-profits.
+            Both come back when you re-arm trading.</p>
           <label class="row check"><input type="checkbox" x-model="closePositions">
             <span>Also <b>sell / close every open position</b> at market now</span></label>
           <p class="muted small">Trading stays stopped (even after a restart) until you click RE-ARM TRADING.</p>
@@ -434,10 +436,10 @@
       <div class="card-head">
         <h2><span x-text="chartSym"></span> <span class="small muted" x-text="chart && chart.name"></span>
           <span class="small" x-show="chart && chart.reading.price !== null"
-                x-text="chart ? fmt.money(chart.reading.price) : ''"></span>
+                x-text="chart ? fmt.price(chart.reading.price) : ''"></span>
           <span class="small" :class="fmt.plClass(chart && chart.reading.day_change_pct)"
                 x-show="chart && chart.reading.day_change_pct !== null"
-                x-text="chart ? fmt.pct(chart.reading.day_change_pct) + ' today' : ''"></span></h2>
+                x-text="chart ? fmt.pct(chart.reading.day_change_pct) + (chartCrypto ? ' today (UTC)' : ' today') : ''"></span></h2>
         <div class="row gap"><span class="small muted" x-text="chartWhen"></span>
           <button class="btn ghost small" :disabled="chartLoading" @click="openChart(chartSym, true)"
                   x-text="chartLoading ? 'Reading...' : 'Refresh'"></button>
@@ -452,6 +454,8 @@
         </div>
         <p class="small warn-text" x-show="chart && chart.reading.stale">No trades in the last 30 minutes (the market may be
           closed) - this is the chart as of the last trade.</p>
+        <p class="small muted" x-show="chartCrypto">Crypto trades around the clock: the chart shows the last 24 hours, and
+          VWAP is the average price paid over the last 24 hours. Days start at midnight UTC.</p>
         <div class="chart-box" x-show="chart && chart.series.t.length"><canvas x-ref="priceChart"></canvas></div>
         <p class="small muted" x-show="chart && !chart.series.t.length">No 1-minute prices for the latest session on this
           data feed.</p>
@@ -483,9 +487,28 @@
                   x-text="(lv.kind === 'support' ? 'Support ' : 'Resistance ') + fmt.money(lv.price)"></span>
           </template></div>
         <p class="note">Charts are a guide, not a promise: they show what the price has done, not what it will do. Hover
-          over a label for what it means. <span x-show="chart && chart.feed === 'IEX'">Prices come from Alpaca's free IEX
+          over a label for what it means. <span x-show="chartCrypto">Crypto prices come from Alpaca's crypto data.</span>
+          <span x-show="chart && chart.feed === 'IEX'">Prices come from Alpaca's free IEX
           feed, which sees only part of all trading - "x normal" volume compares IEX with IEX, so it is still a fair
           guide, but quiet stocks can go minutes without a trade.</span></p>
+      </div>
+    </div>
+
+    <div class="card" x-show="cryptoTiles.length || (data && data.crypto_note)">
+      <div class="card-head"><h2>Crypto</h2>
+        <span class="small muted">Your crypto list (Settings -> Crypto) - trades day and night, checked for spikes around
+          the clock</span></div>
+      <div class="err small" x-show="data && data.crypto_note" x-text="data && data.crypto_note"></div>
+      <div class="world-grid">
+        <template x-for="t in cryptoTiles" :key="t.symbol">
+          <div class="world-tile clickable" :class="{ dim: t.stale }" @click="openChart(t.symbol)" title="Click for its chart">
+            <div class="row"><b x-text="t.name || t.symbol"></b><span class="tiny muted" x-text="t.symbol"></span></div>
+            <div class="world-val" :class="fmt.plClass(t.change_24h)" x-text="fmt.pct(t.change_24h)" title="Change over the last 24 hours"></div>
+            <div class="tiny muted"><span x-text="fmt.price(t.price)"></span> · 24 h
+              <span x-show="t.move_pct !== null && t.move_pct !== undefined" :class="fmt.plClass(t.move_pct)"
+                    x-text="' · ' + fmt.pct(t.move_pct, 1) + ' in ' + t.window_min + ' min'"></span></div>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -634,21 +657,27 @@
             <tr>
               <td><b x-text="p.symbol"></b></td>
               <td><span class="pill small" :class="p.side === 'long' ? 'good' : 'bad'" x-text="p.side"></span></td>
-              <td class="num" x-text="fmt.num(p.qty, 4)"></td>
-              <td class="num" x-text="fmt.money(p.avg_entry_price)"></td>
-              <td class="num" x-text="fmt.money(p.current_price)"></td>
+              <td class="num" x-text="fmt.qty(p.qty)"></td>
+              <td class="num" x-text="fmt.price(p.avg_entry_price)"></td>
+              <td class="num" x-text="fmt.price(p.current_price)"></td>
               <td class="num" x-text="fmt.money(p.market_value)"></td>
               <td class="num" :class="fmt.plClass(p.unrealized_pl)"><span x-text="fmt.signedMoney(p.unrealized_pl)"></span>
                 <span class="small" x-text="'(' + fmt.pct(p.unrealized_plpc) + ')'"></span></td>
               <td class="num" :class="fmt.plClass(p.change_today)" x-text="fmt.pct(p.change_today)"></td>
-              <td class="num muted" x-text="p.stop_loss ? fmt.money(p.stop_loss) : '—'"></td>
-              <td class="num muted" x-text="p.take_profit ? fmt.money(p.take_profit) : '—'"></td>
+              <td class="num muted" :title="stopTip(p)">
+                <span x-text="p.stop_loss ? fmt.price(p.stop_loss) : '—'"></span>
+                <span class="pill small warn" x-show="p.crypto && p.exit_plan && !p.stop_loss">no stop yet</span></td>
+              <td class="num muted" :title="p.crypto ? 'Watched by NewsTrader while it is open (not an order at Alpaca)' : ''">
+                <span x-text="p.take_profit ? fmt.price(p.take_profit) : '—'"></span><span x-show="p.crypto && p.take_profit"> *</span></td>
               <td class="right"><button class="btn ghost small danger" :disabled="!!busy[p.symbol]" @click="closePosition(p)">Close</button></td>
             </tr>
           </template>
         </tbody>
       </table>
       <div x-show="data && !(data.positions || []).length" class="muted pad">No open positions.</div>
+      <p class="note" x-show="hasCrypto">Crypto: the stop is a safety stop held at Alpaca (it works while NewsTrader is
+        closed). * The take-profit is watched by NewsTrader, so it only works while NewsTrader is open. Crypto bought
+        outside NewsTrader has no stop or target from it.</p>
     </div>
 
     <div class="card">
@@ -660,11 +689,11 @@
             <tr>
               <td class="nowrap" x-text="fmt.dateTime(o.submitted_at)"></td>
               <td><b x-text="o.symbol"></b></td>
-              <td><span class="tag" x-text="o.kind === 'entry' ? 'Entry' : (o.order_type === 'limit' ? 'Take-profit' : 'Stop-loss')"></span></td>
+              <td><span class="tag" x-text="orderKind(o)"></span></td>
               <td x-text="o.side"></td>
-              <td class="num" x-text="fmt.num(o.qty, 4)"></td>
+              <td class="num" x-text="o.qty ? fmt.qty(o.qty) : (o.notional ? fmt.money(o.notional) : '—')"></td>
               <td x-text="o.order_type"></td>
-              <td class="num" x-text="o.limit_price ? fmt.money(o.limit_price) : (o.stop_price ? fmt.money(o.stop_price) : 'market')"></td>
+              <td class="num" x-text="o.order_type === 'stop_limit' ? 'stop ' + fmt.price(o.stop_price) + ' / limit ' + fmt.price(o.limit_price) : (o.limit_price ? fmt.price(o.limit_price) : (o.stop_price ? fmt.price(o.stop_price) : 'market'))"></td>
               <td><span class="pill small info" x-text="o.status"></span></td>
               <td class="right"><button class="btn ghost small danger" @click="cancelOrder(o)">Cancel</button></td>
             </tr>
@@ -702,8 +731,8 @@
               <td class="nowrap" x-text="fmt.dateTime(t.filled_at || t.submitted_at)"></td>
               <td><b x-text="t.symbol"></b></td>
               <td><span class="tag" x-text="intentLabel(t.intent)"></span> <span class="small muted" x-text="t.side"></span></td>
-              <td class="num" x-text="fmt.num(t.filled_qty || t.qty, 4)"></td>
-              <td class="num" x-text="t.filled_avg_price ? fmt.money(t.filled_avg_price) : (t.stop_price ? 'stop ' + fmt.money(t.stop_price) : (t.take_profit_price ? 'limit ' + fmt.money(t.take_profit_price) : '—'))"></td>
+              <td class="num" x-text="fmt.qty(t.filled_qty || t.qty)"></td>
+              <td class="num" x-text="t.filled_avg_price ? fmt.price(t.filled_avg_price) : (t.stop_price ? 'stop ' + fmt.price(t.stop_price) : (t.take_profit_price ? 'limit ' + fmt.price(t.take_profit_price) : '—'))"></td>
               <td><span class="pill small" :class="statusClass(t.status)" x-text="t.status"></span></td>
               <td class="num" :class="fmt.plClass(t.realized_pl)" x-text="t.realized_pl === null || t.realized_pl === undefined ? '' : fmt.signedMoney(t.realized_pl)"></td>
               <td class="num" x-text="t.confidence ?? ''"></td>
@@ -1201,6 +1230,26 @@
             <p class="note">See the Market tab for what is being watched and every spike found. Alerts use the "Sudden
               price spikes" and "Big market-wide moves" switches in Alerts. Volume on the free IEX feed is only part of all
               trading, so a stock with too little history needs a 1.5x bigger move to count as a spike.</p>
+          </template>
+          <template x-if="section === 'crypto'">
+            <div class="crypto-notes">
+              <p class="warn-text"><b>Crypto moves fast and trades all night; the take-profit only works while NewsTrader is
+                open, the safety stop is kept at Alpaca.</b></p>
+              <p class="warn-text" x-show="meta.crypto && meta.crypto.why" x-text="meta.crypto && meta.crypto.why"></p>
+              <p class="warn-text" x-show="meta.crypto && meta.crypto.live">LIVE trading is on: crypto is paper only, so
+                NewsTrader doesn't buy crypto until you switch back to paper.</p>
+              <p class="warn-text" x-show="meta.crypto && meta.crypto.not_listed && meta.crypto.not_listed.length"
+                 x-text="meta.crypto ? 'Alpaca doesn\'t list these as tradable, so they are left out: ' + (meta.crypto.not_listed || []).join(', ') : ''"></p>
+              <p class="note">How crypto works here: every buy gets a <b>safety stop</b> held at Alpaca (so it works while
+                NewsTrader is closed) and a <b>take-profit</b> NewsTrader watches itself. Crypto is never shorted - bearish
+                news about a coin you don't hold is ignored, and bearish news about one you hold sells it (the safety stop
+                is cancelled first). NewsTrader doesn't add to a coin you already hold. The kill switch, the daily loss
+                limit, max open positions, the cooldown and the max % per stock apply to crypto too; market hours and the
+                minimum share price don't. The news rules for crypto are deliberately few - spot ETF approvals and big
+                fund flows, exchange hacks, regulators' lawsuits or approvals, country bans, big exchange listings or
+                delistings, and companies buying a coin for their treasury - anything else is sent to manual review. A
+                company's own news that only mentions a coin (a bitcoin miner's results) never trades the coin.</p>
+            </div>
           </template>
           <template x-if="section === 'charts'">
             <p class="note">Charts use the same prices as the Market tab (1-minute bars for the last two trading days and

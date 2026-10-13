@@ -25,8 +25,8 @@ document.addEventListener("alpine:init", () => {
         F("risk.ticker_cooldown_minutes", "Cooldown per ticker", "number", { min: 0, max: 10080, suffix: "minutes", help: "Don't trade the same stock again within this many minutes." }),
         F("risk.market_hours_only", "Market hours only", "toggle", { help: "Only trade 9:30am-4:00pm ET. If off, orders sent while the market is closed are queued by Alpaca for the next open (bracket orders can't trade pre/after-market)." }),
         F("risk.min_share_price", "Minimum share price", "number", { min: 0, step: 0.5, prefix: "$", help: "Skip penny stocks below this price." }),
-        F("risk.blacklist", "Blacklist (never trade)", "list", { placeholder: "e.g. GME, AMC", help: "Comma-separated tickers." }),
-        F("risk.whitelist", "Whitelist (only trade these)", "list", { placeholder: "empty = every stock allowed", help: "Leave empty to allow everything." }),
+        F("risk.blacklist", "Blacklist (never trade)", "list", { placeholder: "e.g. GME, AMC", help: "Comma-separated tickers. Stocks only - crypto has its own list (Settings -> Crypto)." }),
+        F("risk.whitelist", "Whitelist (only trade these)", "list", { placeholder: "empty = every stock allowed", help: "Leave empty to allow everything. Stocks only - crypto has its own list (Settings -> Crypto)." }),
       ],
     },
     {
@@ -124,6 +124,16 @@ document.addEventListener("alpine:init", () => {
       id: "charts", label: "Charts", fields: [
         F("chart.confirm", "Check news signals against the chart", "select", { options: { soft: "Soft (recommended) - the chart nudges the confidence", strict: "Strict - a chart that disagrees sends it to manual review", off: "Off - don't look at the chart" }, help: "Before a news signal is traded, NewsTrader reads the stock's chart. If the move already happened (RSI over 80, or far above VWAP) it goes to manual review instead - like \"don't chase\". A chart that agrees adds a few points of confidence (never enough to turn a manual review into an automatic trade); one that disagrees takes some off (Strict: sends it to manual review). Selling a stock you hold is never held back by the chart." }),
         F("chart.signals", "Signals from the chart alone", "select", { options: { watch: "Watch only (recommended) - recorded and scored, never traded or alerted", review: "Manual review - you approve or dismiss each one", off: "Off" }, help: "About once a minute while the market is open, NewsTrader reads the chart of every stock the market monitor watches and looks for breakouts, flags, double bottoms and the like on heavy volume. Watch only lets Performance -> By AI engine show whether they work before you trust them. They are never traded by themselves." }),
+      ],
+    },
+    {
+      id: "crypto", label: "Crypto", fields: [
+        F("crypto.enabled", "Trade crypto (paper)", "toggle", { help: "Bitcoin, Ether, Solana... through your Alpaca paper account, day and night, every day. News about these coins can then make signals and trades. Off by default." }),
+        F("crypto.symbols", "Coins", "list", { placeholder: "BTC/USD, ETH/USD, SOL/USD", help: "Comma-separated pairs priced in US dollars. Only coins Alpaca lists as tradable are used." }),
+        F("crypto.max_per_trade", "Max $ per crypto trade", "number", { min: 1, step: 50, prefix: "$", help: "Crypto is bought by dollar amount (a fraction of a coin is fine). Also capped by 'Max % of account in one stock' and by your cash - crypto can't be bought on margin." }),
+        F("crypto.stop_loss_pct", "Safety stop", "number", { min: 0.1, max: 50, step: 0.1, suffix: "% below the buy", help: "Placed at Alpaca as soon as a buy fills, so it works even while NewsTrader is closed. It's a stop-limit order (its limit is 0.5% lower): if the price crashes through it too fast to fill, NewsTrader sells at market when it sees that - while it's open." }),
+        F("crypto.take_profit_pct", "Take-profit", "number", { min: 0.1, max: 200, step: 0.1, suffix: "% above the buy", help: "Alpaca can't hold a take-profit next to the safety stop for crypto, so NewsTrader watches the price about every 15 seconds while it's open: at the target it cancels the safety stop and sells. While NewsTrader is closed, only the safety stop works." }),
+        F("crypto.trade_on_news", "Trade crypto on news automatically", "toggle", { help: "Off = crypto news signals wait for your approval (Manual review in the Signals tab) instead of being traded." }),
       ],
     },
     {

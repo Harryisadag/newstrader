@@ -90,11 +90,16 @@ class ClaudeAnalyzer:
         return {
             "model": model,
             "max_tokens": 8000,
-            "system": [{"type": "text", "text": system_prompt(ai.max_signals_per_item),
+            "system": [{"type": "text", "text": system_prompt(ai.max_signals_per_item, self._crypto_pairs()),
                         "cache_control": {"type": "ephemeral"}}],
             "messages": [{"role": "user", "content": user_text}],
             "output_config": output_config,
         }
+
+    def _crypto_pairs(self) -> list[str]:
+        """The crypto pairs Claude may name (Settings -> Crypto; none while crypto is off)."""
+        table = getattr(self.ctx.service("pipeline"), "tickers", None)
+        return sorted(getattr(table, "crypto_symbols", None) or ())
 
     async def analyze(self, item, pre, market_open: bool | None, now: datetime, model: str | None = None,
                       skip_rate_limit: bool = False) -> ClaudeResult:

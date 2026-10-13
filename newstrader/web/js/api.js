@@ -90,6 +90,18 @@
       if (v === null || v === undefined || isNaN(v)) return "—";
       return Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
     },
+    // shares or coins: whole shares as they are, crypto with the decimals it needs (0.00998 BTC)
+    qty(v) {
+      if (v === null || v === undefined || isNaN(v)) return "—";
+      const a = Math.abs(Number(v));
+      return Number(v).toLocaleString(undefined, { maximumFractionDigits: a >= 100 ? 2 : a >= 1 ? 4 : 8 });
+    },
+    // prices: cents, or more decimals for prices under $1 (small coins)
+    price(v) {
+      if (v === null || v === undefined || isNaN(v)) return "—";
+      const a = Math.abs(Number(v));
+      return fmt.money(v, a >= 1 || a === 0 ? 2 : a >= 0.01 ? 4 : 8);
+    },
     // 1234567 -> "1.2M" (share volumes, trade counts)
     compact(v) {
       if (v === null || v === undefined || isNaN(v)) return "—";

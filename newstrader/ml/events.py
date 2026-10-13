@@ -1100,3 +1100,125 @@ def macro_reading(text: str) -> Reading:
     elif r.events:
         r.neutral_reason = "mixed news for that country"
     return r
+
+
+# --------------------------------------------------------------------------------------------- crypto news
+# A small, careful set of the news that moves a coin, matched in a sentence that names the coin. Anything else about a
+# coin is wording only (manual review), and a company's news that only mentions a coin (a bitcoin miner's results)
+# says nothing about the coin itself. Each rule: (kind, label, direction, strength, pattern, also needed in the same
+# sentence, undone by, a denial undoes it).
+_COUNTRY_WORDS = (r"\b(?:china|chinese|beijing|india|indian|russia|russian|kremlin|korea\w*|japan\w*|turkey|turkish|"
+                  r"nigeria\w*|vietnam\w*|pakistan\w*|egypt\w*|bangladesh\w*|algeria\w*|morocco|nepal\w*|qatar\w*|"
+                  r"iraq\w*|government|country|countries|nation|parliament|lawmakers|central bank|state council)\b")
+_EXCHANGES = (r"\b(?:coinbase|binance|kraken|robinhood|gemini|bitstamp|okx|bybit|upbit|bithumb|bitfinex|kucoin|"
+              r"crypto\.com|exchange|exchanges)\b")
+_SIZE = r"(?:record|big|huge|massive|strong|heavy|largest|biggest|\$\s?\d[\d.,]*\s*(?:billion|bn|b|million|mln|m)\b)"
+# "could approve", "hopes of approval", "may delay": not decided yet
+_HEDGED = (r"\b(?:may|might|could|would|should|expected|expects?|likely|poised|set to|odds|chances?|hopes?|bets?|if|"
+           r"whether|awaits?|awaiting|ahead of|deadline)\b[^.;!?\n]{0,25}\b(?:approv|reject|den[iy]|delay|postpon)")
+_CRYPTO_RULES = [
+    ("crypto_etf_rejected", "Spot ETF rejected / delayed", -1, 0.7,
+     r"\b(?:rejects|rejected|denies|denied|delays|delayed|postpones|postponed|pushes back)\b[^.;!?\n]{0,60}"
+     r"\betfs?\b|\betfs?\b[^.;!?\n]{0,50}\b(?:rejected|denied|delayed|postponed)\b", None, _HEDGED, False),
+    ("crypto_etf_approved", "Spot ETF approved", +1, 0.85,
+     r"\b(?:approves|approved|green[- ]?lights|green[- ]?lit|(?:wins?|won|gets?|got|receives?|received|grants?|"
+     r"granted) (?:final |formal |regulatory |sec )?approval)\b[^.;!?\n]{0,60}\betfs?\b|\betfs?\b[^.;!?\n]{0,50}"
+     r"\b(?:approved|green[- ]?lit|cleared|(?:wins?|won|gets?|got|receives?|received) (?:final |formal |regulatory |"
+     r"sec )?approval)\b", None,
+     r"\b(?:rejects?|rejected|denies|denied|delays?|delayed|postpones?|postponed|options)\b|" + _HEDGED, True),
+    ("crypto_etf_inflows", "Big ETF inflows", +1, 0.7,
+     _SIZE + r"[^.;!?\n]{0,40}\binflows?\b|\binflows?\b[^.;!?\n]{0,40}\b(?:record|surge\w*|soar\w*|jump\w*|top\w*|"
+     r"hit\w*|biggest|largest)\b", r"\b(?:etfs?|funds?)\b", r"\boutflows?\b", True),
+    ("crypto_etf_outflows", "Big ETF outflows", -1, 0.7,
+     _SIZE + r"[^.;!?\n]{0,40}\boutflows?\b|\boutflows?\b[^.;!?\n]{0,40}\b(?:record|surge\w*|soar\w*|jump\w*|top\w*|"
+     r"hit\w*|biggest|largest)\b", r"\b(?:etfs?|funds?)\b", r"\binflows?\b", True),
+    ("crypto_hack", "Exchange hack / exploit", -1, 0.8,
+     r"\b(?:hack(?:ed|s)?|hackers?|exploit(?:ed|s)?|drained|stolen|steal(?:s|ing)?|theft|heist|breach(?:ed)?)\b", None,
+     r"\b(?:recover\w*|returned|returns|refund\w*|seize[sd]?|seizure|arrest\w*|sentenced|convicted)\b", True),
+    ("crypto_lawsuit", "Regulator lawsuit / crackdown", -1, 0.75,
+     r"\b(?:sec|cftc|doj|justice department|regulators?|attorneys? general)\b[^.;!?\n]{0,50}\b(?:sues?|sued|suing|"
+     r"charges?|charged|lawsuit|crack(?:s|ing)? down|crackdown|subpoena\w*)\b|\b(?:sued|charged)\b[^.;!?\n]{0,15}\bby "
+     r"(?:the )?(?:sec|cftc|doj)\b", None, r"\b(?:drops?|dropped|dismiss\w*|ends?|ended|settles?|settled|closes?|"
+     r"closed|withdraws?|withdrew)\b", True),
+    ("crypto_regulator_ok", "Regulator approval", +1, 0.75,
+     r"\b(?:sec|cftc|regulators?|judge|court)\b[^.;!?\n]{0,50}\b(?:drops?|dropped|dismiss(?:es|ed)?|ends?|ended|"
+     r"closes?|closed|withdraws?|withdrew)\b[^.;!?\n]{0,30}\b(?:case|lawsuit|suit|probe|investigation|charges)\b|"
+     r"\b(?:sec|cftc|regulators?)\b[^.;!?\n]{0,40}\b(?:approves?|approved|authori[sz]es?|authori[sz]ed)\b|"
+     r"\bwins? (?:its |the )?(?:case|lawsuit) against (?:the )?(?:sec|cftc)\b|\blegal tender\b", None, r"\betfs?\b",
+     True),
+    ("crypto_ban_lifted", "Ban lifted", +1, 0.7,
+     r"\b(?:lifts?|lifted|ends?|ended|reverses?|reversed|overturn\w*|scraps?|scrapped|eases?|eased)\b[^.;!?\n]{0,30}"
+     r"\bban\b", _COUNTRY_WORDS, None, True),
+    ("crypto_ban", "Country bans it", -1, 0.75,
+     r"\b(?:bans?|banned|banning|outlaws?|outlawed|prohibits?|prohibited|criminali[sz]es?|criminali[sz]ed)\b",
+     _COUNTRY_WORDS, r"\b(?:lifts?|lifted|ends?|ended|reverses?|reversed|overturn\w*|scraps?|scrapped|eases?|eased)\b"
+     r"[^.;!?\n]{0,30}\bban\b", True),
+    ("crypto_delisting", "Exchange delisting", -1, 0.75,
+     r"\bdelist\w*|\b(?:halts?|halted|suspends?|suspended|ends?|ended|stops?|stopped) (?:all )?(?:trading|support|"
+     r"deposits|withdrawals) (?:in|of|for)\b", _EXCHANGES, None, True),
+    ("crypto_listing", "Big exchange listing", +1, 0.72,
+     r"\b(?:to list|lists|listed|will list|listing of|(?:adds?|added|to add) support for|launch(?:es|ed)? (?:spot )?"
+     r"trading (?:in|of|for)|opens? trading (?:in|of|for))\b", _EXCHANGES, r"\bdelist\w*", True),
+    ("crypto_treasury", "Bought for a treasury / reserve", +1, 0.7,
+     r"\b(?:buys|bought|purchases|purchased|acquires|acquired|to buy|to purchase|to acquire|scoops? up|snaps? up)\b",
+     None, r"\b(?:sells?|sold|selling|dumps?|dumped|offload\w*|exchange|platform|firm|company|startup|business|"
+     r"options|derivatives|miners?|mining|stake in|shares)\b", True),
+]
+_CRYPTO_COMPILED = [(k, lab, d, s, re.compile(p, re.I), re.compile(need, re.I) if need else None,
+                     re.compile(undo, re.I) if undo else None, deniable)
+                    for k, lab, d, s, p, need, undo, deniable in _CRYPTO_RULES]
+_TREASURY = re.compile(r"\b(?:treasury|treasuries|balance sheet|reserves?|corporate holdings)\b", re.I)
+_SENTENCES = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def crypto_reading(text: str, coin_terms: list[str], companies: list[tuple[str, list[tuple[str, ...]]]] = ()) -> Reading:
+    """What the crypto rules make of a story for one coin. coin_terms: the words for the coin ("bitcoin", "btc");
+    companies: the stocks also named in it (symbol, name terms), for "a company buying it for its treasury" and to tell
+    a company's own news (a miner's results) from news about the coin."""
+    folded = ascii_fold(text)
+    r = Reading()
+    head = folded.split("\n", 1)[0]
+    if _RECAP.search(head) or _OPINION.search(head) or _QUESTION.search(head):
+        r.flags.append("recap" if _RECAP.search(head) else "opinion")
+        r.neutral_reason = "describes a move that already happened" if "recap" in r.flags else "an opinion piece or question, not news"
+        return r
+    coin_rx = re.compile(r"(?<![\w$])\$?(?:" + "|".join(re.escape(t) for t in coin_terms) + r")(?:/usd)?(?:'s)?(?![\w])",
+                         re.I)
+    seen: dict[str, Event] = {}
+    for sentence in (x.strip() for x in _SENTENCES.split(folded)):
+        coin = coin_rx.search(sentence)
+        if not sentence or coin is None:
+            continue
+        denied = bool(_DENIAL.search(sentence))
+        rumor = bool(_RUMOR.search(sentence))
+        for kind, label, d, strength, rx, need, undo, deniable in _CRYPTO_COMPILED:
+            m = rx.search(sentence)
+            if m is None or (need is not None and not need.search(sentence)):
+                continue
+            if (undo is not None and undo.search(sentence)) or (deniable and denied):
+                continue
+            if _NEGATED_BEFORE.search(sentence[:m.start()]):
+                continue
+            if kind == "crypto_treasury" and not (
+                    coin_rx.search(sentence[m.end():m.end() + 60])
+                    and (_TREASURY.search(sentence) or any(s < m.start() for sym, terms in companies
+                                                           for s, _e in find_spans(sentence, sym, terms)))):
+                continue  # a buyer (a company named before it, or a treasury / reserve) buying the coin
+            if rumor:
+                strength *= 0.85
+                if "unconfirmed" not in r.flags:
+                    r.flags.append("unconfirmed")
+            if kind not in seen or seen[kind].strength < strength:
+                seen[kind] = Event(kind, label, d, strength, "any", m.group(0), "", "hours")
+    r.events = sorted(seen.values(), key=lambda e: -e.strength)
+    score = sum(e.direction * e.strength for e in r.events)
+    if r.events and abs(score) >= 0.15:
+        r.direction = 1 if score > 0 else -1
+        same = [e for e in r.events if e.direction == r.direction]
+        r.strength = min(0.95, max(e.strength for e in same) + 0.03 * (len(same) - 1))
+        r.events.sort(key=lambda e: (-(e.direction == r.direction), -e.strength))
+    elif r.events:
+        r.neutral_reason = "mixed news for the coin"
+    elif companies:
+        r.neutral_reason = "a company's news that mentions the coin - not news about the coin itself"
+    return r

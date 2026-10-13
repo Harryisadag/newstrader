@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ..ai.prefilter import Candidate
 from ..ai.tickers import TickerTable, short_name, tokenize
+from ..trading import crypto
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[\"'“(\[]?[A-Z0-9$])|\n+")
 _TIMESTAMP = re.compile(r"^\[\d{1,2}:\d{2}(?::\d{2})?\]\s*")
@@ -55,6 +56,10 @@ def mention_for(cand: Candidate, table: TickerTable) -> Mention:
             terms.append(key)
 
     info = table.get(cand.symbol)
+    if crypto.is_crypto(cand.symbol):  # "bitcoin", "btc" (+ "BTC/USD" itself, matched as the symbol)
+        for word in crypto.terms(cand.symbol):
+            add(word)
+        return Mention(terms=terms, symbol=cand.symbol)
     if info is not None and info.clean_name:
         add(info.clean_name)
         short = short_name(tuple(tokenize(info.clean_name)))  # "Zoom", "Abbott": what headlines call them

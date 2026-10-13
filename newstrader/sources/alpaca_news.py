@@ -8,6 +8,7 @@ import logging
 from datetime import UTC, datetime
 
 from ..config import SourceConfig
+from ..trading.crypto import normalize
 from .base import NewsItem, strip_html
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,8 @@ def news_to_item(n, src: SourceConfig) -> NewsItem:
     return NewsItem(source_id=src.id, source_type="alpaca_news", source_name=f"{src.name} ({origin})",
                     external_id=str(g("id")), title=strip_html(g("headline") or "", 1000), body=body,
                     url=g("url") or "", published_at=created,
-                    symbols=[s.upper() for s in (g("symbols") or []) if isinstance(s, str)], speaker=author,
+                    symbols=[normalize(s) for s in (g("symbols") or []) if isinstance(s, str)],  # "BTCUSD" -> "BTC/USD"
+                    speaker=author,
                     language="en")
 
 

@@ -5,6 +5,11 @@ Before a news signal is acted on it is checked against its chart (chart/service.
 can nudge the confidence, or send a would-be trade to manual review like the "don't chase" check. It never blocks or
 delays a sell of a stock you hold, and approving a signal by hand skips it. The chart is waited for before the trade
 lock is taken, so a slow chart never holds up other trades or the kill switch.
+
+Crypto (Settings -> Crypto, paper only): a buy is a dollar amount at market, 24/7. Alpaca has no bracket orders for
+crypto, so each buy gets an exit plan - a safety stop held at Alpaca and a take-profit watched while the app runs
+(crypto_exits.py). Crypto is never shorted: bearish news on a coin you don't hold is ignored, and selling one you hold
+cancels its safety stop first.
 """
 
 from __future__ import annotations
@@ -23,10 +28,19 @@ from ..context import AppContext
 from ..db import iso, parse_iso
 from ..performance.prices import directional_return, price_at
 from ..performance.speed import signal_speed
-from . import live_guard
+from . import crypto, crypto_exits, live_guard
 from .fake_broker import FakeBroker
 from .pnl import realized_pnl
-from .risk import AccountSnapshot, AssetInfo, PositionInfo, RiskContext, chase_check, check_entry, check_exit
+from .risk import (
+    AccountSnapshot,
+    AssetInfo,
+    PositionInfo,
+    RiskContext,
+    chase_check,
+    check_crypto_entry,
+    check_entry,
+    check_exit,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +50,7 @@ CHASE_LOOKBACK = timedelta(minutes=60)  # "since the news" looks back at most th
 SIGNAL_INTENTS = ("open_long", "open_short", "close_long", "close_short")
 UPDATE_HOLD = "NewsTrader is restarting to install an update - no new orders until it's back (about a minute)."
 KILLED = "Kill switch is engaged - re-arm trading to resume."
+NO_CRYPTO_SHORT = "Bearish news on crypto you don't hold is ignored - crypto can't be shorted."
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -325,6 +340,33 @@ class Trader:
                 msg += f" (P/L {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f})"
         log.info(msg)
         await self._alert("trade_filled", msg, "", "trade")
+        if intent == "open_long" and crypto.is_crypto(o["symbol"]):
+            self._kick_exits()  # its safety stop goes in now
+
+    def _kick_exits(self) -> None:
+        exits = self.ctx.service("crypto_exits")
+        if exits is not None and hasattr(exits, "kick"):
+            exits.kick()
+
+    async def track_order(self, order: dict) -> None:
+        """Save what Alpaca says about an order (used by the crypto exit manager for buys it waits on)."""
+        if await self._upsert_order(order):
+            self.ctx.bus.publish("orders_changed", {})
+
+    def record_exit_order(self, order: dict, signal_id, intent: str, reason: str, parent_id: str | None = None,
+                          stop=None, tp=None) -> int:
+        """Save a crypto safety stop or exit sale the exit manager placed (shown as a stop-loss / take-profit)."""
+        db_id = self._save_order_row({
+            "signal_id": signal_id, "alpaca_order_id": order["id"], "client_order_id": order.get("client_order_id"),
+            "symbol": order["symbol"], "side": order.get("side"), "intent": intent, "qty": order.get("qty"),
+            "order_type": order.get("order_type"), "order_class": order.get("order_class"),
+            "status": order.get("status"), "stop_price": stop, "take_profit_price": tp,
+            "filled_qty": order.get("filled_qty"), "filled_avg_price": order.get("filled_avg_price"),
+            "submitted_at": order.get("submitted_at") or iso(), "filled_at": order.get("filled_at"),
+            "updated_at": iso(), "mode": getattr(self.broker, "mode", "paper"), "parent_alpaca_id": parent_id,
+            "reason": reason[:500], "raw": json.dumps(order)[:20000]})
+        self.ctx.bus.publish("orders_changed", {})
+        return db_id
 
     def realized_pnl_map(self) -> dict:
         rows = self.ctx.db.query(
@@ -366,7 +408,8 @@ class Trader:
             trading=s.trading, risk=s.risk,
             account=AccountSnapshot(equity=a["equity"], last_equity=a["last_equity"], buying_power=a["buying_power"],
                                     cash=a["cash"] or 0, shorting_enabled=a["shorting_enabled"],
-                                    trading_blocked=a["trading_blocked"], blocked_reason=a.get("blocked_reason") or ""),
+                                    trading_blocked=a["trading_blocked"], blocked_reason=a.get("blocked_reason") or "",
+                                    crypto_buying_power=a.get("non_marginable_buying_power")),
             positions=[PositionInfo(p["symbol"], p["qty"] or 0, p["market_value"] or 0) for p in self.positions],
             market_open=bool(self.clock and self.clock.get("is_open")),
             now=datetime.now(UTC),
@@ -374,16 +417,18 @@ class Trader:
             halted_today=self.ctx.state.halted_today,
             pending_symbols=pending,
             last_entry_at=self._last_entries(),
-            asset=None if asset is None else AssetInfo(asset["tradable"], asset["shortable"], asset["easy_to_borrow"]),
+            asset=None if asset is None else AssetInfo(asset["tradable"], asset["shortable"], asset["easy_to_borrow"],
+                                                       asset.get("min_order_size"), asset.get("price_increment")),
         )
 
     def holding_long(self, symbol: str) -> bool:
+        symbol = crypto.normalize(symbol)
         return any(p["symbol"] == symbol and (p.get("qty") or 0) > 0 for p in self.positions)
 
     # ------------------------------------------------------------------ signal handling
     async def handle_signal(self, signal: dict, manual: bool = False) -> dict:
         """signal needs: id (optional), ticker, direction, confidence. Returns the action taken."""
-        symbol = signal["ticker"].upper()
+        symbol = crypto.normalize(signal["ticker"])
         if self.broker is None:
             return self._result("blocked", "Not connected to a trading account (Settings -> Trading, or add Alpaca keys).")
         if signal.get("engine") == "chart" and not manual:  # chart signals are only ever traded by hand
@@ -419,6 +464,10 @@ class Trader:
                     # You approved it by hand: act as if it cleared the buy threshold.
                     action = "buy" if signal["direction"] == "bullish" else ("sell" if holding else "short")
                     why = "Manually approved."
+                if crypto.is_crypto(symbol):
+                    action, why = self._crypto_action(action, why, signal, holding, manual)
+                if action == "blocked":
+                    return self._result("blocked", why)
                 if action == "review":
                     return self._result("review", why + (f" {chart.reason}" if chart is not None and chart.reason
                                                          and chart.verdict != "unavailable" else ""))
@@ -426,12 +475,35 @@ class Trader:
                     return self._result("ignored", why)
                 if action == "sell":  # closing a position you hold: the chart never holds this back
                     return await self._close_long(symbol, signal, manual, why)
+                if crypto.is_crypto(symbol):
+                    return await self._open_crypto(symbol, signal, manual, why,
+                                                   chart_review=chart.review if chart is not None else "")
                 return await self._open(symbol, "buy" if action == "buy" else "short", signal, manual, why,
                                         chart_review=chart.review if chart is not None else "")
             except Exception as exc:
                 log.exception("Trade for %s failed", symbol)
                 await self._alert("error", f"Trade error ({symbol})", str(exc), "error")
                 return self._result("error", f"Error: {exc}")
+
+    def _crypto_action(self, action: str, why: str, signal: dict, holding: bool, manual: bool) -> tuple[str, str]:
+        """Crypto's own rules on top of decide_action(): never a short, only when crypto is on and the account can
+        trade it, never while LIVE trading is on (crypto is paper only), and with "trade crypto on news" off a news
+        signal waits for your approval."""
+        s = self.ctx.config.settings.crypto
+        if signal["direction"] == "bearish" and not holding and action in ("short", "ignore", "review"):
+            return "ignore", NO_CRYPTO_SHORT
+        if action == "buy":
+            if not s.enabled:
+                return "blocked", "Crypto trading is off (Settings -> Crypto)."
+            if not getattr(self.broker, "supports_crypto", False):
+                return "blocked", ("The built-in simulator can't trade crypto - crypto needs an Alpaca paper account "
+                                   "(Settings -> Trading).")
+            if self.ctx.state.mode == "live":
+                return "blocked", "Crypto is paper only: NewsTrader doesn't buy crypto while LIVE trading is on."
+        if action in ("buy", "sell") and not manual and not s.trade_on_news:
+            return "review", ("Crypto news signals wait for your approval (Settings -> Crypto -> Trade crypto on news "
+                              "is off).")
+        return action, why
 
     @staticmethod
     def _chart_check(charts, signal: dict, holding: bool, reading):
@@ -489,6 +561,56 @@ class Trader:
         return self._result("bought" if side == "buy" else "shorted", decision.reason, traded=True,
                             order_db_id=db_id, alpaca_order_id=order["id"])
 
+    async def _open_crypto(self, symbol: str, signal: dict, manual: bool, why: str, chart_review: str = "") -> dict:
+        """Buy a dollar amount of a coin at market, then give it an exit plan: a safety stop held at Alpaca (placed
+        once the buy fills) and a take-profit NewsTrader watches (crypto_exits.py)."""
+        rctx = await self._risk_context(symbol)
+        price = await asyncio.to_thread(self.broker.latest_price, symbol)
+        pre_move = None if manual else await self._pre_move(symbol, "bullish", signal, price)
+        decision = check_crypto_entry(symbol, price, rctx, self.ctx.config.settings.crypto, manual=manual)
+        if decision.halt_for_day and not self.ctx.state.halted_today:
+            self.ctx.state.halt_for_today(decision.reason)
+            await self._alert("daily_loss_limit", "Daily loss limit hit - trading stopped", decision.reason, "error")
+        if not decision.allowed:
+            log.info("Blocked crypto buy %s: %s", symbol, decision.reason)
+            return self._result("blocked", decision.reason)
+        chase = "" if manual else chase_check("bullish", pre_move, self.ctx.config.settings.trading.max_chase_pct)
+        if chase:
+            log.info("Sent crypto buy %s to manual review: %s", symbol, chase)
+            return self._result("review", chase)
+        if chart_review and not manual:
+            log.info("Sent crypto buy %s to manual review: %s", symbol, chart_review)
+            return self._result("review", chart_review)
+        coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
+        try:
+            order = await asyncio.to_thread(self.broker.submit_crypto_buy, symbol, decision.notional, coid)
+        except Exception as exc:
+            msg = f"Alpaca rejected the crypto buy for {symbol}: {exc}"
+            log.error(msg)
+            await self._alert("error", f"Order rejected ({symbol})", str(exc), "error")
+            return self._result("error", msg)
+        db_id = self._record_order(order, signal, "open_long", decision.reason + (" [manual]" if manual else ""),
+                                   est_price=decision.price, stop=decision.stop_price, tp=decision.take_profit_price)
+        crypto_exits.create_plan(self.ctx.db, symbol, self.broker.mode, signal.get("id"), order, decision.stop_price,
+                                 decision.stop_limit_price, decision.take_profit_price, decision.price)
+        self._kick_exits()
+        title = f"Bought ${decision.notional:,.0f} of {symbol} (~{decision.qty:.6g})"
+        detail = (f"Confidence {signal.get('confidence')} · safety stop ${decision.stop_price:,.2f} (held at Alpaca) · "
+                  f"take-profit ${decision.take_profit_price:,.2f} (watched while NewsTrader is open)")
+        if signal.get("reasoning"):
+            detail += f"\n{signal['reasoning']}"
+        log.info("%s - %s", title, detail.replace("\n", " | "))
+        await self._alert("trade_placed", title, detail, "trade")
+        await self.refresh(force=True)
+        return self._result("bought", decision.reason, traded=True, order_db_id=db_id, alpaca_order_id=order["id"])
+
+    async def _cancel_crypto_stops(self, symbol: str) -> None:
+        """Before selling a coin: cancel its safety stop (it holds the coins). close_position cancels anything left."""
+        for plan in crypto_exits.open_plans(self.ctx.db, getattr(self.broker, "mode", None), symbol):
+            if plan["stop_order_id"]:
+                with contextlib.suppress(Exception):  # already filled or cancelled
+                    await asyncio.to_thread(self.broker.cancel_order, plan["stop_order_id"])
+
     def _news_time(self, signal: dict) -> datetime | None:
         """When the story behind a signal came out (when it arrived, for live-stream transcripts)."""
         row = None
@@ -533,12 +655,17 @@ class Trader:
         decision = check_exit(symbol, rctx, manual=manual)
         if not decision.allowed:
             return self._result("blocked", decision.reason)
+        coin = crypto.is_crypto(symbol)
         try:
+            if coin:
+                await self._cancel_crypto_stops(symbol)
             order = await asyncio.to_thread(self.broker.close_position, symbol)
         except Exception as exc:
             await self._alert("error", f"Couldn't sell {symbol}", str(exc), "error")
             return self._result("error", f"Couldn't sell {symbol}: {exc}")
         db_id = self._record_order(order, signal, "close_long", decision.reason)
+        if coin:
+            crypto_exits.mark_closing(self.ctx.db, symbol, self.broker.mode, order["id"], "Sold on a bearish signal")
         title = f"Sold all {symbol} on bearish signal"
         await self._alert("trade_placed", title, signal.get("reasoning") or "", "trade")
         await self.refresh(force=True)
@@ -591,9 +718,14 @@ class Trader:
         async with self._lock:
             if self._held_for_update:
                 raise RuntimeError(UPDATE_HOLD)
-            order = await asyncio.to_thread(self.broker.close_position, symbol.upper())
+            symbol = crypto.normalize(symbol)
+            if crypto.is_crypto(symbol):
+                await self._cancel_crypto_stops(symbol)
+            order = await asyncio.to_thread(self.broker.close_position, symbol)
             pos_long = order.get("side") == "sell"
             self._record_order(order, {}, "close_long" if pos_long else "close_short", "Closed manually")
+            if crypto.is_crypto(symbol):
+                crypto_exits.mark_closing(self.ctx.db, symbol, self.broker.mode, order["id"], "Sold by you")
             log.info("Manually closed %s", symbol)
         await self.refresh(force=True)
         return order
@@ -624,6 +756,9 @@ class Trader:
         msg = f"Cancelled {result['cancelled']} open orders"
         if close_positions:
             msg += f", closing {result['closed']} positions"
+        elif self.broker is not None and crypto_exits.open_plans(self.ctx.db, getattr(self.broker, "mode", None)):
+            msg += (". Crypto safety stops were cancelled too - NewsTrader puts them back when you re-arm trading "
+                    "(the take-profits wait too)")
         if result["errors"]:
             msg += ". Problems: " + "; ".join(result["errors"])
         await self._alert("kill_switch", "KILL SWITCH engaged - all trading stopped", msg, "error")
@@ -632,6 +767,7 @@ class Trader:
     async def rearm(self) -> None:
         self.ctx.state.release_kill_switch()
         log.warning("Trading re-armed (kill switch released)")
+        self._kick_exits()  # crypto safety stops go back in
         await self._alert("kill_switch", "Trading re-armed", "Kill switch released by you.", "info")
 
     # ------------------------------------------------------------------ trade log

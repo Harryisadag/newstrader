@@ -1,6 +1,7 @@
 """Risk controls - pure functions, no network, fully unit-tested.
 
 `check_entry` decides whether a new position (buy, or short if enabled) may be opened and how big.
+`check_crypto_entry` does the same for a crypto buy: 24/7, any fraction, sized in dollars, never a short.
 `check_exit` decides whether an existing long position may be closed on a bearish signal.
 Each returns a RiskDecision with a plain-English reason when something is blocked.
 `chase_check` sends a signal to manual review when the price already moved a lot before we could act.
@@ -12,7 +13,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..config import RiskSettings, TradingSettings
+from ..config import CryptoSettings, RiskSettings, TradingSettings
+from . import crypto
 
 
 @dataclass
@@ -24,6 +26,7 @@ class AccountSnapshot:
     shorting_enabled: bool = False
     trading_blocked: bool = False
     blocked_reason: str = ""
+    crypto_buying_power: float | None = None  # crypto can't be bought on margin (None = use cash)
 
     @property
     def day_pl(self) -> float:
@@ -50,6 +53,8 @@ class AssetInfo:
     tradable: bool = True
     shortable: bool = False
     easy_to_borrow: bool = False
+    min_order_size: float | None = None   # crypto: the smallest amount of the coin Alpaca accepts
+    price_increment: float | None = None  # crypto: the price step for stop / limit prices
 
 
 @dataclass
@@ -74,7 +79,8 @@ class RiskContext:
 class RiskDecision:
     allowed: bool
     reason: str = ""
-    qty: int = 0
+    qty: float = 0  # whole shares for stocks; an estimate of the coins a crypto buy gets
+    stop_limit_price: float | None = None  # crypto: the safety stop's limit price
     price: float = 0.0
     notional: float = 0.0
     stop_price: float | None = None
@@ -108,6 +114,10 @@ def bracket_prices(side: str, price: float, stop_loss_pct: float, take_profit_pc
 
 
 def _common_gates(ctx: RiskContext, symbol: str, manual: bool, is_exit: bool) -> RiskDecision | None:
+    """Kill switch, auto-trade, a blocked account, the daily loss limit, market hours and the black / white lists.
+    Crypto trades 24/7 (no market-hours check) and has its own list (Settings -> Crypto) instead of the black /
+    white lists, which are for stocks."""
+    coin = crypto.is_crypto(symbol)
     if ctx.kill_engaged:
         return RiskDecision.block("Kill switch is engaged - re-arm trading to resume.")
     if not manual and not ctx.trading.auto_trade:
@@ -122,9 +132,9 @@ def _common_gates(ctx: RiskContext, symbol: str, manual: bool, is_exit: bool) ->
             return RiskDecision.block(
                 f"Daily loss limit hit: down ${loss:,.2f} today (limit ${ctx.risk.daily_loss_limit_usd:,.2f}).",
                 halt_for_day=True)
-    if ctx.risk.market_hours_only and not ctx.market_open:
+    if ctx.risk.market_hours_only and not ctx.market_open and not coin:
         return RiskDecision.block("Market is closed (market-hours-only is on).")
-    if not is_exit:
+    if not is_exit and not coin:
         if ctx.risk.whitelist and symbol not in ctx.risk.whitelist:
             return RiskDecision.block(f"{symbol} is not on your whitelist.")
         if symbol in ctx.risk.blacklist:
@@ -200,6 +210,58 @@ def check_entry(symbol: str, side: str, price: float | None, ctx: RiskContext, m
                                f"stop ${stop:,.2f}, target ${tp:,.2f}")
 
 
+def check_crypto_entry(symbol: str, price: float | None, ctx: RiskContext, settings: CryptoSettings,
+                       manual: bool = False) -> RiskDecision:
+    """A crypto buy: the shared gates (kill switch, auto-trade, daily loss limit), cooldown, a waiting order, max open
+    positions and the max % per asset apply; market hours, the minimum price and whole shares don't. Sized in dollars
+    (Settings -> Crypto -> max per trade), paid from cash (crypto can't be bought on margin). Never adds to a coin
+    you already hold - its safety stop covers the whole position."""
+    symbol = crypto.normalize(symbol)
+    blocked = _common_gates(ctx, symbol, manual, is_exit=False)
+    if blocked:
+        return blocked
+    if ctx.asset is not None and not ctx.asset.tradable:
+        return RiskDecision.block(f"Alpaca says {symbol} isn't tradable.")
+    cooldown = ctx.risk.ticker_cooldown_minutes
+    last = ctx.last_entry_at.get(symbol)
+    if cooldown and last is not None:
+        mins = (ctx.now - last).total_seconds() / 60
+        if mins < cooldown:
+            return RiskDecision.block(f"Cooldown: {symbol} was traded {mins:.0f} min ago (cooldown {cooldown} min).")
+    if symbol in ctx.pending_symbols:
+        return RiskDecision.block(f"An order for {symbol} is already waiting to fill.")
+    existing = ctx.position(symbol)
+    if existing is not None:
+        return RiskDecision.block(f"You already hold {symbol} - NewsTrader doesn't add to a crypto position (its "
+                                  "safety stop covers the whole position).")
+    held = {p.symbol for p in ctx.positions if p.qty != 0} | set(ctx.pending_symbols)
+    if len(held) >= ctx.risk.max_open_positions:
+        return RiskDecision.block(f"Max open positions reached ({ctx.risk.max_open_positions}).")
+    if price is None or not math.isfinite(price) or price <= 0:
+        return RiskDecision.block(f"No current price for {symbol}.")
+    equity = max(ctx.account.equity, 0.0)
+    room = equity * ctx.risk.max_pct_per_stock / 100
+    cash = ctx.account.crypto_buying_power
+    cash = ctx.account.cash if cash is None else cash
+    budget = min(settings.max_per_trade, room, max(cash or 0.0, 0.0) * 0.98)
+    budget = math.floor(budget * 100) / 100  # whole cents
+    if budget < 1:
+        return RiskDecision.block("Not enough cash to buy crypto (it can't be bought on margin).")
+    qty = budget / price
+    min_size = ctx.asset.min_order_size if ctx.asset is not None else None
+    if min_size and qty < min_size:
+        limiter = ("max per trade" if budget == math.floor(settings.max_per_trade * 100) / 100
+                   else "max % per asset" if budget == math.floor(room * 100) / 100 else "cash")
+        return RiskDecision.block(f"Alpaca's smallest {symbol} order is {min_size:g} (${min_size * price:,.2f}), more "
+                                  f"than your {limiter} allows (${budget:,.2f}).")
+    increment = ctx.asset.price_increment if ctx.asset is not None else None
+    stop, limit, tp = crypto.exit_prices(price, settings.stop_loss_pct, settings.take_profit_pct, increment)
+    return RiskDecision(allowed=True, qty=qty, price=price, notional=budget, stop_price=stop, stop_limit_price=limit,
+                        take_profit_price=tp,
+                        reason=f"BUY ${budget:,.2f} of {symbol} (~{qty:.6g} @ ~${price:,.2f}); safety stop "
+                               f"${stop:,.2f} at Alpaca, take-profit ${tp:,.2f} watched by NewsTrader")
+
+
 def chase_check(direction: str, pre_move_pct: float | None, limit_pct: float) -> str:
     """Don't chase: why a signal should go to manual review instead of being auto-traded, or "" if it's fine.
 
@@ -226,5 +288,6 @@ def check_exit(symbol: str, ctx: RiskContext, manual: bool = False) -> RiskDecis
     pos = ctx.position(symbol)
     if pos is None or not pos.is_long:
         return RiskDecision.block(f"No long {symbol} position to sell.")
-    return RiskDecision(allowed=True, qty=math.floor(pos.qty), notional=pos.market_value,
+    qty = pos.qty if crypto.is_crypto(symbol) else math.floor(pos.qty)
+    return RiskDecision(allowed=True, qty=qty, notional=pos.market_value,
                         reason=f"SELL all {pos.qty:g} {symbol} (bearish signal)")

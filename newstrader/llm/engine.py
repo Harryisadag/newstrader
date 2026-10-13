@@ -49,7 +49,7 @@ def is_macro_only(pre: PrefilterResult) -> bool:
 
 
 def allowed_tickers(pre: PrefilterResult) -> list[str]:
-    out = [c.symbol.upper() for c in pre.candidates]
+    out = [c.symbol.upper() for c in pre.candidates if "/" not in c.symbol]  # stocks and funds only, never crypto
     if is_macro_only(pre):
         out += MACRO_ETFS
     return list(dict.fromkeys(out))

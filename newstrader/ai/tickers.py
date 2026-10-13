@@ -1,6 +1,9 @@
 """The lookup table of every US-listed stock (symbol + cleaned company name), from Alpaca's asset list.
 
-Cached in SQLite and refreshed once a day, so the pre-filter works instantly at startup.
+Cached in SQLite and refreshed once a day, so the pre-filter works instantly at startup. With crypto on (Settings ->
+Crypto) it also holds Alpaca's crypto pairs ("BTC/USD", exchange "CRYPTO"). They are only looked up by symbol - news
+finds them through the coin words in trading/crypto.py - and only the pairs in your crypto list that Alpaca lists as
+tradable count (crypto_symbols).
 """
 
 from __future__ import annotations
@@ -9,10 +12,12 @@ import logging
 import re
 import threading
 import unicodedata
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 
 from ..db import Database, iso, parse_iso, utcnow
+from ..trading import crypto
 from .keywords import ALIASES, COMMON_WORDS, CONTEXT_NAMES
 
 log = logging.getLogger(__name__)
@@ -124,18 +129,22 @@ class TickerTable:
         self.aliases: dict[tuple[str, ...], str] = {}
         self.max_name_len = 1
         self.updated_at: str | None = None
+        self._stocks_loaded = False
+        # the crypto pairs you want traded (Settings -> Crypto), or a function giving them (the pipeline's)
+        self.crypto_wanted: Iterable[str] | Callable[[], Iterable[str]] = ()
 
     # ---------------------------------------------------------------- loading
     @property
     def loaded(self) -> bool:
-        return bool(self.by_symbol)
+        return self._stocks_loaded
 
     def load_from_db(self) -> int:
         rows = self.db.query("SELECT * FROM tickers")
         self._build(rows)
-        if rows:
-            self.updated_at = max(r["updated_at"] or "" for r in rows) or None
-        return len(rows)
+        stocks = [r for r in rows if r["exchange"] != crypto.EXCHANGE]
+        if stocks:
+            self.updated_at = max(r["updated_at"] or "" for r in stocks) or None
+        return len(stocks)
 
     def needs_refresh(self, max_age_hours: float = 24) -> bool:
         if not self.loaded or not self.updated_at:
@@ -163,7 +172,7 @@ class TickerTable:
             c = self.db.conn()
             c.execute("BEGIN")
             try:
-                c.execute("DELETE FROM tickers")
+                c.execute("DELETE FROM tickers WHERE exchange IS NULL OR exchange != ?", (crypto.EXCHANGE,))
                 c.executemany("INSERT INTO tickers (symbol, name, clean_name, exchange, tradable, shortable, "
                               "easy_to_borrow, fractionable, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", rows)
                 c.execute("COMMIT")
@@ -174,6 +183,42 @@ class TickerTable:
         log.info("Ticker table updated: %d US-listed symbols", len(rows))
         return len(rows)
 
+    def replace_crypto(self, assets: list[dict]) -> int:
+        """Store Alpaca's crypto pairs priced in US dollars (kept apart from the stocks: replace_all leaves them)."""
+        now = iso()
+        rows = []
+        for a in assets:
+            sym = crypto.normalize(a.get("symbol"), "crypto")
+            if not crypto.is_crypto(sym) or not sym.endswith("/" + crypto.QUOTE):
+                continue
+            name = crypto.display_name(sym, a.get("name") or "")
+            rows.append((sym, name, name.lower(), crypto.EXCHANGE, int(bool(a.get("tradable"))), 0, 0, 1, now))
+        with self.db._write_lock:
+            c = self.db.conn()
+            c.execute("BEGIN")
+            try:
+                c.execute("DELETE FROM tickers WHERE exchange = ?", (crypto.EXCHANGE,))
+                c.executemany("INSERT INTO tickers (symbol, name, clean_name, exchange, tradable, shortable, "
+                              "easy_to_borrow, fractionable, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", rows)
+                c.execute("COMMIT")
+            except Exception:
+                c.execute("ROLLBACK")
+                raise
+        self.load_from_db()
+        log.info("Crypto pairs updated: %d", len(rows))
+        return len(rows)
+
+    @property
+    def crypto_symbols(self) -> set[str]:
+        """The crypto pairs NewsTrader may trade: the ones you want that Alpaca lists as tradable."""
+        wanted = self.crypto_wanted() if callable(self.crypto_wanted) else self.crypto_wanted
+        out = set()
+        for s in wanted or ():
+            info = self.by_symbol.get(crypto.normalize(s))
+            if info is not None and info.tradable and info.exchange == crypto.EXCHANGE:
+                out.add(info.symbol)
+        return out
+
     def _build(self, rows: list[dict]) -> None:
         by_symbol: dict[str, TickerInfo] = {}
         by_name: dict[tuple[str, ...], list[str]] = {}
@@ -182,6 +227,8 @@ class TickerTable:
             info = TickerInfo(r["symbol"], r["name"] or "", r["clean_name"] or "", r["exchange"] or "",
                               bool(r["tradable"]), bool(r["shortable"]), bool(r["easy_to_borrow"]))
             by_symbol[info.symbol] = info
+            if info.exchange == crypto.EXCHANGE:
+                continue  # found by its coin words (prefilter), never by name
             name_l = info.name.lower()
             # Fund names are long and generic ("SPDR S&P 500 ETF Trust"); match funds by ticker only.
             if not info.clean_name or any(w in f" {name_l} " for w in (" etf", " fund ", " fund,", " ishares",
@@ -206,6 +253,7 @@ class TickerTable:
                 aliases[tuple(tokenize(phrase))] = sym
         with self._lock:
             self.by_symbol = by_symbol
+            self._stocks_loaded = any(info.exchange != crypto.EXCHANGE for info in by_symbol.values())
             self.by_name = by_name
             self.aliases = aliases
             lens = [len(k) for k in by_name] + [len(k) for k in aliases] + [1]
@@ -213,7 +261,7 @@ class TickerTable:
 
     # ---------------------------------------------------------------- lookups
     def get(self, symbol: str) -> TickerInfo | None:
-        return self.by_symbol.get((symbol or "").upper())
+        return self.by_symbol.get(crypto.normalize(symbol))
 
     def is_valid(self, symbol: str, require_tradable: bool = True) -> bool:
         info = self.get(symbol)

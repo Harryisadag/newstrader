@@ -280,6 +280,67 @@ async def _check_pro_ai(ctx: AppContext) -> list[dict]:
     return out
 
 
+async def _check_crypto(ctx: AppContext) -> list[dict]:
+    """Only when crypto is on: can the account trade it, are the coins in the list tradable, is there a live price,
+    and are the safety stops of open crypto positions in place."""
+    s = ctx.config.settings.crypto
+    if not s.enabled:
+        return []
+    from .trading import crypto_exits
+
+    trader = ctx.service("trader")
+    broker = getattr(trader, "broker", None)
+    if getattr(trader, "broker_kind", "") == "simulator":
+        return [_check("Crypto", "warn", "turned on, but the built-in simulator can't trade crypto",
+                       "Crypto needs an Alpaca paper account: add your keys (Settings -> API keys) and pick Alpaca in "
+                       "Settings -> Trading - or turn crypto off.")]
+    if broker is None or not getattr(broker, "supports_crypto", False):
+        return [_check("Crypto", "error", "turned on, but not connected to Alpaca",
+                       "Add your Alpaca paper keys in Settings -> API keys.")]
+    try:
+        assets = await _with_timeout(asyncio.to_thread(broker.crypto_assets))
+    except Exception as exc:
+        return [_check("Crypto", "error", f"Couldn't get Alpaca's crypto list: {type(exc).__name__}: {exc}",
+                       "Check your internet connection and run diagnostics again.")]
+    tradable = {a["symbol"] for a in assets if a.get("tradable")}
+    ok = [x for x in s.symbols if x in tradable]
+    missing = [x for x in s.symbols if x not in tradable]
+    if not ok:
+        return [_check("Crypto", "error", f"none of {', '.join(s.symbols)} is tradable on Alpaca",
+                       "Settings -> Crypto: use pairs like BTC/USD, ETH/USD, SOL/USD.")]
+    out = [_check("Crypto", "warn" if missing else "ok",
+                  f"tradable: {', '.join(ok)}" + (f" · not tradable on Alpaca (left out): {', '.join(missing)}"
+                                                  if missing else ""),
+                  "Remove the ones Alpaca doesn't list in Settings -> Crypto." if missing else "")]
+    try:
+        price = await _with_timeout(asyncio.to_thread(broker.latest_price, ok[0]))
+        out.append(_check("Crypto prices", "ok" if price else "warn",
+                          f"{ok[0]} ${price:,.2f} (Alpaca crypto data, 24/7)" if price else f"no price for {ok[0]}",
+                          "" if price else "Try again in a minute."))
+    except Exception as exc:
+        out.append(_check("Crypto prices", "error", f"{type(exc).__name__}: {exc}"))
+    if ctx.state.mode == "live":
+        out.append(_check("Crypto in LIVE mode", "warn", "crypto is paper only - no crypto is bought while LIVE "
+                          "trading is on"))
+    plans = crypto_exits.open_plans(ctx.db, broker.mode)
+    if plans:
+        try:
+            orders = await _with_timeout(asyncio.to_thread(broker.orders, "open", 500))
+            live = {o["id"] for o in orders}
+            unprotected = [p["symbol"] for p in plans if p["status"] == "active" and p["stop_order_id"] not in live]
+        except Exception as exc:
+            return out + [_check("Crypto safety stops", "error", f"{type(exc).__name__}: {exc}")]
+        if unprotected:
+            out.append(_check("Crypto safety stops", "warn", f"no working safety stop yet for {', '.join(unprotected)}",
+                              "NewsTrader puts it back within a minute while trading is armed (the kill switch "
+                              "cancels them)."))
+        else:
+            n = sum(1 for p in plans if p["status"] == "active")
+            out.append(_check("Crypto safety stops", "ok", f"{n} crypto position{'' if n == 1 else 's'} protected "
+                              "by a stop held at Alpaca · take-profits watched while NewsTrader is open"))
+    return out
+
+
 async def run_diagnostics(ctx: AppContext) -> dict:
     checks: list[dict] = [_check("NewsTrader", "ok", f"version {__version__}, {ctx.state.mode.upper()} mode"),
                           _check_python(), _check_data_dir()]
@@ -296,6 +357,10 @@ async def run_diagnostics(ctx: AppContext) -> dict:
         checks += await _with_timeout(_check_pro_ai(ctx), 30)
     except Exception as exc:
         checks.append(_check("Pro AI", "error", f"{type(exc).__name__}: {exc}"))
+    try:
+        checks += await _with_timeout(_check_crypto(ctx), 40)
+    except Exception as exc:
+        checks.append(_check("Crypto", "error", f"{type(exc).__name__}: {exc}"))
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("ok", "warn", "error")}
     log.info("Diagnostics: %d ok, %d warnings, %d errors", summary["ok"], summary["warn"], summary["error"])
     return {"checks": checks, "summary": summary}

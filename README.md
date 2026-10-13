@@ -15,6 +15,7 @@ NewsTrader is a desktop app for **Windows and Mac** that:
 4. **Places PAPER trades on Alpaca** when confidence is high enough. Every buy has a stop-loss and take-profit, and strict risk limits apply.
 5. **Tracks whether the AI is actually right.** It checks the price 5 minutes, 1 hour and 1 trading day after every call. It can also **backtest** on historical news.
 6. **Watches the market**: sudden price spikes on unusual volume, big moves in the whole market or world markets, and today's top movers, with the news behind them (Market tab and alerts).
+7. Optional, off by default: **trades crypto** (Bitcoin, Ether, Solana) on paper through Alpaca, day and night (see [Crypto](#crypto-paper)).
 
 > ⚠️ **Paper trading only by default.** NewsTrader always starts in **PAPER** mode (fake money). Real-money trading is locked in the code. Unlocking it takes all three of these:
 > - separate live keys
@@ -43,16 +44,17 @@ You don't need Python to use a release:
 4. [The AI engine: local machine learning or Claude](#the-ai-engine-local-machine-learning-or-claude)
 5. [Pro AI (for strong PCs)](#pro-ai-for-strong-pcs)
 6. [Charts: patterns and indicators](#charts-patterns-and-indicators)
-7. [Settings explained](#settings-explained)
-8. [How a trade happens](#how-a-trade-happens)
-9. [Kill switch and live trading](#kill-switch-and-live-trading)
-10. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-11. [Updating](#updating)
-12. [Troubleshooting](#troubleshooting)
-13. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-14. [What it costs](#what-it-costs)
-15. [Where your files are](#where-your-files-are)
-16. [For developers](#for-developers)
+7. [Crypto (paper)](#crypto-paper)
+8. [Settings explained](#settings-explained)
+9. [How a trade happens](#how-a-trade-happens)
+10. [Kill switch and live trading](#kill-switch-and-live-trading)
+11. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+12. [Updating](#updating)
+13. [Troubleshooting](#troubleshooting)
+14. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+15. [What it costs](#what-it-costs)
+16. [Where your files are](#where-your-files-are)
+17. [For developers](#for-developers)
 
 ---
 
@@ -373,6 +375,70 @@ compares IEX with IEX, so it's still a fair guide, but quiet stocks can go minut
 
 ---
 
+## Crypto (paper)
+
+NewsTrader can also trade crypto - Bitcoin (BTC/USD), Ether (ETH/USD) and Solana (SOL/USD) to start with - on your
+Alpaca **paper** account. It's **off by default**: turn it on in **Settings -> Crypto**.
+
+> ⚠️ **Crypto moves fast and trades all night; the take-profit only works while NewsTrader is open, the safety stop is
+> kept at Alpaca.**
+
+**What's different from stocks**
+- Crypto trades **24 hours a day, 7 days a week**, so the market-hours check doesn't apply to it.
+- It's bought by **dollar amount** (Settings -> Crypto -> *Max $ per crypto trade*, default $500), so you get a fraction
+  of a coin. It's paid from cash: crypto can't be bought on margin.
+- It's **never shorted**. Bearish news about a coin you don't hold is ignored (the Signals tab says why); bearish news
+  about a coin you hold sells it.
+- NewsTrader doesn't add to a coin you already hold.
+- **Paper only**: while LIVE trading is on, NewsTrader doesn't buy crypto.
+- It needs an Alpaca account: the built-in simulator can't trade crypto (Settings -> Crypto says so).
+
+**Stop-loss and take-profit.** Alpaca has no bracket orders for crypto, so NewsTrader does it in two parts:
+1. **Safety stop (held at Alpaca).** As soon as a buy fills, NewsTrader places a stop order for the whole position,
+   3% below the buy (Settings -> Crypto -> *Safety stop*). It sits at Alpaca, so it works **even while NewsTrader is
+   closed**. It's a stop-limit order with its limit 0.5% lower; if the price crashes through it too fast for it to
+   fill, NewsTrader sells at market when it sees that (while it's open).
+2. **Take-profit (watched by NewsTrader).** About every 15 seconds, day and night, while NewsTrader is open, it checks
+   the price. At the target (6% above the buy, *Take-profit*) it cancels the safety stop and sells the whole position.
+   **While NewsTrader is closed, only the safety stop works.**
+
+Every time NewsTrader starts, it checks each crypto position it opened: a missing safety stop is put back, and the
+plans for coins that were sold (by the stop, or by you) are tidied away. Crypto bought outside NewsTrader is left
+alone. Selling on bearish news, or with **Close** on the Portfolio tab, cancels the safety stop first.
+
+**Which news trades crypto.** The pre-filter finds the coins in your list by name ("bitcoin", "ether", "ethereum",
+"solana"), by cashtag ("$BTC"), and by Alpaca's news tags ("BTCUSD"). Short forms such as "sol" or "eth" only count
+in a story about crypto. The local engine has a small, careful set of crypto rules:
+
+| News | Direction |
+|---|---|
+| A spot ETF approved / rejected or delayed | up / down |
+| Big ETF inflows / outflows | up / down |
+| An exchange hacked or exploited | down |
+| A regulator suing / dropping a case or approving | down / up |
+| A country banning it / lifting a ban | down / up |
+| A big exchange listing / delisting it | up / down |
+| A company buying it for its treasury (or a government reserve) | up |
+
+Anything else about a coin is judged on its wording only, so it goes to **manual review**, never an automatic trade. A
+company's own news that only mentions a coin ("a bitcoin miner mined 700 bitcoin") never trades the coin. The trained
+price model learned from stocks, so it's never used for crypto. With *Trade crypto on news automatically* off, every
+crypto news signal waits for your approval. Pro AI only reads stocks.
+
+**Shared limits.** The kill switch, the daily loss limit, max open positions, the cooldown per ticker and *Max % of
+account in one stock* apply to crypto too. The blacklist / whitelist and the minimum share price are for stocks only
+(crypto has its own list).
+
+**Charts and the Market tab.** Click a coin on the Market tab's **Crypto** card (its price and change over 24 hours)
+for its chart: the last 24 hours, with VWAP averaged over 24 hours and days that start at midnight UTC. The market
+monitor checks the coins for sudden spikes around the clock, chart signals for them run 24/7 (watch-only, as for
+stocks), and the scoreboard checks crypto calls after 5 minutes, 1 hour and 24 hours.
+
+**The kill switch** cancels the safety stops like every other order, and NewsTrader stops watching the take-profits.
+When you re-arm trading, the safety stops go back in.
+
+---
+
 ## Settings explained
 
 All settings are saved to `config.json` and changed in the app (Settings tab). The defaults are listed here.
@@ -391,14 +457,14 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 **Risk controls**
 | Setting | Default | Meaning |
 |---|---|---|
-| Max $ per trade | $1,000 | Position size cap (whole shares only). |
+| Max $ per trade | $1,000 | Position size cap (whole shares only). Crypto has its own (Settings -> Crypto). |
 | Max % of account in one stock | 10% | Includes what you already hold. |
 | Max open positions | 5 | No new stocks once this many are held/pending. |
 | Daily loss limit | $500 | When today's loss hits this, trading stops until the next trading day (and you get an alert). |
 | Cooldown per ticker | 30 min | Don't trade the same stock again within this window. |
 | Market hours only | on | Only trade 9:30–4:00 ET. If off, orders sent while the market is closed are queued by Alpaca for the next open. Alpaca doesn't allow bracket orders before/after hours. |
 | Minimum share price | $1 | Skip penny stocks. |
-| Blacklist / Whitelist | empty | Never trade / only trade these tickers. |
+| Blacklist / Whitelist | empty | Never trade / only trade these tickers (stocks only). |
 
 **AI engine**
 | Setting | Default | Meaning |
@@ -457,6 +523,16 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 
 The free Alpaca data plan (IEX) sees part of the market's trading, so volume numbers are lower than the full market's. Spike detection compares a stock with its own normal volume, so it still works.
 
+**Crypto** - see [Crypto](#crypto-paper)
+| Setting | Default | Meaning |
+|---|---|---|
+| Trade crypto (paper) | off | Lets news about the coins below make signals and paper trades through Alpaca. |
+| Coins | BTC/USD, ETH/USD, SOL/USD | Pairs priced in US dollars. Only ones Alpaca lists as tradable are used. |
+| Max $ per crypto trade | $500 | Each buy's size in dollars (a fraction of a coin). |
+| Safety stop | 3% | Below the buy, held at Alpaca (works while NewsTrader is closed). |
+| Take-profit | 6% | Above the buy, watched by NewsTrader while it's open. |
+| Trade crypto on news automatically | on | Off = crypto news signals wait for your approval. |
+
 **Display:** times in the app can follow this computer's time zone, New York (market) time, or UTC. **Check for updates** (on) looks at GitHub once a day and shows a banner when a newer NewsTrader is out. In the downloaded app (v0.4 and newer) the banner has an **Update now** button; nothing is installed until you click it.
 
 **Alerts:** desktop pop-ups (Windows or Mac) and Discord, each on/off. You can also turn each alert type on/off:
@@ -497,7 +573,11 @@ News item ──► Stage 1: local pre-filter (free)
               Bearish ≥ buy threshold   → sell if you hold it (or short, if you turned that on)
 ```
 
-**Risk checks, in order** (any failure blocks the trade, and the reason is shown in Signals):
+Crypto (when it's on) follows the same path, but a buy is a dollar amount with a safety stop at Alpaca and a
+take-profit NewsTrader watches (see [Crypto](#crypto-paper)), and bearish news never opens a short.
+
+**Risk checks, in order** (any failure blocks the trade, and the reason is shown in Signals; crypto skips market
+hours, the blacklist / whitelist, the minimum price and whole shares):
 1. Kill switch
 2. Auto-trade
 3. Daily loss limit
@@ -522,7 +602,7 @@ News item ──► Stage 1: local pre-filter (free)
 
 You can also tick **"close every position"** in its confirmation box.
 
-Cancelling orders also removes the stop-loss/take-profit protecting your positions, so close them or watch them. Trading stays stopped, even after a restart, until you click **RE-ARM TRADING**.
+Cancelling orders also removes the stop-loss/take-profit protecting your positions, so close them or watch them. That includes the safety stops of crypto positions (NewsTrader puts those back when you re-arm). Trading stays stopped, even after a restart, until you click **RE-ARM TRADING**.
 
 **Live trading** (Settings → Live trading) needs all of these:
 - live keys (`ALPACA_LIVE_API_KEY` / `ALPACA_LIVE_SECRET_KEY`)
@@ -704,7 +784,8 @@ newstrader/
   chart/              indicators, candlestick / chart patterns, chart reading, chart service (bar cache, chart
                       check on news signals, watch-only chart signals)
   market/             market monitor: spikes, market-wide moves, top movers
-  trading/            Alpaca broker, live-trading lock, risk checks, trader, P/L
+  trading/            Alpaca broker, live-trading lock, risk checks, trader, P/L, crypto symbols and the crypto
+                      exit manager (safety stops at Alpaca, take-profits while the app runs)
   alerts/             desktop pop-ups (Windows / Mac), Discord, alert manager
   performance/        price checkpoints and win-rate stats
   backtest/           historical replay + bracket simulator

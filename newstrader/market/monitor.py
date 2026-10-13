@@ -11,6 +11,10 @@ per stock and kind per cooldown, and only the most significant few per check. Ev
 shown on the Market tab) even when it isn't alerted. When the market is closed it only refreshes prices and movers
 every 10 minutes for the tab - no spike or move alerts.
 
+With crypto on (Settings -> Crypto) every check - around the clock, also while the stock market is closed - looks at
+the coins in your crypto list too: sudden spikes (the same rules as stocks, alerted the same way), the price and the
+change over 24 hours for the Market tab's crypto tiles.
+
 Data problems are logged as warnings, never errors (errors become alerts).
 """
 
@@ -27,6 +31,7 @@ from ..context import AppContext
 from ..db import iso, parse_iso, utcnow
 from ..performance.prices import price_at
 from ..state import MARKET_TZ, trading_day
+from ..trading import crypto
 from . import wording
 from .detect import (
     BASELINE_MINUTES,
@@ -52,6 +57,7 @@ NEWS_WINDOW = timedelta(minutes=90)   # news behind a spike: signals / stories f
 NEWS_LOOKUPS_PER_CHECK = 3            # ...else ask Alpaca's news for at most this many stocks per check
 BARS_CACHE_FRESH = timedelta(minutes=5)  # the chase guard may reuse bars this recent
 KEEP_DAYS = 30
+CRYPTO_DAY_EVERY = timedelta(minutes=5)  # crypto: the 24-hour change is worked out from hourly bars this often
 RECENT_EVENTS = 100
 TOP_SUMMARY = 5
 _SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
@@ -133,7 +139,7 @@ def empty_payload(settings) -> dict:
         "movers": {"gainers": [], "losers": [], "updated": None, "error": None},
         "most_actives": {"items": [], "updated": None, "error": None},
         "watching": [], "counts": {"watching": 0, "events_today": 0, "truncated": 0},
-        "thresholds": _thresholds(s),
+        "thresholds": _thresholds(s), "crypto": [], "crypto_note": "",
     }
 
 
@@ -176,6 +182,10 @@ class MarketMonitor:
         self.movers: dict = {"gainers": [], "losers": [], "updated": None}
         self.most_actives: dict = {"items": [], "updated": None}
         self.movers_error: str | None = None
+        self.crypto_tiles: list[dict] = []
+        self.crypto_note = ""
+        self._crypto_day: dict[str, float | None] = {}   # coin -> its price 24 hours ago
+        self._crypto_day_at: datetime | None = None
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -324,6 +334,7 @@ class MarketMonitor:
             "watching": self._watching(),
             "counts": {"watching": len(self._stock_symbols()), "events_today": self.events_today(),
                        "truncated": self.truncated},
+            "crypto": self.crypto_tiles, "crypto_note": self.crypto_note,
         })
         return out
 
@@ -390,13 +401,17 @@ class MarketMonitor:
             self._set_status("off", "Waiting for an Alpaca connection (Settings -> API keys)")
             return {"status": "no_broker"}
         self.phase = await self._phase(broker, now, s)
+        coins = await self._crypto_check(broker, s, now)  # crypto trades 24/7: checked whatever the stock market does
         if self.phase == "closed":
             if force or self._refreshed_at is None or now - self._refreshed_at >= CLOSED_REFRESH:
                 await self._refresh_closed(broker, s, now)
             when = f" · prices from {self._clock_text(self._refreshed_at)}" if self._refreshed_at else ""
-            self._set_status("ok", f"Market closed - no spike alerts{when} · {self._feed()}")
-            return {"status": "closed", "watching": len(self._stock_symbols())}
-        return await self._scan(broker, s, now)
+            extra = f" · watching {coins} crypto around the clock" if coins else ""
+            self._set_status("ok", f"Market closed - no stock spike alerts{when} · {self._feed()}{extra}")
+            return {"status": "closed", "watching": len(self._stock_symbols()), "crypto": coins}
+        out = await self._scan(broker, s, now)
+        out["crypto"] = coins
+        return out
 
     async def _phase(self, broker, now: datetime, s) -> str:
         clock = getattr(self.ctx.service("trader"), "clock", None)
@@ -462,13 +477,70 @@ class MarketMonitor:
         self._publish_summary()
         n = len(self._stock_symbols())
         extra = " (outside regular market hours)" if self.phase == "extended" else ""
-        self._set_status("ok", f"Watching {n} stock{'' if n == 1 else 's'}{extra} · {self._feed()} · "
+        coins = f" + {len(self.crypto_tiles)} crypto" if self.crypto_tiles else ""
+        self._set_status("ok", f"Watching {n} stock{'' if n == 1 else 's'}{coins}{extra} · {self._feed()} · "
                                f"last check {self._clock_text(now)}")
         charts = self.ctx.service("chart")
         if charts is not None and hasattr(charts, "market_checked"):
             charts.market_checked(now)  # chart signals use these fresh bars (it runs on its own, never waits here)
         return {"status": "ok", "phase": self.phase, "watching": len(self._stock_symbols()),
                 "events": len(stored), "alerts": len(to_alert)}
+
+    # ------------------------------------------------------------------ crypto (24/7)
+    def _crypto_symbols(self) -> list[str]:
+        table = self._ticker_table()
+        return sorted(getattr(table, "crypto_symbols", None) or ())
+
+    async def _crypto_check(self, broker, s, now: datetime) -> int:
+        """Spikes in the coins of your crypto list, and their tiles (price, change over 24 hours). Returns how many
+        coins were checked. Never lets a crypto data problem stop the stock checks."""
+        coins = self._crypto_symbols() if getattr(broker, "supports_crypto", False) else []
+        if not coins:
+            self.crypto_tiles, self.crypto_note = [], ""
+            return 0
+        try:
+            bars = await asyncio.to_thread(broker.bars_multi, coins, now - self._lookback(s), now, "1Min")
+            if self._crypto_day_at is None or now - self._crypto_day_at >= CRYPTO_DAY_EVERY:
+                hourly = await asyncio.to_thread(broker.bars_multi, coins, now - timedelta(hours=26), now, "1Hour")
+                self._crypto_day = {c: price_at(hourly.get(c) or [], now - timedelta(hours=24)) for c in coins}
+                self._crypto_day_at = now
+            self._warned.discard("crypto")
+        except Exception as exc:
+            self.crypto_note = f"Couldn't get crypto prices: {exc}"
+            self._warn_once("crypto", "Market monitor couldn't get crypto prices: %s", exc)
+            return 0
+        self.crypto_note = ""
+        w = s.spike_window_minutes
+        events, tiles = [], []
+        table = self._ticker_table()
+        for sym in coins:
+            st = window_stats(sym, bars.get(sym, []), now, w)
+            ago = self._crypto_day.get(sym)
+            change = (st.price - ago) / ago * 100 if st.price and ago else None
+            info = table.get(sym) if table is not None else None
+            tiles.append({"symbol": sym, "name": crypto.display_name(sym, info.name if info else ""),
+                          "price": st.price, "change_24h": _r(change), "move_pct": _r(st.change_pct),
+                          "window_min": w, "volume_ratio": _r(st.volume_ratio, 1), "stale": st.stale})
+            kind = detect_spike(st, s.spike_pct, s.volume_ratio, 0.0)
+            if kind and self.memory.is_new((sym, kind), now, w, st.change_pct or 0.0, s.spike_pct):
+                events.append(self._spike_event(sym, kind, st, ["crypto"], s, now))
+        self.crypto_tiles = tiles
+        await self._attach_news(broker, events, s, now)
+        for ev in events:
+            self._word(ev)
+        to_alert = self._plan_alerts(events, s, now)
+        stored = await asyncio.to_thread(self._store, events)
+        for row in stored:
+            log.info("Market: %s", row["detail"].get("title"))
+            self.ctx.bus.publish("market_event", row)
+        for ev in to_alert:
+            await self._send_alert(ev)
+        if self.phase != "open":  # (while the stock market is open the stock check right after does both)
+            self._publish_summary()
+            charts = self.ctx.service("chart")
+            if charts is not None and hasattr(charts, "market_checked"):
+                charts.market_checked(now)  # chart signals for the coins, around the clock
+        return len(coins)
 
     # ------------------------------------------------------------------ data
     async def _build_universe(self, s, now: datetime) -> tuple[dict[str, list[str]], int]:
@@ -525,6 +597,8 @@ class MarketMonitor:
         out = []
         for r in rows or []:
             sym = str(r.get("symbol") or "").upper()
+            if crypto.is_crypto(sym):
+                continue  # coins have their own tiles
             info = table.get(sym) if checkable else None
             if checkable and (info is None or not info.tradable):
                 continue
@@ -669,8 +743,9 @@ class MarketMonitor:
         return None
 
     async def _news_from_alpaca(self, broker, sym: str, now: datetime) -> dict | None:
+        tag = crypto.api_symbol(sym) if crypto.is_crypto(sym) else sym  # Alpaca tags crypto news "BTCUSD"
         try:
-            items = await asyncio.to_thread(broker.news, now - timedelta(hours=2), now, symbols=[sym], limit=3,
+            items = await asyncio.to_thread(broker.news, now - timedelta(hours=2), now, symbols=[tag], limit=3,
                                             include_content=False, newest_first=True)
         except Exception as exc:
             log.debug("news lookup for %s failed: %s", sym, exc)
@@ -760,4 +835,5 @@ class MarketMonitor:
             "gainers": self.movers["gainers"][:TOP_SUMMARY], "losers": self.movers["losers"][:TOP_SUMMARY],
             "counts": {"watching": len(self._stock_symbols()), "events_today": self.events_today(),
                        "truncated": self.truncated},
+            "crypto": self.crypto_tiles,
         })

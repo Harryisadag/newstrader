@@ -21,6 +21,10 @@ Two jobs use the readings:
   direction every COOLDOWN - is stored as a signal from "Chart patterns" (engine "chart"): watch-only by default, or
   manual review. They are never traded by themselves, and they are price-tracked like every signal so the scoreboard
   can measure them.
+
+Crypto pairs in your crypto list (Settings -> Crypto, "BTC/USD") work the same way, read as crypto (24/7, UTC days, a
+rolling 24-hour VWAP) from Alpaca's crypto data: the last two days of 1-minute bars, and chart signals around the
+clock (the market monitor's crypto check wakes the scan even while the stock market is closed).
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ import re
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 
@@ -43,7 +47,7 @@ from ..db import iso, utcnow
 from ..market import wording
 from ..performance.speed import signal_speed
 from ..state import trading_day
-from ..trading import nyse_calendar
+from ..trading import crypto, nyse_calendar
 from . import indicators as ind
 from .patterns import BEARISH, BULLISH
 from .reading import ChartReading, ChartSignal, chart_signal, confirm, read_chart
@@ -67,7 +71,7 @@ MAX_BOOST = 10                         # the most confidence a chart that agrees
 SOURCE_NAME = "Chart patterns"
 AGREES, NEUTRAL, AGAINST, STRETCHED, UNAVAILABLE = "agrees", "neutral", "against", "stretched", "unavailable"
 NO_CHART = "No up-to-date chart for this stock (no trades in the last 30 minutes, or no price data) - not checked."
-_SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
+_SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$|^[A-Z0-9]{2,10}/[A-Z]{3,4}$")
 # the trigger patterns behind chart signals, in plain English (stored as the signal's "news event")
 TRIGGER_WORDS = {
     "breakout": "Breakout", "breakdown": "Breakdown", "opening_range_breakout": "Opening range breakout",
@@ -202,8 +206,12 @@ def _merge(m: _Minutes, new: list[dict], since: datetime, until: datetime) -> No
     m.synced = max(m.synced, _minute(until))
 
 
-def history_start(now: datetime) -> datetime:
-    """4:00 New York time on the trading day before the latest one: two sessions of 1-minute bars."""
+def history_start(now: datetime, coin: bool = False) -> datetime:
+    """4:00 New York time on the trading day before the latest one: two sessions of 1-minute bars. Crypto (24/7):
+    midnight UTC the day before - the 24-hour VWAP and "normal volume" need a full day before now."""
+    if coin:
+        start = now.astimezone(UTC) - timedelta(days=1)
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
     d = now.astimezone(nyse_calendar.ET).date()
     days: list = []
     while len(days) < 2:
@@ -214,19 +222,24 @@ def history_start(now: datetime) -> datetime:
 
 
 def _clean(symbol: str) -> str:
-    return str(symbol or "").strip().upper().lstrip("$")
+    return crypto.normalize(symbol)
 
 
 def _num(x: float) -> float | None:
     return float(f"{x:.6g}") if x is not None and math.isfinite(x) else None
 
 
-def price_series(bars: list[dict], now: datetime) -> dict:
+def price_series(bars: list[dict], now: datetime, coin: bool = False) -> dict:
     """The latest session's 1-minute closes with VWAP, for the chart card ({"t": [...], "close": [...], "vwap": [...]};
-    empty lists without data)."""
+    empty lists without data). Crypto: the last 24 hours, with the rolling 24-hour VWAP."""
     b = ind.to_arrays(bars, now=now)
     if not len(b):
         return {"t": [], "close": [], "vwap": []}
+    if coin:
+        keep = np.flatnonzero(b.t > b.t[-1] - 24 * 3600)
+        vw = ind.vwap(b, True, 24)
+        return {"t": [b.iso(int(i)) for i in keep], "close": [_num(float(b.close[i])) for i in keep],
+                "vwap": [_num(float(vw[i])) for i in keep]}
     day = ind.day_parts(b.t)[0]
     keep = np.flatnonzero(day == day[-1])
     vw = ind.vwap(b)
@@ -241,7 +254,8 @@ def _quiet(task: asyncio.Task) -> None:
 
 
 def _read_all(items: list[tuple[str, list[dict], list[dict]]], now: datetime) -> list[ChartReading]:
-    return [read_chart(sym, minutes, daily, now) for sym, minutes, daily in items]
+    return [read_chart(sym, minutes, daily, now, asset_class="crypto" if crypto.is_crypto(sym) else "stock")
+            for sym, minutes, daily in items]
 
 
 # ---------------------------------------------------------------------------------------------- the service
@@ -324,6 +338,11 @@ class ChartService:
             self._warned.add(key)
             log.warning(msg, *args)
 
+    def _crypto(self) -> list[str]:
+        """The crypto pairs to read around the clock (Settings -> Crypto; none while it is off)."""
+        table = getattr(self.ctx.service("pipeline"), "tickers", None)
+        return sorted(getattr(table, "crypto_symbols", None) or ())
+
     def _company(self, symbol: str) -> str:
         table = getattr(self.ctx.service("pipeline"), "tickers", None)
         info = table.get(symbol) if table is not None else None
@@ -350,8 +369,11 @@ class ChartService:
         a big batch). A chunk that fails is noted per stock and skipped. `urgent` (a news signal's check) may use the
         requests chart signals leave free."""
         reserve = 0 if urgent else CHECK_RESERVE
-        for i in range(0, len(symbols), BARS_CHUNK):
-            chunk = symbols[i:i + BARS_CHUNK]
+        stocks = [s for s in symbols if not crypto.is_crypto(s)]
+        coins = [s for s in symbols if crypto.is_crypto(s)]  # a separate request (Alpaca's crypto data)
+        chunks = [stocks[i:i + BARS_CHUNK] for i in range(0, len(stocks), BARS_CHUNK)]
+        chunks += [coins[i:i + BARS_CHUNK] for i in range(0, len(coins), BARS_CHUNK)]
+        for chunk in chunks:
             while True:
                 async with self._fetch_lock:
                     full, tail = self._minutes_plan(chunk, now)
@@ -374,11 +396,11 @@ class ChartService:
     def _minutes_plan(self, symbols: list[str], now: datetime) -> tuple[list[str], list[str]]:
         """(stocks with no 1-minute bars yet, stocks missing the newest minutes), after taking the newest minutes the
         market monitor already has."""
-        start = history_start(now)
         monitor = self.ctx.service("market")
         fresh_bars = getattr(monitor, "fresh_bars", None)
         full, tail = [], []
         for sym in symbols:
+            start = history_start(now, crypto.is_crypto(sym))
             m = self._minutes.get(sym)
             if m is None:
                 full.append(sym)
@@ -397,7 +419,7 @@ class ChartService:
         return full, tail
 
     async def _fetch_minutes(self, full: list[str], tail: list[str], now: datetime) -> None:
-        start = history_start(now)
+        start = history_start(now, bool(full) and crypto.is_crypto(full[0]))  # (a chunk is all stocks or all crypto)
         if full:
             rows = await self._fetch(full, start, now, "1Min")
             for sym in full:
@@ -485,9 +507,11 @@ class ChartService:
         m = self._minutes.get(sym)
         sig = chart_signal(r)
         s = self.ctx.config.settings.chart
+        coin = crypto.is_crypto(sym)
         return {"symbol": sym, "name": self._company(sym), "reading": r.as_dict(),
                 "signal": sig.as_dict() if sig is not None else None,
-                "series": price_series(m.bars if m is not None else [], now), "feed": self._feed(),
+                "series": price_series(m.bars if m is not None else [], now, coin),
+                "feed": "CRYPTO" if coin else self._feed(), "asset_class": "crypto" if coin else "stock",
                 "confirm": s.confirm, "signals": s.signals}
 
     # ------------------------------------------------------------------ the check on news signals
@@ -508,6 +532,8 @@ class ChartService:
     def wanted(self, signal: dict, holding_long: bool = False) -> bool:
         """Is the chart check on and could it change what happens to this news signal (worth_checking())?"""
         settings = self.ctx.config.settings
+        if crypto.is_crypto(signal.get("ticker")) and signal.get("direction") == BEARISH and not holding_long:
+            return False  # crypto is never shorted: ignored anyway
         return settings.chart.confirm != "off" and bool(signal.get("ticker")) and worth_checking(
             signal.get("direction"), signal["confidence"], holding_long, settings.trading)
 
@@ -554,11 +580,13 @@ class ChartService:
         if not force and self._scanned_at is not None and timedelta(0) <= now - self._scanned_at < SCAN_EVERY:
             return {"status": "too_soon"}
         clock = getattr(self.ctx.service("trader"), "clock", None)
-        if not (clock and clock.get("is_open")):
+        is_open = bool(clock and clock.get("is_open"))
+        coins = self._crypto()
+        if not is_open and not coins:
             self._set_status("ok", "Market closed - chart signals start again at the open")
             return {"status": "closed"}
         monitor = self.ctx.service("market")
-        symbols = monitor.watched_stocks() if hasattr(monitor, "watched_stocks") else []
+        symbols = (monitor.watched_stocks() if hasattr(monitor, "watched_stocks") and is_open else []) + coins
         if not symbols:
             self._set_status("ok", "No stocks to read yet - chart signals use the market monitor's list")
             return {"status": "nothing"}

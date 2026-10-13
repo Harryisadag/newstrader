@@ -65,16 +65,39 @@ document.addEventListener("alpine:init", () => {
 
     setPeriod(p) { this.period = p; this.loadHistory(); },
 
+    get hasCrypto() { return (this.data?.positions || []).some((p) => p.crypto); },
+
+    stopTip(p) {
+      if (!p.crypto) return "";
+      if (!p.exit_plan) return "Bought outside NewsTrader: it has no safety stop from NewsTrader.";
+      if (p.stop_loss) return "Safety stop held at Alpaca - it works even while NewsTrader is closed.";
+      return "The safety stop isn't working right now (for example after the kill switch). NewsTrader puts it back " +
+        "within a minute while trading is armed." + (p.exit_plan.note ? " " + p.exit_plan.note : "");
+    },
+
+    orderKind(o) {
+      if (o.kind === "entry") {
+        if (o.order_type === "stop_limit" && o.side === "sell" && o.symbol.includes("/")) return "Safety stop";
+        return o.side === "sell" ? "Sell" : "Entry";
+      }
+      return o.order_type === "limit" ? "Take-profit" : "Stop-loss";
+    },
+
     async closePosition(p) {
-      if (!confirm(`Sell ALL ${p.qty} ${p.symbol} at market now? Its stop-loss / take-profit orders will be cancelled.`)) return;
+      const exits = p.crypto ? "Its safety stop will be cancelled." : "Its stop-loss / take-profit orders will be cancelled.";
+      if (!confirm(`Sell ALL ${this.fmt.qty(p.qty)} ${p.symbol} at market now? ${exits}`)) return;
       this.busy[p.symbol] = true;
-      try { await NT.api.post(`/positions/${p.symbol}/close`); Alpine.store("nt").toast("success", `Closing ${p.symbol}`); await this.load(); }
+      try { await NT.api.post(`/positions/${encodeURIComponent(p.symbol)}/close`); Alpine.store("nt").toast("success", `Closing ${p.symbol}`); await this.load(); }
       catch (e) { Alpine.store("nt").error(e, `Couldn't close ${p.symbol}`); }
       finally { this.busy[p.symbol] = false; }
     },
 
     async cancelOrder(o) {
-      if (!confirm(`Cancel this ${o.side} order for ${o.symbol}?`)) return;
+      const stop = this.orderKind(o) === "Safety stop"
+        ? ` This is the safety stop for ${o.symbol}: NewsTrader puts it back within a minute while you hold the coin - ` +
+          "close the position instead if you want out."
+        : "";
+      if (!confirm(`Cancel this ${o.side} order for ${o.symbol}?${stop}`)) return;
       try { await NT.api.post(`/orders/${o.id}/cancel`); await this.load(); }
       catch (e) { Alpine.store("nt").error(e, "Couldn't cancel"); }
     },

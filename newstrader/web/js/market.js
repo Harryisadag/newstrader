@@ -22,7 +22,7 @@ document.addEventListener("alpine:init", () => {
   };
   const REASONS = {
     position: "You hold it", order: "Open order", watchlist: "Your watchlist", signal: "Recent signal",
-    mover: "Top mover", active: "Most traded", index: "Market gauge", world: "World market",
+    mover: "Top mover", active: "Most traded", index: "Market gauge", world: "World market", crypto: "Crypto",
   };
   const MAX_EVENTS = 300;
 
@@ -62,8 +62,8 @@ document.addEventListener("alpine:init", () => {
 
     onSummary(sum) {
       if (!this.data || !sum) return;
-      const { phase, last_scan, last_refresh, indices, world, counts } = sum;
-      Object.assign(this.data, { phase, last_scan, last_refresh, indices, world, counts });
+      const { phase, last_scan, last_refresh, indices, world, counts, crypto } = sum;
+      Object.assign(this.data, { phase, last_scan, last_refresh, indices, world, counts, crypto: crypto || [] });
       if (this.visible) this.load(true);  // movers and the watch list too
       if (this.visible && this.chartSym && !this.chartLoading) this.openChart(this.chartSym, true);  // a fresh minute
     },
@@ -102,14 +102,15 @@ document.addEventListener("alpine:init", () => {
       if (!el || !c || !c.series.t.length) { this.destroyChart(); return; }
       const z = this.fmt.zone();
       const labels = c.series.t.map((t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: z.timeZone }));
+      const money = (v) => NT.fmt.price(v);
       const flat = (v) => labels.map(() => v);
       const lv = this.nearest;
       const datasets = [
         { label: "Price", data: c.series.close.slice(), borderColor: css("--accent"), borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: "VWAP (average price paid today)", data: c.series.vwap.slice(), borderColor: css("--warn"), borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, spanGaps: true },
+        { label: c.asset_class === "crypto" ? "VWAP (average price paid over 24 hours)" : "VWAP (average price paid today)", data: c.series.vwap.slice(), borderColor: css("--warn"), borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, spanGaps: true },
       ];
-      if (lv.support) datasets.push({ label: "Support " + this.fmt.money(lv.support.price), data: flat(lv.support.price), borderColor: css("--good"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0 });
-      if (lv.resistance) datasets.push({ label: "Resistance " + this.fmt.money(lv.resistance.price), data: flat(lv.resistance.price), borderColor: css("--bad"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0 });
+      if (lv.support) datasets.push({ label: "Support " + money(lv.support.price), data: flat(lv.support.price), borderColor: css("--good"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0 });
+      if (lv.resistance) datasets.push({ label: "Resistance " + money(lv.resistance.price), data: flat(lv.resistance.price), borderColor: css("--bad"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0 });
       this.destroyChart();
       priceChart = new Chart(el, {
         type: "line",
@@ -119,11 +120,11 @@ document.addEventListener("alpine:init", () => {
           interaction: { mode: "index", intersect: false },
           plugins: {
             legend: { labels: { color: css("--muted"), boxWidth: 14 } },
-            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label.split(" (")[0]}: ${NT.fmt.money(ctx.parsed.y)}` } },
+            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label.split(" (")[0]}: ${money(ctx.parsed.y)}` } },
           },
           scales: {
             x: { ticks: { color: css("--muted"), maxTicksLimit: 8 }, grid: { color: "rgba(255,255,255,0.04)" } },
-            y: { ticks: { color: css("--muted"), callback: (v) => NT.fmt.money(v) }, grid: { color: "rgba(255,255,255,0.06)" } },
+            y: { ticks: { color: css("--muted"), callback: (v) => money(v) }, grid: { color: "rgba(255,255,255,0.06)" } },
           },
         },
       });
@@ -204,6 +205,8 @@ document.addEventListener("alpine:init", () => {
       return this.data.running ? "Not checked yet" : "";
     },
     get indices() { return (this.data && this.data.indices) || []; },
+    get cryptoTiles() { return (this.data && this.data.crypto) || []; },
+    get chartCrypto() { return !!(this.chart && this.chart.asset_class === "crypto"); },
     get world() { return (this.data && this.data.world) || []; },
     tileName(t) { return t.name || t.symbol; },
 

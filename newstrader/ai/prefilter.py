@@ -2,6 +2,10 @@
 
 Text passes if it mentions a listed company (by $cashtag, "(NASDAQ: XYZ)", a ticker in capitals, the
 company name, or a known alias like "Google" or "Jensen Huang") or contains a market-moving keyword.
+
+With crypto on, the coins in your crypto list are found too: by name ("bitcoin", "ether", "solana"), by "$BTC"
+cashtags, by Alpaca's news tags ("BTCUSD" -> "BTC/USD"), and by short forms that are also everyday words ("sol",
+"eth") only when the story is about crypto.
 """
 
 from __future__ import annotations
@@ -9,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from ..trading import crypto as coins
 from .keywords import (
     ALIAS_NOT_BEFORE,
     AMBIGUOUS_NAMES,
@@ -86,21 +91,36 @@ def _company_context(tokens: list[str], originals: list[str], i: int, n: int) ->
 
 def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = None,
               allow_keyword_only: bool = True, max_candidates: int = 10,
-              country_etfs: bool = False) -> PrefilterResult:
+              country_etfs: bool = False, crypto: bool = True) -> PrefilterResult:
+    """`crypto`: also look for the coins in your crypto list (backtests turn it off - they replay stock news)."""
     found: dict[str, Candidate] = {}
+    pairs_on = table.crypto_symbols if crypto else set()
+    coin_of = {coins.base(p): p for p in pairs_on}  # "BTC" -> "BTC/USD"
 
     def add(sym: str, why: str) -> None:
-        sym = sym.upper()
+        sym = coins.normalize(sym)
         if sym in found or len(found) >= max_candidates:
             return
-        if table.loaded and table.get(sym) is None:
+        if coins.is_crypto(sym):
+            if sym not in pairs_on:
+                return
+        elif table.loaded and table.get(sym) is None:
             return
         found[sym] = Candidate(sym, table.name_of(sym), why)
+
+    pairs = token_pairs(text)
+    tokens = [t for t, _o in pairs]
+    token_set = set(tokens)
+    crypto_story = bool(coin_of) and bool(token_set & coins.CONTEXT)
 
     for sym in source_symbols or []:
         add(sym, "tagged by source")
     for m in _CASHTAG.finditer(text):
-        add(m.group(1), f"${m.group(1).upper()}")
+        tag = m.group(1).upper()
+        if tag in coin_of:  # "$BTC" is the coin, not a fund that happens to use the ticker
+            add(coin_of[tag], f"${tag}")
+            continue
+        add(m.group(1), f"${tag}")
     for m in _EXCHANGE.finditer(text):
         add(m.group(1), m.group(0))
 
@@ -109,16 +129,15 @@ def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = 
             sym = m.group(1)
             if sym in NOT_TICKERS or len(sym.replace(".", "")) < 2:
                 continue
+            if crypto_story and sym in coin_of:
+                continue  # "SOL" in a crypto story is Solana (found below), not a stock with that ticker
             if table.get(sym) is not None and not _starts_longer_name(sym, text[m.end():], table):
                 add(sym, sym)
 
     # company names and aliases, longest phrase first
-    pairs = token_pairs(text)
-    tokens = [t for t, _o in pairs]
     originals = [o for _t, o in pairs]
     # e.g. a lower-case speech transcript (the app's own 'New:' / 'Earlier' markers don't count)
     caseless = not any(ch.isupper() for ch in _MARKERS.sub("", text))
-    token_set = set(tokens)
     n_max = max(table.max_name_len, 3)
     i = 0
     while i < len(tokens):
@@ -170,6 +189,21 @@ def prefilter(text: str, table: TickerTable, source_symbols: list[str] | None = 
             break
         if not matched:
             i += 1
+
+    # coins by name ("bitcoin", "ether", "shiba inu"); short forms ("sol", "eth") only in a story about crypto
+    if coin_of:
+        j = 0
+        while j < len(tokens):
+            for n in (2, 1):
+                phrase = " ".join(tokens[j:j + n])
+                coin = coins.ALIASES.get(phrase) or (coins.CONTEXT_ALIASES.get(phrase) if crypto_story else None)
+                if coin is not None and len(tokens[j:j + n]) == n:
+                    if coin in coin_of:
+                        add(coin_of[coin], phrase)
+                    j += n
+                    break
+            else:
+                j += 1
 
     # international macro news ("Bank of Japan raises rates") -> that country's US-listed fund
     if country_etfs and not found and table.loaded and token_set & MACRO_WORDS:
