@@ -12,7 +12,7 @@ NewsTrader is a desktop app for **Windows and Mac** that:
    - **FinBERT** is a language model trained on financial news. It reads the wording about each company and scores it as positive, negative or neutral.
    - A **price model** that *you* train from free Alpaca history. It learns how stocks actually moved (compared with the S&P 500) in the hour after similar headlines, and it is tested on news it never saw.
    - Optional: switch the engine to **Claude** (paid, needs an Anthropic key). Claude reads context better and argues the bull and bear case before deciding.
-4. **Places PAPER trades on Alpaca** when confidence is high enough. Every buy has a stop-loss and take-profit, and strict risk limits apply.
+4. **Places PAPER trades on Alpaca** when confidence is high enough - or, with no Alpaca account, in the **built-in simulator** (fake money, real prices, no sign-up). Every buy has a stop-loss and take-profit, and strict risk limits apply. Pick a **trading style** (Cautious / Normal / Aggressive), and click any trade for **"Why did it trade?"**.
 5. **Tracks whether the AI is actually right.** It checks the price 5 minutes, 1 hour and 1 trading day after every call. It can also **backtest** on historical news.
 6. **Watches the market**: sudden price spikes on unusual volume, big moves in the whole market or world markets, and today's top movers, with the news behind them (Market tab and alerts).
 7. Optional, off by default: **trades crypto** (Bitcoin, Ether, Solana) on paper through Alpaca, day and night (see [Crypto](#crypto-paper)).
@@ -46,16 +46,19 @@ You don't need Python to use a release:
 6. [Shared training](#shared-training)
 7. [Charts: patterns and indicators](#charts-patterns-and-indicators)
 8. [Crypto (paper)](#crypto-paper)
-9. [Settings explained](#settings-explained)
-10. [How a trade happens](#how-a-trade-happens)
-11. [Kill switch and live trading](#kill-switch-and-live-trading)
-12. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-13. [Updating](#updating)
-14. [Troubleshooting](#troubleshooting)
-15. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-16. [What it costs](#what-it-costs)
-17. [Where your files are](#where-your-files-are)
-18. [For developers](#for-developers)
+9. [The built-in simulator (no Alpaca account needed)](#the-built-in-simulator-no-alpaca-account-needed)
+10. [Trading styles: Cautious, Normal, Aggressive](#trading-styles-cautious-normal-aggressive)
+11. [Why did it trade?](#why-did-it-trade)
+12. [Settings explained](#settings-explained)
+13. [How a trade happens](#how-a-trade-happens)
+14. [Kill switch and live trading](#kill-switch-and-live-trading)
+15. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+16. [Updating](#updating)
+17. [Troubleshooting](#troubleshooting)
+18. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+19. [What it costs](#what-it-costs)
+20. [Where your files are](#where-your-files-are)
+21. [For developers](#for-developers)
 
 ---
 
@@ -88,7 +91,7 @@ See [Getting your keys](#getting-your-keys) below.
 1. Open the NewsTrader folder and **double-click `run.bat`**.
 2. The first time, it sets everything up. This takes 5–10 minutes and downloads about 1 GB.
    - If Windows SmartScreen pops up, click **More info → Run anyway**.
-3. The NewsTrader window opens. The **Welcome** card shows three steps: click **Open API keys**, paste your Alpaca keys, and click **Save keys**.
+3. The NewsTrader window opens. The **Welcome** card shows three steps: click **Open API keys**, paste your Alpaca keys, and click **Save keys**. (No Alpaca account yet? Skip this: the [built-in simulator](#the-built-in-simulator-no-alpaca-account-needed) trades with fake money until you add keys.)
 4. Go to **Logs → Run diagnostics**. Everything should be green (or yellow for optional things). Each red line tells you how to fix it.
 
 That's it. From now on just double-click `run.bat`. The black window behind the app shows the engine log, and closing it closes NewsTrader.
@@ -139,7 +142,7 @@ Desktop pop-ups on a Mac come from "Script Editor". The first time, allow them i
 
 Keep these private. You paste them into the app (Settings → API keys), which saves them in a `.env` file on your computer.
 
-**Alpaca (paper trading, free) — required**
+**Alpaca (paper trading, free) — recommended** (without it, trades go to the [built-in simulator](#the-built-in-simulator-no-alpaca-account-needed))
 1. Sign up / log in at **https://app.alpaca.markets**.
 2. Top-left, make sure you're in your **Paper** account (not Live).
 3. On the right side of the home page find **API Keys** → **Generate New Keys**.
@@ -160,7 +163,7 @@ Keep these private. You paste them into the app (Settings → API keys), which s
 ## Using NewsTrader
 
 The header always shows:
-- **PAPER/LIVE** mode
+- **PAPER** (your Alpaca paper account), **SIMULATED** (the built-in simulator) or **LIVE** (real money). Click it for Settings → Trading.
 - Market open/closed
 - Equity and today's P/L
 - The AI engine. With Claude, it shows today's Claude cost vs your cap instead.
@@ -170,10 +173,10 @@ The header always shows:
 | Tab | What it shows |
 |---|---|
 | **Live** | One pane per TV stream with the live transcript (on/off switch on each, and a language badge such as DE → EN when it's translated). Live-event channels that are off air wait in a compact row and get a pane when they go live. Headlines from every text source scroll below, tagged with the tickers found and what happened (not relevant, same story, analysed, signal…). |
-| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A second label says what the chart thought before it was traded ("Chart agrees +4", "Stretched: RSI 84"... see [Charts](#charts-patterns-and-indicators)), and chart signals have a teal **Chart** label. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). Click a row for details, the speaker and the headline. The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
+| **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. **Click a signal** for the [Why did it trade?](#why-did-it-trade) card. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A second label says what the chart thought before it was traded ("Chart agrees +4", "Stretched: RSI 84"... see [Charts](#charts-patterns-and-indicators)), and chart signals have a teal **Chart** label. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
 | **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. **Click any stock** for its chart: price with VWAP and support/resistance, indicator labels and the patterns showing now, each explained (see [Charts](#charts-patterns-and-indicators)). |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
-| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Export CSV** saves it to the exports folder. |
+| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Click a trade** for the [Why did it trade?](#why-did-it-trade) card. The last column says which account it was: paper, live or simulated. **Export CSV** saves it to the exports folder. |
 | **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
 | **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw, and **Shared training** (the student model that learns from Pro AI's labels, see [Shared training](#shared-training)). **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
 | **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
@@ -497,6 +500,100 @@ When you re-arm trading, the safety stops go back in.
 
 ---
 
+## The built-in simulator (no Alpaca account needed)
+
+No Alpaca account? NewsTrader can still trade - with fake money, at real prices, without signing up anywhere. The
+header then says **SIMULATED** (instead of PAPER).
+
+**Where trades go** (Settings → Trading):
+
+| Choice | What it does |
+|---|---|
+| **Automatic** (default) | Your Alpaca paper account when its keys are set, otherwise the built-in simulator. |
+| Alpaca paper account | Always Alpaca. Without its keys nothing is traded (as before). |
+| Built-in simulator | Always the simulator, even if you have Alpaca keys. |
+
+If you already used NewsTrader with Alpaca keys, nothing changes: Automatic picks your Alpaca paper account, exactly as
+before. **Real-money (live) trading always uses Alpaca**, whatever is picked here, and stays behind its lock.
+
+**How the simulator works**
+- It starts with **$100,000** of fake money (*Simulator starting cash*).
+- Prices come from **Yahoo Finance's free data**, the list of US stocks from **Nasdaq's free symbol files**, and the
+  market hours and holidays from a built-in New York Stock Exchange calendar.
+- A buy fills at the latest price plus a little **slippage** (*Simulator slippage*, 0.05%: like a real order, it costs a
+  bit more than the last price). An order sent while the market is closed fills at the next open.
+- Every buy gets a stop-loss and a take-profit, checked against each minute's prices. If one minute touched both, the
+  stop-loss counts first (the careful guess).
+- The account is saved, so it survives restarts. **Reset simulator** (Settings → Trading, you type `RESET` to
+  confirm) starts over with fresh fake money. Old simulated trades stay in the Trade Log, marked "simulated (reset
+  ...)", so their profit and loss never mixes with the new account's.
+
+**What needs an Alpaca account** (free at app.alpaca.markets) - the simulator can't do these:
+- the real-time **Benzinga news feed** (Alpaca news). Every other news source and live TV still work.
+- **downloading news history**, so **training the price model**, **backtests** and Pro AI's *Label old news* (it labels
+  the history the price model downloaded)
+- **crypto**
+
+Everything else works the same: the news sources, TV, the AI engines, signals, charts, the market monitor (with
+Yahoo's free top-movers lists), the Portfolio tab and the scoreboard. Yahoo's free data is unofficial: it can lag a
+little, and sometimes pauses for a few minutes when it is busy. **Logs → Run diagnostics** checks it while trades go
+to the simulator.
+
+---
+
+## Trading styles: Cautious, Normal, Aggressive
+
+Settings → Trading → **Style** sets the important trading settings in one click. A table shows exactly what each style
+sets (and what you have now) before you pick one:
+
+| Setting | Cautious | Normal (the defaults) | Aggressive |
+|---|---|---|---|
+| Buy threshold | 88 | 80 | 72 |
+| Manual review threshold | 70 | 60 | 55 |
+| Stop-loss / take-profit | 1.5% / 3% | 2% / 4% | 3% / 6% |
+| Max $ per trade | $500 | $1,000 | $2,000 |
+| Max % of account in one stock | 5% | 10% | 15% |
+| Max open positions | 3 | 5 | 8 |
+| Daily loss limit | $200 | $500 | $1,000 |
+| Cooldown per stock | 60 min | 30 min | 15 min |
+| Chart check | Strict | Soft | Soft |
+| Short selling | off | off | off |
+
+- **Cautious**: fewer, smaller trades - only very sure signals are bought, with tighter stops. A good place to start.
+- **Normal**: NewsTrader's standard settings.
+- **Aggressive**: more trades, bigger positions and wider stops. That means **bigger swings up AND down - not more
+  profit**.
+
+Change any of those settings by hand and the style shows **Custom**. **Short selling stays off** in every style, and a
+style **never touches live trading**.
+
+---
+
+## Why did it trade?
+
+Click any signal (Signals tab, or **Why?** in the manual-review box) or any trade (Trade Log) for its card:
+
+- **The news**: the headline (or what was said on TV), where it came from, when it was published and when NewsTrader
+  saw it.
+- **Which engine decided, and why**: the news event the rules recognised and what it usually means for the stock, the
+  wording scores (e.g. 91% positive), the price model's probability, Pro AI's view (if it read the story) and what the
+  chart said.
+- **The decision, step by step**: the style and thresholds in use, the confidence before and after each change (e.g.
+  "From the AI engine: 84 → Chart agrees: +4 → 88"), and every check with ✓ (passed), ! (sent to manual review) or ✕
+  (stopped it) - the thresholds, the risk checks, "don't chase", the chart check and the order. If you approved it
+  later, the earlier decision is listed too.
+- **The speed timer** (see [How fast is it?](#how-fast-is-it)).
+- **A price chart** from 30 minutes before the news to 2 hours after, with the news, the entry, the stop-loss, the
+  take-profit and the exit marked.
+- **The result**: the trade's profit or loss, and how the stock moved after 5 minutes, 1 hour and 1 trading day
+  compared with the S&P 500 (SPY) - "better than the market" means the call beat just holding the market.
+
+The steps are saved with each signal at the moment it is decided, so the card shows what was true then, not today's
+settings. Signals from before this version show what's available. The chart needs prices from your trading account
+(the simulator's free 1-minute prices only go back about 30 days).
+
+---
+
 ## Settings explained
 
 All settings are saved to `config.json` and changed in the app (Settings tab). The defaults are listed here.
@@ -504,6 +601,9 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 **Trading**
 | Setting | Default | Meaning |
 |---|---|---|
+| Where trades go | Automatic | Automatic = your Alpaca paper account if its keys are set, otherwise the [built-in simulator](#the-built-in-simulator-no-alpaca-account-needed). Or always Alpaca / always the simulator. Live trading always uses Alpaca. |
+| Simulator starting cash / slippage | $100,000 / 0.05% | Only for the built-in simulator. Starting cash is used when you reset it. |
+| Style | Normal | Cautious / Normal / Aggressive set the settings in the [styles table](#trading-styles-cautious-normal-aggressive); Custom = you changed one. |
 | Auto-trade | on | Off = still record and alert signals, but never place orders ("monitor only"). |
 | Buy threshold | 80 | Bullish signals at/above this confidence are bought automatically. |
 | Manual review threshold | 60 | Between this and the buy threshold you get a "manual review" alert instead. |
@@ -744,8 +844,10 @@ If you use the built app, run `build_exe.bat` / `build_app.command` again after 
 | "Transcription falling behind" | Turn off a stream, or switch to `large-v3-turbo` (or `small` on an Intel Mac). |
 | An RSS feed shows a red dot | That site blocked or changed its feed. Turn it off or remove it in Settings → News sources. |
 | Headlines say "not in English - the local engine reads English only" | That feed is in another language. Turn it off, or switch Settings → AI engine to Claude. For TV, turn on **Translate to English** for that stream. |
-| The Market tab is empty | It needs your Alpaca keys and only scans during market hours (unless pre/after-market scanning is on). |
-| No signals at all | Check Logs → System status. Is the ticker list loaded (needs Alpaca keys)? Is the AI engine OK? With Claude: is the key OK and the spend cap not reached? |
+| The Market tab is empty | It needs a trading account (your Alpaca keys, or the built-in simulator) and only scans during market hours (unless pre/after-market scanning is on). |
+| No signals at all | Check Logs → System status. Is the ticker list loaded (needs Alpaca keys or the built-in simulator)? Is the AI engine OK? With Claude: is the key OK and the spend cap not reached? |
+| "Simulator prices (free)" is red in diagnostics | Yahoo Finance's free data didn't answer. Check your internet; it usually comes back by itself within minutes. |
+| Training or backtests say they need an Alpaca account | The built-in simulator has no news history. Add your Alpaca paper keys and pick Automatic or Alpaca in Settings → Trading. |
 | Nothing trades | Signals → look at the **Outcome** column. The reason (market closed, cooldown, max positions, confidence below threshold…) is there. |
 | Desktop pop-ups don't appear | Turn off "Do not disturb" / Focus. On a Mac, allow notifications for **Script Editor**. Use Settings → Alerts → Send a test alert. |
 
@@ -795,7 +897,7 @@ You can add more social accounts the same way (any RSS feed works as a "Social" 
 |---|---|---|---|
 | API keys | `.env` in the NewsTrader folder | `%LOCALAPPDATA%\NewsTrader\.env` (or `.env` next to the exe) | `~/Library/Application Support/NewsTrader/.env` |
 | Settings | `data/config.json` | `%LOCALAPPDATA%\NewsTrader\config.json` | `~/Library/Application Support/NewsTrader/config.json` |
-| Database (signals, trades, transcripts, training data) | `data/newstrader.db` | `%LOCALAPPDATA%\NewsTrader\newstrader.db` | `…/NewsTrader/newstrader.db` |
+| Database (signals, trades, transcripts, training data, the simulator's account) | `data/newstrader.db` | `%LOCALAPPDATA%\NewsTrader\newstrader.db` | `…/NewsTrader/newstrader.db` |
 | Logs | `data/logs/` | `%LOCALAPPDATA%\NewsTrader\logs\` | `…/NewsTrader/logs/` |
 | CSV exports | `data/exports/` | `%LOCALAPPDATA%\NewsTrader\exports\` | `…/NewsTrader/exports/` |
 | Models (Whisper ~3 GB, FinBERT ~110 MB, your price model) | `data/models/` | `%LOCALAPPDATA%\NewsTrader\models\` | `…/NewsTrader/models/` |
@@ -850,10 +952,11 @@ newstrader/
   chart/              indicators, candlestick / chart patterns, chart reading, chart service (bar cache, chart
                       check on news signals, watch-only chart signals)
   market/             market monitor: spikes, market-wide moves, top movers
-  trading/            Alpaca broker, live-trading lock, risk checks, trader, P/L, crypto symbols and the crypto
-                      exit manager (safety stops at Alpaca, take-profits while the app runs)
+  trading/            Alpaca broker, the built-in simulator (sim_broker, free_data, nyse_calendar), live-trading
+                      lock, risk checks, trader, trading styles (presets), decision trail, P/L, crypto symbols and the
+                      crypto exit manager (safety stops at Alpaca, take-profits while the app runs)
   alerts/             desktop pop-ups (Windows / Mac), Discord, alert manager
-  performance/        price checkpoints and win-rate stats
+  performance/        price checkpoints, win-rate stats, speed timer, the "Why did it trade?" card
   backtest/           historical replay + bracket simulator
   web/                the dashboard (HTML/CSS/Alpine.js/Chart.js, no build step)
 shared/labels/        shared training: label files people uploaded (checked on every upload)

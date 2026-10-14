@@ -12,7 +12,7 @@ document.addEventListener("alpine:init", () => {
         F("trading.take_profit_pct", "Take-profit", "number", { min: 0.1, max: 200, step: 0.1, suffix: "%", help: "...and this take-profit above the entry price." }),
         F("trading.sell_on_bearish", "Sell on bearish signal", "toggle", { help: "If a bearish signal clears the buy threshold and you hold the stock, close the position." }),
         F("trading.allow_shorting", "Allow short selling", "toggle", { help: "Bearish signals open a short (bracket order) when you don't hold the stock. Off by default." }),
-        F("trading.data_feed", "Market data feed", "select", { options: { iex: "IEX (free)", sip: "SIP (paid Alpaca data plan)" } }),
+        F("trading.data_feed", "Market data feed", "select", { alpacaOnly: true, options: { iex: "IEX (free)", sip: "SIP (paid Alpaca data plan)" }, help: "Alpaca only - the built-in simulator uses free Yahoo Finance prices." }),
         F("trading.max_chase_pct", "Don't chase moves bigger than", "number", { min: 0, max: 50, step: 0.5, suffix: "%", help: "If the price already moved this much in the signal's direction since the news came out, the signal goes to manual review instead of being bought - the move may already be over. 0 = off." }),
       ],
     },
@@ -218,6 +218,7 @@ document.addEventListener("alpine:init", () => {
     },
     get currentSection() { return SECTIONS.find((s) => s.id === this.section); },
     visible(f) {
+      if (f.alpacaOnly) return this.get("trading.broker") !== "simulator";
       const engine = this.get("ai.engine");
       if (f.local) return engine === "local";
       if (f.claude) return engine === "claude";
@@ -228,11 +229,13 @@ document.addEventListener("alpine:init", () => {
     async save() {
       this.saving = true;
       this.errors = [];
+      const switching = this.brokerChanged;
       try {
         const payload = JSON.parse(JSON.stringify(this.form));
         await NT.api.put("/settings", payload);
         await this.load();
-        Alpine.store("nt").toast("success", "Settings saved");
+        Alpine.store("nt").toast("success", "Settings saved", switching ? "Switching where trades go..." : "");
+        if (switching) setTimeout(() => this.loadAccount(), 2500);  // the trader reconnects in the background
       } catch (e) {
         this.errors = e.details && e.details.length ? e.details : [e.message];
         Alpine.store("nt").toast("error", "Settings not saved", "Fix the highlighted problems.");
@@ -240,6 +243,101 @@ document.addEventListener("alpine:init", () => {
     },
 
     discard() { this.form = JSON.parse(this.original); this.errors = []; },
+
+    // ---- Settings -> Trading: where trades go, the built-in simulator, trading styles ----
+    resetOpen: false,
+    resetPhrase: "",
+    resetBusy: false,
+    brokerChoices: [["auto", "Automatic"], ["alpaca", "Alpaca paper account"], ["simulator", "Built-in simulator"]],
+    get brokerHelp() {
+      return {
+        auto: "Your Alpaca paper account when its keys are set (Settings -> API keys), otherwise the built-in simulator. Recommended.",
+        alpaca: "Always your Alpaca paper account (free at app.alpaca.markets). Without its keys nothing is traded.",
+        simulator: "Always the built-in simulator: fake money at real (free) prices, no account or sign-up - even if you have Alpaca keys.",
+      }[this.get("trading.broker")] || "";
+    },
+    get brokerChanged() {
+      try { return this.form && JSON.parse(this.original).trading.broker !== this.get("trading.broker"); } catch (e) { return false; }
+    },
+    get accountBadge() {
+      const a = this.meta.account || {};
+      if (a.live) return { label: "LIVE", cls: "live" };
+      if (a.in_use === "simulator") return { label: "SIMULATED", cls: "sim" };
+      if (a.in_use) return { label: "PAPER", cls: "paper" };
+      return { label: "NOT CONNECTED", cls: "" };
+    },
+    get accountLine() {
+      const a = this.meta.account || {};
+      if (a.live) return "LIVE trading is on - real money goes through Alpaca whatever is picked here.";
+      if (a.in_use === "simulator" && a.simulator) {
+        const sim = a.simulator;
+        const eq = sim.equity !== null && sim.equity !== undefined ? ` · worth ${NT.fmt.money(sim.equity)} now` : "";
+        const err = sim.data_error ? ` · free prices not answering right now (${sim.data_error})` : "";
+        return `Trades go to the built-in simulator, account ${sim.account_number}, started ${NT.fmt.dateTime(sim.created_at)} with ${NT.fmt.money(sim.starting_cash, 0)}${eq}. Prices: ${sim.data}${err}.`;
+      }
+      if (a.in_use) return `Trades go to ${a.label}.`;
+      if (a.setting === "alpaca" && !a.has_alpaca_keys) return "Not connected: Alpaca is picked, but there are no Alpaca paper keys (Settings -> API keys).";
+      return "Not connected to a trading account yet.";
+    },
+    async loadAccount() {
+      try { this.meta = { ...this.meta, account: await NT.api.get("/simulator") }; } catch (e) { /* ignore */ }
+    },
+    openReset() { this.resetPhrase = ""; this.resetOpen = true; },
+    async resetSimulator() {
+      this.resetBusy = true;
+      try {
+        const cash = this.get("trading.sim_starting_cash");
+        const account = await NT.api.post("/simulator/reset", { phrase: this.resetPhrase.trim(), starting_cash: cash });
+        this.meta = { ...this.meta, account };
+        const orig = JSON.parse(this.original);  // the starting cash is saved by the reset itself
+        orig.trading.sim_starting_cash = cash;
+        this.original = JSON.stringify(orig);
+        this.resetOpen = false;
+        Alpine.store("nt").toast("success", "Simulator reset", `Fresh account with ${NT.fmt.money(cash, 0)} of fake money.`);
+        window.dispatchEvent(new CustomEvent("nt:refresh-status"));
+      } catch (e) { Alpine.store("nt").error(e, "The simulator was not reset"); }
+      finally { this.resetBusy = false; }
+    },
+    get styleList() { return Object.entries((this.meta.style && this.meta.style.styles) || {}); },
+    // the style the form matches right now (edits included), else "custom"
+    get liveStyle() {
+      if (!this.form) return "";
+      for (const [name, p] of this.styleList) {
+        let same = true;
+        for (const [sec, vals] of Object.entries(p.values)) {
+          for (const [key, want] of Object.entries(vals)) {
+            const have = getPath(this.form, `${sec}.${key}`);
+            if (typeof want === "number" ? Math.abs(Number(have) - want) > 1e-9 : have !== want) same = false;
+          }
+        }
+        if (same) return name;
+      }
+      return "custom";
+    },
+    styleName(k) { const p = (this.meta.style && this.meta.style.styles[k]); return p ? p.label : "Custom"; },
+    styleClass(k) { return { cautious: "good", normal: "info", aggressive: "warn" }[k] || ""; },
+    nowValue(r) {
+      const v = this.get(r.key);
+      if (v === undefined || v === null || v === "") return "—";
+      if (r.kind === "pct") return `${Number(v)}%`;
+      if (r.kind === "usd") return NT.fmt.money(v, 0);
+      if (r.kind === "min") return `${v} min`;
+      if (r.kind === "chart") return { off: "Off", soft: "Soft", strict: "Strict" }[v] || v;
+      if (r.kind === "onoff") return v ? "On" : "Off";
+      return String(v);
+    },
+    async applyStyle(name) {
+      const p = this.meta.style.styles[name];
+      if (this.dirty && !confirm("You have unsaved changes. Using a style discards them - continue?")) return;
+      if (!confirm(`Use the ${p.label} style?\n\n${p.description}\n\nIt changes the settings in the table. Short selling stays off.`)) return;
+      this.saving = true;
+      try {
+        await NT.api.post("/presets/apply", { style: name });
+        await this.load();
+        Alpine.store("nt").toast("success", `${p.label} style in use`);
+      } catch (e) { Alpine.store("nt").error(e, "The style wasn't applied"); }
+      finally { this.saving = false; }
+    },
 
     async resetDefaults() {
       if (!confirm("Reset ALL settings (except your news sources) to defaults?")) return;

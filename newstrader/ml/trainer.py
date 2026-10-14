@@ -21,6 +21,9 @@ from .dataset import Cancelled, Throttle, build_dataset, forget_cached_days, loa
 from .model import delete_model, train_price_model
 
 log = logging.getLogger(__name__)
+SIM_NO_HISTORY = ("The built-in simulator has no news history - training the price model needs a free Alpaca account. "
+                  "Add your Alpaca paper keys in Settings -> API keys and pick Alpaca (or Automatic) in Settings -> "
+                  "Trading -> Where trades go.")
 
 
 @dataclass
@@ -70,6 +73,9 @@ class ModelTrainer:
     def launch(self, params: TrainParams) -> int:
         if self.running:
             raise RuntimeError("Training is already running.")
+        broker = getattr(self.ctx.service("trader"), "broker", None)
+        if broker is not None and not getattr(broker, "has_news_history", True):
+            raise RuntimeError(SIM_NO_HISTORY)
         bt = self.ctx.service("backtest")
         if bt is not None and getattr(bt, "running", False):
             raise RuntimeError("Wait for the backtest to finish first.")
@@ -104,6 +110,8 @@ class ModelTrainer:
         pipeline = ctx.service("pipeline")
         if broker is None:
             raise RuntimeError("Not connected to Alpaca - training downloads history with your Alpaca keys.")
+        if not getattr(broker, "has_news_history", True):
+            raise RuntimeError(SIM_NO_HISTORY)
         if pipeline is None or not pipeline.tickers.loaded:
             raise RuntimeError("Ticker list not loaded yet - wait a minute after adding Alpaca keys.")
         engine = pipeline.local

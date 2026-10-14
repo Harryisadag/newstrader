@@ -10,6 +10,10 @@ Crypto (Settings -> Crypto, paper only): a buy is a dollar amount at market, 24/
 crypto, so each buy gets an exit plan - a safety stop held at Alpaca and a take-profit watched while the app runs
 (crypto_exits.py). Crypto is never shorted: bearish news on a coin you don't hold is ignored, and selling one you hold
 cancels its safety stop first.
+
+Where trades go (Settings -> Trading): your Alpaca paper account, or the built-in simulator (sim_broker.py: fake
+money, free prices, no account) - "auto" picks the simulator when there are no Alpaca keys. Real-money (live) trading
+always uses Alpaca. Each decision is written down as it is made (trail.py) for the "Why did it trade?" card.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import logging
 import os
 import time
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -41,6 +46,7 @@ from .risk import (
     check_entry,
     check_exit,
 )
+from .trail import CRYPTO_CHECKS, EXIT_CHECKS, INFO, PASS, REVIEW, STOCK_CHECKS, STOP, Trail
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +57,16 @@ SIGNAL_INTENTS = ("open_long", "open_short", "close_long", "close_short")
 UPDATE_HOLD = "NewsTrader is restarting to install an update - no new orders until it's back (about a minute)."
 KILLED = "Kill switch is engaged - re-arm trading to resume."
 NO_CRYPTO_SHORT = "Bearish news on crypto you don't hold is ignored - crypto can't be shorted."
+SIM_BOOK = "simulated"  # orders.mode of the built-in simulator's orders (Alpaca's are "paper" or "live")
+SIM_RESET_PHRASE = "RESET"  # typed to confirm Settings -> Trading -> Reset simulator
+# what the built-in simulator can't do (it has no Alpaca account behind it) - shown in Settings -> Trading
+NEEDS_ALPACA = [
+    "the real-time Benzinga news feed (Alpaca news) - every other news source and live TV still work",
+    "downloading news history (the price model's training data, and Pro AI's Label old news)",
+    "training the price model (Backtest -> Local ML model)",
+    "backtests on historical news",
+    "crypto",
+]
 
 
 def decide_action(direction: str, confidence: int, trading, holding_long: bool) -> tuple[str, str]:
@@ -102,6 +118,18 @@ class Trader:
     async def start(self) -> None:
         await self.connect()
         self._tasks.append(asyncio.create_task(self._poll_loop(), name="trader-poll"))
+        loop = asyncio.get_running_loop()
+        seen = {"broker": self.ctx.config.settings.trading.broker}
+
+        def on_settings(settings) -> None:  # called from whichever thread saved the settings
+            if self.broker_kind == "simulator" and hasattr(self.broker, "slippage"):
+                self.broker.slippage = max(0.0, float(settings.trading.sim_slippage_pct)) / 100
+            if settings.trading.broker != seen["broker"]:
+                seen["broker"] = settings.trading.broker
+                if not loop.is_closed():
+                    loop.call_soon_threadsafe(self._schedule_switch)
+
+        self.ctx.config.on_change(on_settings)
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -128,6 +156,27 @@ class Trader:
 
     async def on_mode_changed(self) -> None:
         await self.connect()
+
+    def _schedule_switch(self) -> None:
+        self._tasks = [t for t in self._tasks if not t.done()]
+        self._tasks.append(asyncio.create_task(self.switch_broker(), name="broker-switch"))
+
+    async def switch_broker(self) -> None:
+        """Settings -> Trading -> Where trades go changed: connect to that account (never while an order is being
+        placed), then let the services that use its prices and stock list start over."""
+        async with self._lock:
+            await self.connect()
+        log.info("Trades now go to: %s", self._broker_label() if self.broker is not None else "nowhere (not connected)")
+        for svc in list(self.ctx.services.values()):
+            hook = getattr(svc, "on_broker_changed", None)
+            if hook is None or svc is self:
+                continue
+            try:
+                await hook()
+            except Exception:
+                log.exception("%s couldn't switch to the new trading account", getattr(svc, "name", svc))
+        self.ctx.bus.publish("account", self.summary())
+        self.ctx.bus.publish("orders_changed", {})
 
     def _default_factory(self):
         if os.environ.get("NEWSTRADER_FAKE_BROKER") == "1":  # demo / UI testing only - never real orders
@@ -157,6 +206,14 @@ class Trader:
         if self.broker is None:
             return ""
         return getattr(self.broker, "kind", "alpaca")
+
+    @property
+    def book(self) -> str:
+        """Which account orders are saved under (orders.mode): "paper" / "live" at Alpaca, or "simulated" for the
+        built-in simulator - so their profit and loss is never mixed."""
+        if self.broker_kind == "simulator":
+            return SIM_BOOK
+        return getattr(self.broker, "mode", "paper")
 
     async def connect(self) -> None:
         await self._stop_stream()
@@ -216,7 +273,7 @@ class Trader:
                 self._snapshot_at = now
                 self.ctx.db.execute(
                     "INSERT OR IGNORE INTO equity_snapshots (ts, equity, cash, buying_power, mode) VALUES (?,?,?,?,?)",
-                    (iso(), account["equity"], account["cash"], account["buying_power"], b.mode))
+                    (iso(), account["equity"], account["cash"], account["buying_power"], self.book))
             await self._check_daily_loss()
         except Exception as exc:
             self.last_error = str(exc)
@@ -236,10 +293,13 @@ class Trader:
 
     def summary(self) -> dict:
         acct = self.account
+        sim = self.broker.describe() if self.broker_kind == "simulator" and hasattr(self.broker, "describe") else None
         return {
             "broker_connected": acct is not None,
             "broker_kind": self.broker_kind,
+            "broker_label": self._broker_label() if self.broker is not None else "",
             "broker_error": self.last_error,
+            "simulator": sim,
             "market": self.clock,
             "account": None if acct is None else {
                 "equity": acct["equity"], "day_pl": acct["day_pl"], "day_pl_pct": acct["day_pl_pct"],
@@ -311,7 +371,7 @@ class Trader:
                 "side": o.get("side"), "intent": intent, "qty": o.get("qty"), "order_type": o.get("order_type"),
                 "order_class": o.get("order_class"), "stop_price": o.get("stop_price"),
                 "take_profit_price": o.get("limit_price") if intent == "take_profit" else None,
-                "submitted_at": o.get("submitted_at"), "mode": getattr(self.broker, "mode", "paper"),
+                "submitted_at": o.get("submitted_at"), "mode": self.book,
                 "parent_alpaca_id": parent_id,
                 "reason": "Bracket exit leg" if parent_id else "Order placed outside NewsTrader",
                 "raw": json.dumps(o)[:20000], **fields})
@@ -363,16 +423,23 @@ class Trader:
             "status": order.get("status"), "stop_price": stop, "take_profit_price": tp,
             "filled_qty": order.get("filled_qty"), "filled_avg_price": order.get("filled_avg_price"),
             "submitted_at": order.get("submitted_at") or iso(), "filled_at": order.get("filled_at"),
-            "updated_at": iso(), "mode": getattr(self.broker, "mode", "paper"), "parent_alpaca_id": parent_id,
+            "updated_at": iso(), "mode": self.book, "parent_alpaca_id": parent_id,
             "reason": reason[:500], "raw": json.dumps(order)[:20000]})
         self.ctx.bus.publish("orders_changed", {})
         return db_id
 
     def realized_pnl_map(self) -> dict:
+        """Realized P/L of every closing fill, matched within its own account (Alpaca paper, live, the simulator)."""
         rows = self.ctx.db.query(
-            "SELECT alpaca_order_id AS id, symbol, side, filled_qty, filled_avg_price, filled_at FROM orders "
-            "WHERE filled_qty > 0 AND filled_avg_price IS NOT NULL AND mode = ?", (self.ctx.state.mode,))
-        return realized_pnl(rows)
+            "SELECT alpaca_order_id AS id, symbol, side, filled_qty, filled_avg_price, filled_at, mode FROM orders "
+            "WHERE filled_qty > 0 AND filled_avg_price IS NOT NULL")
+        books: dict[str, list[dict]] = defaultdict(list)
+        for r in rows:
+            books[r.pop("mode") or "paper"].append(r)
+        out: dict = {}
+        for fills in books.values():
+            out.update(realized_pnl(fills))
+        return out
 
     # ------------------------------------------------------------------ risk context
     def _last_entries(self) -> dict[str, datetime]:
@@ -427,7 +494,14 @@ class Trader:
 
     # ------------------------------------------------------------------ signal handling
     async def handle_signal(self, signal: dict, manual: bool = False) -> dict:
-        """signal needs: id (optional), ticker, direction, confidence. Returns the action taken."""
+        """signal needs: id (optional), ticker, direction, confidence. Returns the action taken, with the decision
+        trail ("trail": every step on the way, for the "Why did it trade?" card - see trail.py)."""
+        trail = Trail(self.ctx.config.settings, signal, manual, self.broker_kind, self.ctx.state.mode)
+        res = await self._decide(signal, manual, trail)
+        res["trail"] = trail.finish(res)
+        return res
+
+    async def _decide(self, signal: dict, manual: bool, trail: Trail) -> dict:
         symbol = crypto.normalize(signal["ticker"])
         if self.broker is None:
             return self._result("blocked", "Not connected to a trading account (Settings -> Trading, or add Alpaca keys).")
@@ -455,17 +529,25 @@ class Trader:
                 holding = self.holding_long(symbol)
                 confidence = int(signal["confidence"])
                 chart = None if charts is None else self._chart_check(charts, signal, holding, reading)
+                trail.chart(chart, self._chart_skipped(manual, charts))
                 if chart is not None:
                     confidence = chart.confidence
                 action, why = decide_action(signal["direction"], confidence, self.ctx.config.settings.trading, holding)
+                trail.check("Thresholds", {"ignore": STOP, "review": REVIEW}.get(action, PASS), why)
                 if chart is not None and chart.adjust:
                     why += f" The chart changed the confidence {chart.adjust:+d} ({signal['confidence']} -> {confidence})."
                 if manual and action in ("review", "ignore") and signal["direction"] in ("bullish", "bearish"):
                     # You approved it by hand: act as if it cleared the buy threshold.
                     action = "buy" if signal["direction"] == "bullish" else ("sell" if holding else "short")
                     why = "Manually approved."
+                    trail.check("Approved by you", PASS, "You approved it by hand, so it counts as clearing the buy "
+                                                         "threshold (every risk check still applies).")
                 if crypto.is_crypto(symbol):
+                    before = action
                     action, why = self._crypto_action(action, why, signal, holding, manual)
+                    if action != before:
+                        trail.check("Crypto rules", {"blocked": STOP, "ignore": STOP, "review": REVIEW}.get(action, INFO),
+                                    why)
                 if action == "blocked":
                     return self._result("blocked", why)
                 if action == "review":
@@ -474,12 +556,12 @@ class Trader:
                 if action == "ignore":
                     return self._result("ignored", why)
                 if action == "sell":  # closing a position you hold: the chart never holds this back
-                    return await self._close_long(symbol, signal, manual, why)
+                    return await self._close_long(symbol, signal, manual, why, trail)
                 if crypto.is_crypto(symbol):
                     return await self._open_crypto(symbol, signal, manual, why,
-                                                   chart_review=chart.review if chart is not None else "")
+                                                   chart_review=chart.review if chart is not None else "", trail=trail)
                 return await self._open(symbol, "buy" if action == "buy" else "short", signal, manual, why,
-                                        chart_review=chart.review if chart is not None else "")
+                                        chart_review=chart.review if chart is not None else "", trail=trail)
             except Exception as exc:
                 log.exception("Trade for %s failed", symbol)
                 await self._alert("error", f"Trade error ({symbol})", str(exc), "error")
@@ -505,6 +587,17 @@ class Trader:
                               "is off).")
         return action, why
 
+    def _chart_skipped(self, manual: bool, charts) -> str:
+        """Why the chart check didn't change anything (for the decision trail)."""
+        if self.ctx.config.settings.chart.confirm == "off":
+            return "The chart check is off (Settings -> Charts)."
+        if manual:
+            return "Skipped - you approved it by hand."
+        if charts is None:
+            return "Skipped - trading is stopped, or the chart service isn't running."
+        return ("Not needed - the chart couldn't change what happens here (for example a sell of a stock you hold, "
+                "which the chart never holds back).")
+
     @staticmethod
     def _chart_check(charts, signal: dict, holding: bool, reading):
         """The chart check on a news signal from the reading fetched before the lock (None when it is off, couldn't
@@ -516,7 +609,9 @@ class Trader:
             log.warning("Chart check for %s failed (traded without it): %s", signal.get("ticker"), exc)
             return None
 
-    async def _open(self, symbol: str, side: str, signal: dict, manual: bool, why: str, chart_review: str = "") -> dict:
+    async def _open(self, symbol: str, side: str, signal: dict, manual: bool, why: str, chart_review: str = "",
+                    trail: Trail | None = None) -> dict:
+        trail = trail or Trail(self.ctx.config.settings, signal, manual)
         rctx = await self._risk_context(symbol)
         price = await asyncio.to_thread(self.broker.latest_price, symbol)
         direction = "bullish" if side == "buy" else "bearish"
@@ -527,14 +622,19 @@ class Trader:
             await self._alert("daily_loss_limit", "Daily loss limit hit - trading stopped", decision.reason, "error")
         if not decision.allowed:
             log.info("Blocked %s %s: %s", side, symbol, decision.reason)
+            trail.check("Risk checks", STOP, decision.reason)
             return self._result("blocked", decision.reason)
+        trail.check("Risk checks", PASS, decision.reason, passed=STOCK_CHECKS)
         # Don't chase: approving it by hand skips this check.
-        chase = "" if manual else chase_check(direction, pre_move, self.ctx.config.settings.trading.max_chase_pct)
+        limit = self.ctx.config.settings.trading.max_chase_pct
+        chase = "" if manual else chase_check(direction, pre_move, limit)
+        trail.check("Don't chase", REVIEW if chase else PASS, chase or self._chase_note(manual, pre_move, limit))
         if chase:
             log.info("Sent %s %s to manual review: %s", side, symbol, chase)
             return self._result("review", chase)
         if chart_review and not manual:  # the chart says the move already happened (or, in strict mode, disagrees)
             log.info("Sent %s %s to manual review: %s", side, symbol, chart_review)
+            trail.check("Chart check", REVIEW, chart_review)
             return self._result("review", chart_review)
         coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
         try:
@@ -544,8 +644,10 @@ class Trader:
             msg = f"{'The simulator' if self.broker_kind == 'simulator' else 'Alpaca'} rejected the {side} order " \
                   f"for {symbol}: {exc}"
             log.error(msg)
+            trail.check("Order", STOP, msg)
             await self._alert("error", f"Order rejected ({symbol})", str(exc), "error")
             return self._result("error", msg)
+        trail.check("Order", PASS, f"Bracket order sent to {self._broker_label()}: {decision.reason}")
         intent = "open_long" if side == "buy" else "open_short"
         db_id = self._record_order(order, signal, intent, decision.reason + (" [manual]" if manual else ""),
                                    est_price=decision.price, stop=decision.stop_price, tp=decision.take_profit_price)
@@ -561,9 +663,11 @@ class Trader:
         return self._result("bought" if side == "buy" else "shorted", decision.reason, traded=True,
                             order_db_id=db_id, alpaca_order_id=order["id"])
 
-    async def _open_crypto(self, symbol: str, signal: dict, manual: bool, why: str, chart_review: str = "") -> dict:
+    async def _open_crypto(self, symbol: str, signal: dict, manual: bool, why: str, chart_review: str = "",
+                           trail: Trail | None = None) -> dict:
         """Buy a dollar amount of a coin at market, then give it an exit plan: a safety stop held at Alpaca (placed
         once the buy fills) and a take-profit NewsTrader watches (crypto_exits.py)."""
+        trail = trail or Trail(self.ctx.config.settings, signal, manual)
         rctx = await self._risk_context(symbol)
         price = await asyncio.to_thread(self.broker.latest_price, symbol)
         pre_move = None if manual else await self._pre_move(symbol, "bullish", signal, price)
@@ -573,13 +677,18 @@ class Trader:
             await self._alert("daily_loss_limit", "Daily loss limit hit - trading stopped", decision.reason, "error")
         if not decision.allowed:
             log.info("Blocked crypto buy %s: %s", symbol, decision.reason)
+            trail.check("Risk checks", STOP, decision.reason)
             return self._result("blocked", decision.reason)
-        chase = "" if manual else chase_check("bullish", pre_move, self.ctx.config.settings.trading.max_chase_pct)
+        trail.check("Risk checks", PASS, decision.reason, passed=CRYPTO_CHECKS)
+        limit = self.ctx.config.settings.trading.max_chase_pct
+        chase = "" if manual else chase_check("bullish", pre_move, limit)
+        trail.check("Don't chase", REVIEW if chase else PASS, chase or self._chase_note(manual, pre_move, limit))
         if chase:
             log.info("Sent crypto buy %s to manual review: %s", symbol, chase)
             return self._result("review", chase)
         if chart_review and not manual:
             log.info("Sent crypto buy %s to manual review: %s", symbol, chart_review)
+            trail.check("Chart check", REVIEW, chart_review)
             return self._result("review", chart_review)
         coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
         try:
@@ -587,8 +696,10 @@ class Trader:
         except Exception as exc:
             msg = f"Alpaca rejected the crypto buy for {symbol}: {exc}"
             log.error(msg)
+            trail.check("Order", STOP, msg)
             await self._alert("error", f"Order rejected ({symbol})", str(exc), "error")
             return self._result("error", msg)
+        trail.check("Order", PASS, f"Market buy sent to Alpaca: {decision.reason}")
         db_id = self._record_order(order, signal, "open_long", decision.reason + (" [manual]" if manual else ""),
                                    est_price=decision.price, stop=decision.stop_price, tp=decision.take_profit_price)
         crypto_exits.create_plan(self.ctx.db, symbol, self.broker.mode, signal.get("id"), order, decision.stop_price,
@@ -650,19 +761,24 @@ class Trader:
             self.ctx.db.update("signals", signal["id"], {"pre_move_pct": round(move, 2)})
         return move
 
-    async def _close_long(self, symbol: str, signal: dict, manual: bool, why: str) -> dict:
+    async def _close_long(self, symbol: str, signal: dict, manual: bool, why: str, trail: Trail | None = None) -> dict:
+        trail = trail or Trail(self.ctx.config.settings, signal, manual)
         rctx = await self._risk_context(symbol)
         decision = check_exit(symbol, rctx, manual=manual)
         if not decision.allowed:
+            trail.check("Risk checks", STOP, decision.reason)
             return self._result("blocked", decision.reason)
+        trail.check("Risk checks", PASS, decision.reason, passed=EXIT_CHECKS)
         coin = crypto.is_crypto(symbol)
         try:
             if coin:
                 await self._cancel_crypto_stops(symbol)
             order = await asyncio.to_thread(self.broker.close_position, symbol)
         except Exception as exc:
+            trail.check("Order", STOP, f"Couldn't sell {symbol}: {exc}")
             await self._alert("error", f"Couldn't sell {symbol}", str(exc), "error")
             return self._result("error", f"Couldn't sell {symbol}: {exc}")
+        trail.check("Order", PASS, f"Sell order for all of {symbol} sent to {self._broker_label()}.")
         db_id = self._record_order(order, signal, "close_long", decision.reason)
         if coin:
             crypto_exits.mark_closing(self.ctx.db, symbol, self.broker.mode, order["id"], "Sold on a bearish signal")
@@ -670,6 +786,16 @@ class Trader:
         await self._alert("trade_placed", title, signal.get("reasoning") or "", "trade")
         await self.refresh(force=True)
         return self._result("sold", decision.reason, traded=True, order_db_id=db_id, alpaca_order_id=order["id"])
+
+    @staticmethod
+    def _chase_note(manual: bool, pre_move: float | None, limit: float) -> str:
+        if manual:
+            return "Skipped - you approved it by hand."
+        if not limit:
+            return "Off (Settings -> Trading -> Don't chase)."
+        if pre_move is None:
+            return "Couldn't tell how far the price had already moved (no prices from before the news) - not checked."
+        return f"The price had moved {pre_move:+.1f}% toward the signal since the news (limit {limit:g}%)."
 
     def _save_order_row(self, values: dict) -> int:
         """Insert, or update if the trade stream already inserted this Alpaca order id."""
@@ -689,7 +815,7 @@ class Trader:
             "status": order.get("status"), "entry_price_est": est_price, "stop_price": stop, "take_profit_price": tp,
             "filled_qty": order.get("filled_qty"), "filled_avg_price": order.get("filled_avg_price"),
             "submitted_at": order.get("submitted_at") or iso(), "filled_at": order.get("filled_at"),
-            "updated_at": iso(), "mode": self.broker.mode, "reason": reason, "raw": json.dumps(order)[:20000],
+            "updated_at": iso(), "mode": self.book, "reason": reason, "raw": json.dumps(order)[:20000],
         })
         for leg in order.get("legs") or []:
             intent_leg = "take_profit" if leg.get("order_type") == "limit" else "stop_loss"
@@ -700,7 +826,7 @@ class Trader:
                 "order_class": leg.get("order_class"), "status": leg.get("status"),
                 "stop_price": leg.get("stop_price"),
                 "take_profit_price": leg.get("limit_price") if intent_leg == "take_profit" else None,
-                "submitted_at": leg.get("submitted_at") or iso(), "updated_at": iso(), "mode": self.broker.mode,
+                "submitted_at": leg.get("submitted_at") or iso(), "updated_at": iso(), "mode": self.book,
                 "parent_alpaca_id": order["id"], "reason": "Bracket exit leg", "raw": json.dumps(leg)[:20000]})
         self.ctx.bus.publish("orders_changed", {})
         return db_id
@@ -769,6 +895,36 @@ class Trader:
         log.warning("Trading re-armed (kill switch released)")
         self._kick_exits()  # crypto safety stops go back in
         await self._alert("kill_switch", "Trading re-armed", "Kill switch released by you.", "info")
+
+    # ------------------------------------------------------------------ the built-in simulator
+    async def reset_simulator(self, starting_cash: float | None = None) -> dict:
+        """Start the built-in simulator over with fresh fake money: no positions, orders or account history. Its old
+        orders stay in the Trade Log under their own name ("simulated (reset ...)"), so their profit and loss is never
+        mixed with the new account's. Works whether or not the simulator is in use right now."""
+        cash = float(self.ctx.config.settings.trading.sim_starting_cash if starting_cash is None else starting_cash)
+        async with self._lock:
+            broker = self.broker if self.broker_kind == "simulator" else None
+            spare = broker is None  # not in use: reset its saved account with a throwaway copy
+            if spare:
+                from .sim_broker import SimBroker
+
+                broker = await asyncio.to_thread(SimBroker, self.ctx.db, None, cash)
+            await asyncio.to_thread(broker.reset, cash)
+            if spare:
+                with contextlib.suppress(Exception):
+                    broker.data.client.close()
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+            still_open = ", ".join("?" for _ in OPEN_STATUSES)  # the reset cancelled them with the old account
+            self.ctx.db.execute(f"UPDATE orders SET status = 'canceled', updated_at = ? WHERE mode = ? AND status IN "
+                                f"({still_open})", (iso(), SIM_BOOK, *sorted(OPEN_STATUSES)))
+            n = self.ctx.db.execute("UPDATE orders SET mode = ? WHERE mode = ?", (f"{SIM_BOOK} (reset {stamp})", SIM_BOOK))
+            self.ctx.db.execute("DELETE FROM equity_snapshots WHERE mode = ?", (SIM_BOOK,))
+        log.warning("The built-in simulator was reset to $%s of fake money (%d old orders kept in the Trade Log)",
+                    f"{cash:,.0f}", n)
+        if self.broker_kind == "simulator":
+            await self.refresh(force=True)
+        self.ctx.bus.publish("orders_changed", {})
+        return broker.describe()
 
     # ------------------------------------------------------------------ trade log
     def trade_log(self, limit: int = 500, symbol: str | None = None, mode: str | None = None) -> list[dict]:

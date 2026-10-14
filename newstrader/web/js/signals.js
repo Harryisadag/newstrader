@@ -7,8 +7,6 @@ document.addEventListener("alpine:init", () => {
     reviews: [],  // the manual-review queue: loaded on its own, so busy watch-only rows never push one out
     // watch-only calls (Pro AI's and the chart's) are hidden at first: they are never traded and can be many
     filters: { ticker: "", direction: "", action: "", engine: "main", min_confidence: 0 },
-    expanded: null,
-    detail: {},
     stats: null,
     busy: {},
     testText: "",
@@ -61,13 +59,8 @@ document.addEventListener("alpine:init", () => {
         avg: t.length ? Math.round(t.reduce((a, s) => a + s.confidence, 0) / t.length) : null };
     },
 
-    async toggle(s) {
-      if (this.expanded === s.id) { this.expanded = null; return; }
-      this.expanded = s.id;
-      if (!this.detail[s.id]) {
-        try { this.detail[s.id] = await NT.api.get(`/signals/${s.id}`); } catch (e) { /* ignore */ }
-      }
-    },
+    // the "Why did it trade?" card (why.js)
+    why(s) { window.dispatchEvent(new CustomEvent("nt:why", { detail: { signal_id: s.id } })); },
 
     async approve(s) {
       if (!confirm(`Place a ${s.direction === "bullish" ? "BUY" : "SELL/SHORT"} for ${s.ticker} now? Risk checks still apply.`)) return;

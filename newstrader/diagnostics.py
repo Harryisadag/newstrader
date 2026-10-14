@@ -56,13 +56,25 @@ def _check_data_dir() -> dict:
         return _check("Data folder", "error", f"{d}: {exc}", "Make sure the folder isn't read-only.")
 
 
+def _on_simulator(ctx: AppContext) -> bool:
+    return getattr(ctx.service("trader"), "broker_kind", "") == "simulator"
+
+
 def _check_keys(ctx: AppContext) -> list[dict]:
     k = ctx.keys.keys
     env = paths.env_file()
+    if k.has_alpaca_paper:
+        alpaca = _check("Alpaca paper keys", "ok", "set")
+    elif _on_simulator(ctx):
+        alpaca = _check("Alpaca paper keys", "warn", "not set - trades go to the built-in simulator",
+                        "Optional: a free Alpaca account adds the Benzinga news feed, price-model training, backtests "
+                        "and crypto. Settings -> API Keys (get them at app.alpaca.markets, Paper account).")
+    else:
+        alpaca = _check("Alpaca paper keys", "error", "missing",
+                        "Settings -> API Keys. Get them at app.alpaca.markets (Paper account) - or use the built-in "
+                        "simulator: Settings -> Trading -> Where trades go.")
     out = [
-        _check("Alpaca paper keys", "ok" if k.has_alpaca_paper else "error",
-               "set" if k.has_alpaca_paper else "missing",
-               "" if k.has_alpaca_paper else "Settings -> API Keys. Get them at app.alpaca.markets (Paper account)."),
+        alpaca,
         _anthropic_key_check(ctx),
         _check("Discord webhook", "ok" if k.has_discord else "warn",
                "set" if k.has_discord else "not set (Discord alerts off)",
@@ -86,6 +98,8 @@ def _anthropic_key_check(ctx: AppContext) -> dict:
 async def _check_alpaca(ctx: AppContext) -> dict:
     k = ctx.keys.keys
     if not k.has_alpaca_paper:
+        if _on_simulator(ctx):
+            return _check("Alpaca connection", "ok", "not needed - trades go to the built-in simulator")
         return _check("Alpaca connection", "error", "skipped - no paper keys")
 
     def call():
@@ -104,6 +118,41 @@ async def _check_alpaca(ctx: AppContext) -> dict:
     except Exception as exc:
         return _check("Alpaca connection", "error", f"{type(exc).__name__}: {exc}",
                       "Check the paper keys (they're different from live keys) and your internet connection.")
+
+
+async def _check_free_data(ctx: AppContext) -> list[dict]:
+    """Only while trades go to the built-in simulator: do its free prices (Yahoo Finance) and the free list of US
+    stocks (Nasdaq's symbol files) answer?"""
+    trader = ctx.service("trader")
+    if getattr(trader, "broker_kind", "") != "simulator":
+        return []
+    data = getattr(trader.broker, "data", None)
+    if data is None:
+        return []
+    out = []
+    try:
+        price = await _with_timeout(asyncio.to_thread(data.latest_price, "SPY"))
+        clock = trader.broker.clock()
+        market = "open" if clock.get("is_open") else "closed"
+        if price:
+            out.append(_check("Simulator prices (free)", "ok", f"Yahoo Finance answered: SPY ${price:,.2f} · market "
+                              f"{market} (built-in NYSE calendar)"))
+        else:
+            out.append(_check("Simulator prices (free)", "error", f"no price from Yahoo Finance ({data.last_error or 'no data'})",
+                              "Check your internet connection. Yahoo's free prices sometimes pause for a few minutes "
+                              "when it's busy - try again later."))
+    except Exception as exc:
+        out.append(_check("Simulator prices (free)", "error", f"{type(exc).__name__}: {exc}",
+                          "Check your internet connection and try again in a few minutes."))
+    try:
+        assets = await _with_timeout(asyncio.to_thread(data.all_assets), 30)
+        out.append(_check("Stock list (free)", "ok" if assets else "error",
+                          f"Nasdaq's symbol files list {len(assets):,} US stocks and funds" if assets else "empty",
+                          "" if assets else "Check your internet connection (nasdaqtrader.com)."))
+    except Exception as exc:
+        out.append(_check("Stock list (free)", "error", f"{type(exc).__name__}: {exc}",
+                          "Check your internet connection (nasdaqtrader.com). The list already downloaded keeps working."))
+    return out
 
 
 async def _check_anthropic(ctx: AppContext) -> dict:
@@ -342,13 +391,18 @@ async def _check_crypto(ctx: AppContext) -> list[dict]:
 
 
 async def run_diagnostics(ctx: AppContext) -> dict:
-    checks: list[dict] = [_check("NewsTrader", "ok", f"version {__version__}, {ctx.state.mode.upper()} mode"),
+    where = " (trades go to the built-in simulator)" if _on_simulator(ctx) and ctx.state.mode == "paper" else ""
+    checks: list[dict] = [_check("NewsTrader", "ok", f"version {__version__}, {ctx.state.mode.upper()} mode{where}"),
                           _check_python(), _check_data_dir()]
     checks += _check_keys(ctx)
     net = await asyncio.gather(_check_alpaca(ctx), _check_anthropic(ctx), _check_discord(ctx),
                                return_exceptions=True)
     for item in net:
         checks.append(item if isinstance(item, dict) else _check("Network check", "error", str(item)))
+    try:
+        checks += await _with_timeout(_check_free_data(ctx), 60)
+    except Exception as exc:
+        checks.append(_check("Simulator prices (free)", "error", f"{type(exc).__name__}: {exc}"))
     checks.append(await asyncio.to_thread(_check_gpu, ctx))
     checks.append(await asyncio.to_thread(_check_ffmpeg))
     checks += await asyncio.to_thread(_check_ytdlp)

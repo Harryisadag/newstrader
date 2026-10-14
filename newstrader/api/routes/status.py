@@ -32,6 +32,7 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
         "spend_cap": s.ai.daily_spend_cap_usd,
         "ai_model": s.ai.model,
         "ai_engine": s.ai.engine,
+        "trading_broker": s.trading.broker,  # Settings -> Trading -> Where trades go (auto / alpaca / simulator)
         "keys": {
             "alpaca_paper": k.has_alpaca_paper,
             "alpaca_live": k.has_alpaca_live,

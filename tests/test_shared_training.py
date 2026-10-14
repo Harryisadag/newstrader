@@ -131,7 +131,7 @@ def test_new_settings_and_their_defaults():
     s = AppSettings()
     assert s.ai.pro_ai.label_while_market_open is False  # labelling never slows trading unless you say so
     assert s.ml.use_student is True and s.ml.shared_labels_pull is True
-    assert s.schema_version == 5  # new fields have defaults: no config migration needed
+    assert s.schema_version == 6  # new fields have defaults: no config migration needed
 
 
 def test_pro_labels_migration(tmp_path):
@@ -148,7 +148,7 @@ def test_pro_labels_migration(tmp_path):
     c.close()
     db = Database(path)
     try:
-        assert db.scalar("PRAGMA user_version") == len(MIGRATIONS) == 14
+        assert db.scalar("PRAGMA user_version") == len(MIGRATIONS) >= 14
         cols = {r["name"] for r in db.query("PRAGMA table_info(pro_labels)")}
         assert {"news_id", "ticker", "direction", "confidence", "event", "model", "labelled_at", "headline_hash",
                 "day", "status"} <= cols

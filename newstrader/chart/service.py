@@ -297,6 +297,9 @@ class ChartService:
     async def on_keys_changed(self) -> None:
         self.forget()
 
+    async def on_broker_changed(self) -> None:
+        self.forget()  # another account's prices
+
     def forget(self) -> None:
         """Drop every cached bar and reading (another account or data feed)."""
         self._minutes.clear()
@@ -354,7 +357,8 @@ class ChartService:
     async def _fetch(self, symbols: list[str], start: datetime, end: datetime, timeframe: str) -> dict[str, list[dict]]:
         broker = self._broker()
         if broker is None:
-            raise NoChartData("Not connected to a market-data account (Settings -> API keys).")
+            raise NoChartData("Not connected to a trading account (add Alpaca keys, or use the built-in simulator: "
+                              "Settings -> Trading).")
         self.pacer.take()  # (_ensure made sure there is room before it started)
         self.requests += 1
         rows = await asyncio.to_thread(broker.bars_multi, symbols, start, end, timeframe)
@@ -499,7 +503,8 @@ class ChartService:
         if not _SYMBOL_RE.match(sym):
             raise ValueError(f"'{symbol}' doesn't look like a ticker")
         if self._broker() is None:
-            raise NoChartData("Not connected to a market-data account (Settings -> API keys).")
+            raise NoChartData("Not connected to a trading account (add Alpaca keys, or use the built-in simulator: "
+                              "Settings -> Trading).")
         now = now or utcnow()
         r = await self.reading(sym, now)
         if r.price is None:

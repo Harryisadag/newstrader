@@ -74,6 +74,7 @@ h3 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; display: flex; gap: 
 }
 .mode-badge.paper { color: var(--good); border-color: rgba(34,197,94,.45); background: var(--good-bg); }
 .mode-badge.live { color: #fff; border-color: var(--bad); background: var(--bad); animation: pulse 1.6s infinite; }
+.mode-badge.sim { color: #7dd3fc; border-color: rgba(56,189,248,.5); background: rgba(56,189,248,.14); }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
 .stat { display: flex; flex-direction: column; min-width: 70px; }
 .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
@@ -432,3 +433,34 @@ td.reasons .tag { margin: 0 4px 2px 0; }
 .levels .tag { margin: 0 4px 2px 0; }
 .tag.lv-support { color: var(--good); }
 .tag.lv-resistance { color: var(--bad); }
+
+/* built-in simulator, trading styles (Settings -> Trading) */
+.mode-badge.small { font-size: 10px; padding: 2px 7px; letter-spacing: .6px; }
+.sim-offer { margin-top: 8px; padding: 8px 10px; border: 1px dashed rgba(56,189,248,.45); border-radius: 8px; display: flex; flex-direction: column; gap: 4px; }
+.sim-note { border-color: rgba(56,189,248,.45); font-size: 13px; color: var(--text-2); }
+.trading-top { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border-2); }
+.trading-block h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.trading-block .note ul { margin: 4px 0; padding-left: 18px; }
+.trading-block .form-grid { margin-top: 10px; }
+.seg.wide { flex-wrap: wrap; }
+.table-scroll { overflow-x: auto; }
+.table.compact td, .table.compact th { padding: 5px 8px; }
+.style-table td.current, .style-table th.current { background: rgba(79,140,255,.10); color: var(--text); }
+.style-table tfoot td { border-bottom: none; padding-top: 8px; }
+.style-desc { margin: 4px 0; color: var(--text-2); }
+
+/* "Why did it trade?" card */
+.modal.why { width: min(880px, 96vw); max-height: 92vh; overflow-y: auto; }
+.why-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.why-head h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.why-body section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.why-body h3 { margin: 0 0 6px; font-size: 14px; }
+.why-outcome { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-top: 6px; }
+.why-quote { margin: 4px 0; padding: 6px 10px; border-left: 3px solid var(--accent); color: var(--text); font-style: italic; }
+.why-lines { margin: 6px 0; padding-left: 18px; }
+.why-lines li { margin: 2px 0; }
+.why-conf { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.why-checks { margin: 6px 0; padding-left: 20px; }
+.why-checks li { margin: 4px 0; }
+.why-checks details ul { margin: 2px 0; padding-left: 16px; list-style: none; }
+.why-result { margin-top: 8px; }

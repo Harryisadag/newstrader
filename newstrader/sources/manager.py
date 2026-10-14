@@ -56,6 +56,9 @@ class SourceManager:
                 await self._stop_task(sid)
         await self.reconcile()
 
+    async def on_broker_changed(self) -> None:
+        await self.reconcile()  # (the Alpaca news source's message depends on where trades go)
+
     def _signal_change(self) -> None:
         loop = self.ctx.loop
         if loop is not None and not loop.is_closed():
@@ -102,7 +105,11 @@ class SourceManager:
             # news data works with either paper or live keys; paper keys are always preferred
             key, secret = keys.alpaca_paper_key, keys.alpaca_paper_secret
             if not (key and secret):
-                set_status("error", "needs Alpaca keys (Settings -> API keys)")
+                if getattr(self.ctx.service("trader"), "broker_kind", "") == "simulator":
+                    set_status("warn", "needs a free Alpaca account (Settings -> API keys) - the built-in simulator has "
+                                       "no Benzinga news. Every other news source and live TV still work.")
+                else:
+                    set_status("error", "needs Alpaca keys (Settings -> API keys)")
                 return
             runner = AlpacaNewsSource(src, pipeline.submit, set_status, key, secret).run()
         else:

@@ -566,7 +566,7 @@ def test_settings_defaults():
     s = AppSettings().ai.pro_ai
     assert (s.enabled, s.mode, s.model, s.build, s.scope, s.max_wait_seconds, s.keep_tv_memory_free) == \
         (False, "watch", "auto", "auto", "hard", 20, True)
-    assert AppSettings().schema_version == 5
+    assert AppSettings().schema_version == 6
 
 
 def test_old_config_gets_pro_ai_switched_off(tmp_path):
@@ -583,7 +583,7 @@ def test_old_config_gets_pro_ai_switched_off(tmp_path):
     assert not store.settings.ai.pro_ai.enabled and store.settings.ai.pro_ai.mode == "watch"
     assert store.settings.risk.max_dollars_per_trade == 250 and store.settings.ai.engine == "claude"
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["schema_version"] == 5 and saved["ai"]["pro_ai"]["enabled"] is False  # saved straight away
+    assert saved["schema_version"] == 6 and saved["ai"]["pro_ai"]["enabled"] is False  # saved straight away
     # an older file can't switch Pro AI on (or into judge mode) by itself
     data["ai"]["pro_ai"] = {"enabled": True, "mode": "judge"}
     path.write_text(json.dumps(data), encoding="utf-8")

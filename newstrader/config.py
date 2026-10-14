@@ -322,9 +322,8 @@ class TradingSettings(_Model):
     # Where paper trades go: "auto" = your Alpaca paper account if its keys are set, otherwise the built-in
     # simulator; "simulator" = always the built-in simulator (fake money, free Yahoo prices, no account needed);
     # "alpaca" = always Alpaca. Real-money (live) trading always uses Alpaca.
-    # "alpaca" until the built-in simulator has its screens; "auto" = simulator when there are no Alpaca keys
-    broker: Literal["auto", "simulator", "alpaca"] = "alpaca"
-    sim_starting_cash: float = Field(100_000.0, ge=1_000, le=10_000_000)
+    broker: Literal["auto", "simulator", "alpaca"] = "auto"
+    sim_starting_cash: float = Field(100_000.0, ge=1_000, le=10_000_000)  # used when the simulator is (re)started
     sim_slippage_pct: float = Field(0.05, ge=0, le=2)  # each simulated fill is this much worse than the last price
 
     @model_validator(mode="after")
@@ -448,7 +447,7 @@ class UISettings(_Model):
 
 
 class AppSettings(_Model):
-    schema_version: int = 5
+    schema_version: int = 6
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
@@ -527,6 +526,16 @@ def _add_crypto(raw: dict, settings: AppSettings) -> AppSettings:
     dump = settings.model_dump(mode="json")
     dump["crypto"] = CryptoSettings().model_dump(mode="json")
     return AppSettings.model_validate({**dump, "schema_version": 5})
+
+
+def _broker_auto(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before the built-in simulator had its screens (schema 5) always said trading.broker "alpaca" -
+    there was no way to change it. They move to "auto": with Alpaca paper keys that is still the Alpaca paper account,
+    exactly as before; without keys it is the built-in simulator instead of no trading account at all."""
+    dump = settings.model_dump(mode="json")
+    if dump["trading"].get("broker") == "alpaca":
+        dump["trading"]["broker"] = "auto"
+    return AppSettings.model_validate({**dump, "schema_version": 6})
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
@@ -701,6 +710,9 @@ class ConfigStore:
                 self.needs_save = True
             if version < 5:
                 settings = _add_crypto(raw, settings)
+                self.needs_save = True
+            if version < 6:
+                settings = _broker_auto(raw, settings)
                 self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]

@@ -121,11 +121,31 @@ document.addEventListener("alpine:init", () => {
       if (s.kill_switch && s.kill_switch.engaged) return { label: "KILLED", cls: "bad", tip: "Kill switch engaged - no trading until you re-arm it." };
       if (s.halted_today) return { label: "HALTED", cls: "bad", tip: "Daily loss limit hit - trading resumes next trading day." };
       if (!s.broker_connected) {
-        if (!s.keys || !s.keys.alpaca_paper) return { label: "NO KEYS", cls: "warn", tip: "Add your Alpaca paper keys in Settings -> API Keys." };
-        return { label: "OFFLINE", cls: "bad", tip: s.broker_error || "Not connected to Alpaca - see Logs." };
+        if ((!s.keys || !s.keys.alpaca_paper) && s.broker_kind !== "simulator") {
+          return { label: "NO KEYS", cls: "warn", tip: "Add your Alpaca paper keys in Settings -> API Keys, or use the built-in simulator (Settings -> Trading)." };
+        }
+        return { label: "OFFLINE", cls: "bad", tip: s.broker_error || "Not connected to the trading account - see Logs." };
       }
       if (!s.auto_trade) return { label: "MONITOR ONLY", cls: "warn", tip: "Auto-trade is off (Settings -> Trading)." };
       return { label: "ACTIVE", cls: "good", tip: "Auto-trading is on." };
+    },
+
+    // PAPER (Alpaca paper account), SIMULATED (the built-in simulator) or LIVE (real money)
+    get modeBadge() {
+      const s = this.s;
+      if (s.mode === "live") return { label: "LIVE · REAL MONEY", cls: "live", tip: "LIVE TRADING - REAL MONEY" };
+      if (s.broker_kind === "simulator") {
+        return { label: "SIMULATED", cls: "sim", tip: "Built-in simulator: fake money at real (free) prices, no account needed. Click for Settings -> Trading." };
+      }
+      return { label: "PAPER", cls: "paper", tip: "Alpaca paper trading - simulated money. Click for Settings -> Trading." };
+    },
+
+    async useSimulator() {
+      try {
+        await NT.api.put("/settings", { trading: { broker: this.s.keys && this.s.keys.alpaca_paper ? "simulator" : "auto" } });
+        this.store.toast("success", "Trades now go to the built-in simulator", "Fake money at real prices. Change it any time in Settings -> Trading.");
+        setTimeout(() => this.refresh(), 1500);
+      } catch (e) { this.store.error(e, "Couldn't switch to the simulator"); }
     },
 
     // the small Pro AI light in the header (shown while Pro AI is turned on)

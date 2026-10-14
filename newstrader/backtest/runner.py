@@ -30,6 +30,9 @@ from ..state import trading_day
 from .simulator import simulate_bracket
 
 log = logging.getLogger(__name__)
+SIM_NO_HISTORY = ("The built-in simulator has no news history - backtests need a free Alpaca account. "
+                  "Add your Alpaca paper keys in Settings -> API keys and pick Alpaca (or Automatic) in Settings -> "
+                  "Trading -> Where trades go.")
 
 BT_SOURCE = SourceConfig(id="backtest", type="alpaca_news", name="Benzinga (historical)")
 # Rough per-article token use for the cost estimate (prompt + candidates + thinking + JSON answer)
@@ -118,6 +121,9 @@ class BacktestRunner:
     def launch(self, params: BacktestParams) -> int:
         if self.running:
             raise RuntimeError("A backtest is already running.")
+        broker = getattr(self.ctx.service("trader"), "broker", None)
+        if broker is not None and not getattr(broker, "has_news_history", True):
+            raise RuntimeError(SIM_NO_HISTORY)
         trainer = self.ctx.service("ml_trainer")
         if trainer is not None and getattr(trainer, "running", False):
             raise RuntimeError("Wait for the model training to finish first.")
@@ -154,6 +160,8 @@ class BacktestRunner:
         pipeline = ctx.service("pipeline")
         if broker is None:
             raise RuntimeError("Not connected to Alpaca - historical news and prices need your Alpaca keys.")
+        if not getattr(broker, "has_news_history", True):
+            raise RuntimeError(SIM_NO_HISTORY)
         if pipeline is None or not pipeline.tickers.loaded:
             raise RuntimeError("Ticker list not loaded yet - wait a minute after adding Alpaca keys.")
         engine = params.engine or s.ai.engine

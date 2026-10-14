@@ -9,6 +9,7 @@ from ...ai.costs import calls_today, spend_today
 from ...ai.prefilter import prefilter
 from ...context import AppContext
 from ...performance.speed import signal_speed
+from ...performance.why import NotFound, build_card
 from ...sources.base import NewsItem, stable_id
 from ..deps import bad_request, get_ctx
 
@@ -67,6 +68,7 @@ async def list_signals(
     for r in rows:
         r["sources_seen"] = json.loads(r["sources_seen"] or "[]")
         r["speed"] = signal_speed(r, r.pop("order_submitted_at"))
+        r.pop("decision_trail", None)  # shown by the "Why did it trade?" card
     return {"signals": rows}
 
 
@@ -100,6 +102,15 @@ async def signal_detail(signal_id: int, ctx: AppContext = Depends(get_ctx)):
                                  (analysis["id"],))
     return {"signal": sig, "analysis": analysis, "item": item, "merged": merged, "order": order,
             "other_analysis": other}
+
+
+@router.get("/signals/{signal_id}/why")
+async def why_signal(signal_id: int, ctx: AppContext = Depends(get_ctx)):
+    """The "Why did it trade?" card: the news, the engine's reading, the decision trail, the chart and the result."""
+    try:
+        return await build_card(ctx, signal_id=signal_id)
+    except NotFound as exc:
+        raise bad_request(str(exc), 404) from exc
 
 
 @router.post("/signals/{signal_id}/approve")

@@ -205,6 +205,12 @@ class MarketMonitor:
         self._movers_at = self._refreshed_at = None
         self._signal_change()
 
+    async def on_broker_changed(self) -> None:
+        """Where trades go changed: prices, movers and day changes now come from that account."""
+        self.snapshots = {}
+        self.movers_error = None
+        await self.on_keys_changed()
+
     def _signal_change(self) -> None:
         loop = self.ctx.loop
         if loop is not None and not loop.is_closed():
@@ -398,7 +404,8 @@ class MarketMonitor:
             return {"status": "off"}
         broker = self._broker()
         if broker is None:
-            self._set_status("off", "Waiting for an Alpaca connection (Settings -> API keys)")
+            self._set_status("off", "Waiting for a trading account (add Alpaca keys, or use the built-in simulator: "
+                                    "Settings -> Trading)")
             return {"status": "no_broker"}
         self.phase = await self._phase(broker, now, s)
         coins = await self._crypto_check(broker, s, now)  # crypto trades 24/7: checked whatever the stock market does
@@ -584,7 +591,9 @@ class MarketMonitor:
             except Exception as exc:
                 problems.append(str(exc))
         if problems:
-            self.movers_error = "Alpaca's top-movers lists aren't available right now (some accounts don't have them)."
+            self.movers_error = ("The free top-movers lists (Yahoo Finance) aren't available right now - they come back "
+                                 "by themselves." if getattr(broker, "kind", "") == "simulator" else
+                                 "Alpaca's top-movers lists aren't available right now (some accounts don't have them).")
             self._warn_once("movers", "Top movers unavailable: %s", problems[0])
         else:
             self.movers_error = None

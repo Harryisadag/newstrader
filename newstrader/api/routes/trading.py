@@ -10,7 +10,9 @@ from fastapi.responses import Response
 
 from ... import paths
 from ...context import AppContext
+from ...performance.why import NotFound, build_card
 from ...trading import crypto, crypto_exits, live_guard
+from ...trading.trader import NEEDS_ALPACA, SIM_RESET_PHRASE
 from ..deps import bad_request, get_ctx
 
 router = APIRouter(tags=["trading"])
@@ -78,7 +80,7 @@ async def portfolio_history(period: str = Query("1M"), ctx: AppContext = Depends
         return {"timestamp": [r["ts"] for r in rows], "equity": [r["equity"] for r in rows], "source": "local"}
     try:
         hist = await asyncio.to_thread(t.broker.portfolio_history, period)
-        return {**hist, "source": "alpaca"}
+        return {**hist, "source": getattr(t, "broker_kind", "") or "alpaca"}
     except Exception as exc:
         raise bad_request(f"Couldn't load account history: {exc}", 502) from exc
 
@@ -177,3 +179,60 @@ async def live_disarm(ctx: AppContext = Depends(get_ctx)):
     if trader is not None:
         await trader.on_mode_changed()
     return {"mode": ctx.state.mode}
+
+
+# ---------------------------------------------------------------------------------------------- the built-in simulator
+def simulator_info(ctx: AppContext) -> dict:
+    """Where trades go right now, and the built-in simulator's account (Settings -> Trading)."""
+    t = ctx.service("trader")
+    kind = getattr(t, "broker_kind", "") if t is not None else ""
+    broker = getattr(t, "broker", None)
+    s = ctx.config.settings.trading
+    sim = None
+    if kind == "simulator" and hasattr(broker, "describe"):
+        sim = broker.describe()
+        acct = getattr(t, "account", None) or {}
+        sim.update(equity=acct.get("equity"), cash=acct.get("cash"))
+    label = t._broker_label() if broker is not None and hasattr(t, "_broker_label") else ""
+    return {"setting": s.broker, "in_use": kind, "label": label,
+            "live": ctx.state.mode == "live", "has_alpaca_keys": ctx.keys.keys.has_alpaca_paper,
+            "starting_cash": s.sim_starting_cash, "slippage_pct": s.sim_slippage_pct, "simulator": sim,
+            "needs_alpaca": NEEDS_ALPACA, "reset_phrase": SIM_RESET_PHRASE}
+
+
+@router.get("/simulator")
+async def simulator_status(ctx: AppContext = Depends(get_ctx)):
+    return simulator_info(ctx)
+
+
+@router.post("/simulator/reset")
+async def simulator_reset(body: dict = Body(default={}), ctx: AppContext = Depends(get_ctx)):
+    """Start the built-in simulator over with fresh fake money. Needs the confirmation word typed exactly."""
+    if str(body.get("phrase", "")).strip() != SIM_RESET_PHRASE:
+        raise bad_request(f"Type {SIM_RESET_PHRASE} to confirm - the simulator was not reset.", 403)
+    cash = body.get("starting_cash")
+    if cash is not None:
+        try:
+            cash = float(cash)
+        except (TypeError, ValueError) as exc:
+            raise bad_request("Starting cash must be a number.") from exc
+        try:
+            ctx.config.update({"trading": {"sim_starting_cash": cash}})  # validated like the setting (1,000-10m)
+        except Exception as exc:
+            raise bad_request("Starting cash must be between $1,000 and $10,000,000.") from exc
+    try:
+        await _trader(ctx).reset_simulator()
+    except Exception as exc:
+        raise bad_request(f"Couldn't reset the simulator: {exc}", 500) from exc
+    ctx.bus.publish("settings_changed", {})
+    return simulator_info(ctx)
+
+
+# ---------------------------------------------------------------------------------------------- "Why did it trade?"
+@router.get("/trades/{order_id}/why")
+async def why_trade(order_id: int, ctx: AppContext = Depends(get_ctx)):
+    """The "Why did it trade?" card for a Trade Log row (the order's signal, or what's known without one)."""
+    try:
+        return await build_card(ctx, order_id=order_id)
+    except NotFound as exc:
+        raise bad_request(str(exc), 404) from exc

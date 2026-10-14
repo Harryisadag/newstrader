@@ -31,6 +31,7 @@ from ..sources.base import NewsItem, safe_url
 from ..sources.lang import detect_language
 from ..state import trading_day
 from ..trading import crypto
+from ..trading import trail as trails
 from .claude_client import ClaudeAnalyzer
 from .costs import spend_today
 from .dedupe import StoryDeduper
@@ -118,6 +119,11 @@ class Pipeline:
         if self.tickers.needs_refresh(max_age_hours=0.01):
             await self.sync_tickers()
 
+    async def on_broker_changed(self) -> None:
+        """Where trades go changed (Settings -> Trading): the stock list now comes from that account - Alpaca's list,
+        or the free Nasdaq symbol files for the built-in simulator."""
+        await self.sync_tickers()
+
     def _restart_workers(self) -> None:
         for w in self._workers:
             w.cancel()
@@ -194,12 +200,14 @@ class Pipeline:
         broker = getattr(trader, "broker", None)
         if broker is None:
             if not self.tickers.loaded:
-                self.ctx.state.set_status("tickers", "warn", "Ticker list needs Alpaca keys")
+                self.ctx.state.set_status("tickers", "warn", "Ticker list needs a trading account (add Alpaca keys, or "
+                                                             "use the built-in simulator: Settings -> Trading)")
             return 0
         try:
             assets = await asyncio.to_thread(broker.all_assets)
             n = await asyncio.to_thread(self.tickers.replace_all, assets)
-            self.ctx.state.set_status("tickers", "ok", f"{n:,} US-listed tickers loaded")
+            where = " (free Nasdaq symbol list)" if getattr(broker, "kind", "") == "simulator" else ""
+            self.ctx.state.set_status("tickers", "ok", f"{n:,} US-listed tickers loaded{where}")
             await self.sync_crypto()
             return n
         except Exception as exc:
@@ -410,12 +418,14 @@ class Pipeline:
         self.ctx.bus.publish("analysis", {"id": analysis_id, "item_id": item.db_id, "status": status,
                                           "cost_usd": result.cost_usd, "error": error})
         signals = validation.signals if validation is not None else []
+        details = trails.local_details(result.text) if result.engine == "local" else {}
+        read = {"details": details, "model": result.model}  # what the engine read, for each signal's decision trail
         job = None if dry_run else self._pro_job(item, pre, result.engine, analysis_id, signals)
         # judge mode waits for Pro AI's view only on the signals the trader would act on by itself
         waiting = [sig for sig in signals if job is not None and job.judge and self._could_auto_trade(sig)]
         judged = None
         if waiting:
-            judged = asyncio.create_task(self._judged(job, waiting, item, analysis_id, result.engine, decided_at),
+            judged = asyncio.create_task(self._judged(job, waiting, item, analysis_id, result.engine, decided_at, read),
                                          name="pro-ai-judge")
             self._judging.add(judged)
             judged.add_done_callback(self._judged_done if background else self._judging.discard)
@@ -425,7 +435,7 @@ class Pipeline:
         for sig in signals:
             if sig not in waiting:
                 out.append(await self._handle_signal(sig, item, analysis_id, dry_run=dry_run, engine=result.engine,
-                                                     decided_at=decided_at))
+                                                     decided_at=decided_at, read=read))
         if item.db_id and any(sig.direction != "neutral" for sig in signals):
             self.ctx.db.update("news_items", item.db_id, {"status": "signal"})
         if judged is not None and not background:
@@ -434,14 +444,14 @@ class Pipeline:
                 "cost_usd": result.cost_usd, "raw": result.text, "engine": result.engine, "model": result.model}
 
     async def _judged(self, job: ProJob, signals, item: NewsItem, analysis_id: int, engine: str,
-                      decided_at: datetime) -> list[dict]:
+                      decided_at: datetime, read: dict | None = None) -> list[dict]:
         """Judge mode: wait for Pro AI's view, then act on the signals - holding back the ones it disagrees with."""
         verdict = await self.ctx.service("pro_ai").ask(job)
         out = []
         for sig in signals:
             hold, pro_dir = self._judge_signal(sig, verdict, self._could_auto_trade(sig))
             out.append(await self._handle_signal(sig, item, analysis_id, engine=engine, decided_at=decided_at,
-                                                 hold=hold, pro_direction=pro_dir))
+                                                 hold=hold, pro_direction=pro_dir, read=read))
         return out
 
     def _judged_done(self, task: asyncio.Task) -> None:
@@ -482,10 +492,11 @@ class Pipeline:
 
     async def _handle_signal(self, sig, item: NewsItem, analysis_id: int, dry_run: bool = False,
                              engine: str = "claude", decided_at: datetime | None = None, hold: str = "",
-                             pro_direction: str | None = None) -> dict:
+                             pro_direction: str | None = None, read: dict | None = None) -> dict:
         """`hold`: Pro AI (judge mode) disagreed - send the signal to manual review with this reason instead of the
         trader (it is flagged PRO_HELD: only traded when approved). `pro_direction`: Pro AI's call on this stock, when
-        it read the story."""
+        it read the story. `read`: what the engine read ({"details": {ticker: ...}, "model": ...}) for the decision
+        trail."""
         s = self.ctx.config.settings
         db = self.ctx.db
         now = utcnow()
@@ -509,7 +520,10 @@ class Pipeline:
         row.update({"action": "pending", "action_reason": "", "traded": 0})
         row["id"] = db.insert("signals", row)
         self.stats["signals"] += 1
-        await self._route(row, force_review=hold)
+        read = read or {}
+        found = trails.engine_part(row, (read.get("details") or {}).get(sig.ticker), read.get("model"))
+        pro = None if pro_direction is None and not hold else {"direction": pro_direction, "held": hold}
+        await self._route(row, force_review=hold, engine=found, pro=pro)
         return db.query_one("SELECT * FROM signals WHERE id = ?", (row["id"],)) or row
 
     async def _merge_into(self, existing: dict, row: dict, sig, held: bool = False) -> dict:
@@ -536,11 +550,14 @@ class Pipeline:
             await self._route(merged)
         return row
 
-    async def _route(self, signal: dict, force_review: str = "") -> None:
-        """Send a signal to the trader (or flag it for manual review) and record what happened. `force_review`:
-        don't ask the trader - send it to manual review with this reason."""
+    async def _route(self, signal: dict, force_review: str = "", engine: dict | None = None,
+                     pro: dict | None = None) -> None:
+        """Send a signal to the trader (or flag it for manual review) and record what happened, with its decision
+        trail. `force_review`: don't ask the trader - send it to manual review with this reason. `engine` / `pro`: what
+        the AI engine read and Pro AI's view, for the trail."""
         db = self.ctx.db
         trader = self.ctx.service("trader")
+        trail = None
         if signal["direction"] == "neutral":
             action, reason, traded, order_id = "ignored", "Neutral signal - no trade.", False, None
         elif force_review:
@@ -550,10 +567,23 @@ class Pipeline:
         else:
             res = await trader.handle_signal(signal)
             action, reason, traded, order_id = res["action"], res["reason"], res["traded"], res.get("order_db_id")
+            trail = res.get("trail")
+        if trail is None:
+            t = trails.Trail(self.ctx.config.settings, signal, broker=getattr(trader, "broker_kind", "") or "",
+                             mode=self.ctx.state.mode)
+            if force_review:
+                t.check("Pro AI (judge mode)", trails.REVIEW, force_review)
+            trail = t.finish({"action": action, "reason": reason, "traded": traded})
+        if engine is not None:
+            trail["engine"] = engine
+        if pro is not None:
+            trail["pro_ai"] = pro
         db.update("signals", signal["id"], {"action": action, "action_reason": reason, "traded": int(traded),
                                             "order_id": order_id,
                                             "review_status": "pending" if action == "review" else None})
+        trails.store(db, signal["id"], trail)
         event = db.query_one("SELECT * FROM signals WHERE id = ?", (signal["id"],))
+        event.pop("decision_trail", None)  # the "Why did it trade?" card loads it
         order = db.query_one("SELECT submitted_at FROM orders WHERE id = ?", (order_id,)) if order_id else None
         event["speed"] = signal_speed(event, order["submitted_at"] if order else None)
         self.ctx.bus.publish("signal", event)
@@ -591,6 +621,7 @@ class Pipeline:
         db.update("signals", signal_id, {"action": res["action"], "action_reason": res["reason"] + " (approved by you)",
                                          "traded": int(res["traded"]), "order_id": res.get("order_db_id"),
                                          "review_status": "approved"})
+        trails.store(db, signal_id, res.get("trail"))
         self.ctx.bus.publish("signal_updated", {"id": signal_id})
         return res
 

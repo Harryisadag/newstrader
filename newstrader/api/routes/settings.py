@@ -8,8 +8,9 @@ from ...ai.engine import ENGINES
 from ...config import CLAUDE_MODELS, WHISPER_LANGUAGES, WHISPER_MODELS
 from ...context import AppContext
 from ...llm.service import setting_options
-from ...trading import crypto
-from ..deps import get_ctx
+from ...trading import crypto, presets
+from ..deps import bad_request, get_ctx
+from .trading import simulator_info
 
 router = APIRouter(tags=["settings"])
 
@@ -48,6 +49,8 @@ def _payload(ctx: AppContext) -> dict:
             "languages": {"auto": "Detect automatically", **WHISPER_LANGUAGES},
             "effort_note": "Effort only applies to Sonnet/Opus. Haiku 4.5 ignores it.",
             "crypto": crypto_info(ctx),
+            "style": presets.describe(ctx.config.settings),
+            "account": simulator_info(ctx),
             **setting_options(),
         },
     }
@@ -70,5 +73,23 @@ async def put_settings(patch: dict[str, Any] = Body(...), ctx: AppContext = Depe
 @router.post("/settings/reset")
 async def reset_settings(ctx: AppContext = Depends(get_ctx)):
     ctx.config.reset(keep_sources=True)
+    ctx.bus.publish("settings_changed", {})
+    return _payload(ctx)
+
+
+@router.get("/presets")
+async def get_presets(ctx: AppContext = Depends(get_ctx)):
+    """Settings -> Trading -> Style: what each style sets, and the style the settings match now ("custom" if none)."""
+    return presets.describe(ctx.config.settings)
+
+
+@router.post("/presets/apply")
+async def apply_preset(body: dict = Body(...), ctx: AppContext = Depends(get_ctx)):
+    """Apply a trading style. It only changes the settings in the style's table: short selling stays off and live
+    trading is never touched."""
+    style = str(body.get("style", "")).strip().lower()
+    if style not in presets.PRESETS:
+        raise bad_request(f"Unknown style '{style}' - pick one of: {', '.join(presets.PRESETS)}.")
+    ctx.config.update(presets.patch(style))
     ctx.bus.publish("settings_changed", {})
     return _payload(ctx)

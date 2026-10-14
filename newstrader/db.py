@@ -402,6 +402,12 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_pro_labels_status ON pro_labels(status, day);
     """,
+    # 15 - "Why did it trade?": the decision trail saved on a signal when it was decided (JSON: the engine's reading,
+    # the thresholds and style in use, the confidence before and after each adjustment, the checks it passed or why
+    # it went to manual review / was blocked, and the outcome). Older signals have none: the card shows what's known.
+    """
+    ALTER TABLE signals ADD COLUMN decision_trail TEXT;
+    """,
 ]
 
 

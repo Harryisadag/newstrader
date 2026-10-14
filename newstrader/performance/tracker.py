@@ -46,6 +46,9 @@ class PerformanceTracker:
         trader = self.ctx.service("trader")
         return getattr(trader, "broker", None)
 
+    async def on_broker_changed(self) -> None:
+        self._calendar, self._calendar_until = [], None
+
     async def _loop(self) -> None:
         await asyncio.sleep(5)
         while True:

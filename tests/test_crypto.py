@@ -148,7 +148,7 @@ def test_crypto_settings_defaults_and_validation(ctx):
     c = CryptoSettings()
     assert (c.enabled, c.symbols, c.max_per_trade, c.stop_loss_pct, c.take_profit_pct, c.trade_on_news) == \
         (False, ["BTC/USD", "ETH/USD", "SOL/USD"], 500.0, 3.0, 6.0, True)
-    assert AppSettings().schema_version == 5
+    assert AppSettings().schema_version == 6
     ctx.config.update({"crypto": {"symbols": "btc, dogeusd"}})  # the Settings page sends a comma list
     assert ctx.config.settings.crypto.symbols == ["BTC/USD", "DOGE/USD"]
     for bad in ({"symbols": "ETH/BTC"}, {"symbols": "AAPL!"}, {"max_per_trade": 0}, {"stop_loss_pct": 0}):
@@ -167,7 +167,7 @@ def test_old_config_gets_crypto_switched_off(tmp_path):
     assert not store.settings.crypto.enabled and store.settings.crypto.max_per_trade == 500
     assert store.settings.risk.max_dollars_per_trade == 250
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["schema_version"] == 5 and saved["crypto"]["enabled"] is False
+    assert saved["schema_version"] == 6 and saved["crypto"]["enabled"] is False
 
 
 def test_migration_13_adds_the_exit_plans(tmp_path):

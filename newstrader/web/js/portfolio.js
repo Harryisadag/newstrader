@@ -125,7 +125,6 @@ document.addEventListener("alpine:init", () => {
     symbol: "",
     showLegs: true,
     loading: false,
-    expanded: null,
 
     init() {
       window.addEventListener("nt:tab", (e) => { if (e.detail === "trades") this.load(); });
@@ -150,6 +149,12 @@ document.addEventListener("alpine:init", () => {
       const wins = filled.filter((t) => t.realized_pl > 0).length;
       return { closed: filled.length, pl, winRate: filled.length ? (100 * wins) / filled.length : null };
     },
+
+    why(t) { window.dispatchEvent(new CustomEvent("nt:why", { detail: { order_id: t.id } })); },
+    // the account an order belongs to: Alpaca paper / live, or the built-in simulator (older simulator accounts that
+    // were reset say "simulated (reset ...)")
+    modeLabel(m) { return String(m || "").startsWith("simulated") ? "simulated" : m; },
+    modeClass(m) { return m === "live" ? "bad" : String(m || "").startsWith("simulated") ? "info" : "good"; },
 
     intentLabel(i) {
       return { open_long: "Buy", open_short: "Short", close_long: "Sell", close_short: "Cover", take_profit: "Take-profit", stop_loss: "Stop-loss", external: "Other" }[i] || i;
