@@ -67,6 +67,34 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 
 ## Versions
 
+## v0.5.0 — 15 October 2026
+
+**New: crypto (paper, 24/7)**
+- Bitcoin, Ether and Solana through your Alpaca paper account, around the clock. Off until you turn it on in Settings → Crypto.
+- Alpaca has no bracket orders for crypto, so every crypto buy gets a **safety stop kept at Alpaca**: it protects you even when NewsTrader is closed. The take-profit is watched by the app, so it only works while NewsTrader is open.
+- News about bitcoin / ether / solana can trade them, with its own small set of crypto news rules (ETF decisions, exchange hacks, regulator actions, bans, listings, company treasury buys); anything else goes to manual review. A crypto miner's news doesn't buy bitcoin by itself.
+- Never shorts crypto, never adds to a coin it already holds, and its own limit per trade ($500 to start). The daily loss limit and kill switch cover crypto too. Charts and chart signals work for crypto, and the Market tab shows crypto tiles.
+
+**New: shared training (everyone's AI learns together)**
+- If you have Pro AI, **Label old news** lets it go through the news history you downloaded for the price model and label it, quietly in the background. It pauses while the US market is open so trading is never slowed.
+- A small, fast "student" model learns from those labels and runs on any computer. It only steps in where the built-in AI has no recognised news event (those signals still go to manual review), and it can only lower confidence elsewhere, never raise it.
+- **Share my labels** saves a small file (no news text, no keys, no trades) and opens GitHub's upload page for this project; you need a free GitHub account. Every upload is checked automatically and reviewed before it's added. Once a day the app downloads everyone's shared labels (you can turn that off in Settings), and **Train with everyone's labels** builds a better student, switching only if it scores at least as well as the current one.
+- Honest note: no shared labels exist yet, so there's no student model in this release. The more people label, the more it learns.
+
+**New: the built-in simulator has screens**
+- No Alpaca account? Settings → Trading → **Where trades go** → Built-in simulator (or Automatic, which uses it when no Alpaca keys are set). Fake money, free prices, a SIMULATED badge, starting cash and a **Reset simulator** button.
+- Things that need a free Alpaca account say so plainly: the Benzinga news feed, news history, price-model training, backtests and crypto.
+
+**New: trading styles**
+- Settings → Trading → **Style**: Cautious, Normal (the defaults) or Aggressive, with a table of exactly what each one changes. Change any of those settings yourself and it shows Custom. Short selling stays off in every style, and none of them touches live mode. Aggressive means more trades and bigger swings, not more profit.
+
+**New: "Why did it trade?"**
+- Click any signal or trade: the headline or TV quote, which AI decided and why, every step of the decision (thresholds, chart check, risk checks), the speed timer, a small chart from 30 minutes before to 2 hours after with the news, entry, stop, target and exit marked, and how it did against the S&P 500.
+
+**Other**
+- Simulated trades are kept apart from Alpaca ones, and the Trade Log shows realized P/L for paper and live orders.
+- If you're on v0.4, click **Update now** in the banner.
+
 ## v0.4.0 — 9 October 2026
 
 **New: Pro AI for strong PCs (optional, free, offline)**
