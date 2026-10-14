@@ -214,6 +214,55 @@ async def test_teacher_labels_old_news_and_continues_where_it_stopped(labelling)
     assert status["seconds_per_story"] is not None and status["eta_seconds"] == 0
 
 
+async def test_teacher_reads_the_database_off_the_event_loop(labelling):
+    import threading
+
+    ctx = labelling
+    job = TeacherJob(ctx, StubPro(ctx, FakeTeacherEngine()), now=lambda: SATURDAY)
+    on_main: list[bool] = []
+    find = job.next_story
+
+    def next_story():
+        on_main.append(threading.current_thread() is threading.main_thread())
+        return find()
+
+    job.next_story = next_story
+    assert await job.step() == 0.0
+    assert on_main == [False]  # a worker thread: crypto, live news and the exit checks never wait behind it
+
+
+def test_next_story_walks_an_index_newest_first(labelling):
+    plan = " | ".join(r["detail"] for r in labelling.db.query("EXPLAIN QUERY PLAN " + teacher_mod.NEXT_STORY.format("")))
+    assert "idx_ml_samples_text" in plan and "TEMP B-TREE" not in plan, plan  # no scan + sort of every headline
+
+
+async def test_teacher_finds_headlines_downloaded_while_it_labels(labelling):
+    ctx = labelling
+    engine = FakeTeacherEngine()
+    job = TeacherJob(ctx, StubPro(ctx, engine), now=lambda: SATURDAY)
+    assert await job.step() == 0.0 and engine.asked[0]["id"] == "104"
+    add_story(ctx.db, "100", "Nvidia to hold an investor day", ["NVDA"], datetime(2026, 8, 1, 14, tzinfo=UTC))
+    add_story(ctx.db, "105", "Ford misses estimates", ["F"], datetime(2026, 9, 2, 14, tzinfo=UTC))  # the newest
+    for _ in range(5):
+        assert await job.step() == 0.0
+    assert sorted(a["id"] for a in engine.asked) == ["100", "101", "102", "103", "104", "105"]
+    assert await job.step() == teacher_mod.DONE_RECHECK
+
+
+async def test_teacher_status_counts_are_reused_but_stay_right(labelling):
+    ctx = labelling
+    job = TeacherJob(ctx, StubPro(ctx, FakeTeacherEngine()), now=lambda: SATURDAY)
+    assert job.status()["remaining"] == 4
+    count, recounts = job._count, []
+    job._count = lambda: recounts.append(1) or count()
+    for _ in range(2):
+        await job.step()
+    s = job.status()
+    assert recounts == []  # not counted again for every status poll (counting reads every downloaded headline)
+    assert s["done"] == 2 and s["remaining"] == 2 and s["label_count"] == 3
+    assert {k: s[k] for k in ("total", "remaining", "done", "failed", "labels", "label_count")} == count()
+
+
 async def test_teacher_pauses_while_the_market_is_open(labelling):
     ctx = labelling
     engine = FakeTeacherEngine()
@@ -647,6 +696,19 @@ def test_check_folder_and_script(tmp_path):
     assert out.returncode == 1 and "REJECTED" in out.stdout and "Traceback" not in out.stderr
     # the folder in the repo itself passes
     assert check_shared_labels.main([str(ROOT / "shared" / "labels")]) == 0
+
+
+def test_the_label_check_workflow_comes_from_the_target_branch():
+    """pull_request_target: GitHub runs this workflow file from the branch an upload goes into, so a pull request that
+    edits it can't change or skip its own check (with pull_request, the pull request's edited copy would run)."""
+    text = (ROOT / ".github" / "workflows" / "check-shared-labels.yml").read_text(encoding="utf-8")
+    triggers = "\n" + text.split("\non:\n")[1].split("\npermissions:")[0]
+    assert "\n  pull_request_target:" in triggers and "\n  pull_request:" not in triggers
+    assert "github.event_name == 'pull_request'" not in text  # every step follows the trigger's name
+    # still safe for anyone's upload: a read-only token, no saved credentials or secrets, nothing from the upload runs
+    assert "\npermissions:\n  contents: read\n  pull-requests: read\n" in text and "secrets." not in text
+    assert text.count("persist-credentials: false") == 2
+    assert "python -I trusted/scripts/check_shared_labels.py upload/shared/labels" in text
 
 
 # ------------------------------------------------------------------------------------------------ share my labels

@@ -4,9 +4,10 @@ how sure it is (table pro_labels). Those labels teach the small, fast student mo
 with everyone through GitHub (ml/sharing.py).
 
 It runs in the background, one story at a time, so Pro AI's other slot stays free for live news, and live stories go
-first. By default it pauses while the US stock market is open, so trading is never slowed. Start and pause it any
-time: what is labelled is kept, so it continues where it stopped, also after a restart. Nothing here can trade - the
-answers only go to pro_labels.
+first. By default it pauses while the US stock market is open, so stock trading is never slowed; its database work
+runs off the app's main loop, so crypto (24/7) and the rest of the app carry on while it labels. Start and pause it
+any time: what is labelled is kept, so it continues where it stopped, also after a restart. Nothing here can trade -
+the answers only go to pro_labels.
 """
 
 from __future__ import annotations
@@ -38,7 +39,11 @@ DONE_RECHECK = 600.0  # everything labelled: look for newly downloaded headlines
 LIVE_FIRST = 1.0  # live stories are waiting for Pro AI: look again this soon
 OPEN_MARGIN = timedelta(minutes=10)  # it also pauses this long before the open
 SPEED_WINDOW = 20  # stories the "time left" estimate averages over
+COUNTS_EVERY = 60.0  # seconds the counts for the status are reused (counting reads every downloaded headline)
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.I)
+# the newest unlabelled story: walks idx_ml_samples_text newest first and stops at the first one ({} = extra condition)
+NEXT_STORY = ("SELECT news_id, published_at, headline, summary FROM ml_samples m WHERE text_version = 2{} AND "
+              "NOT EXISTS (SELECT 1 FROM pro_labels p WHERE p.news_id = m.news_id) ORDER BY published_at DESC LIMIT 1")
 
 
 def market_busy(now: datetime) -> bool:
@@ -106,6 +111,9 @@ class TeacherJob:
         self._seconds: deque[float] = deque(maxlen=SPEED_WINDOW)
         self._fails = 0
         self._task: asyncio.Task | None = None
+        self._cursor: str | None = None  # published_at of the last story picked (everything newer is labelled)
+        self._counts: dict | None = None
+        self._counts_at = 0.0
 
     # ------------------------------------------------------------------ control
     @property
@@ -120,24 +128,23 @@ class TeacherJob:
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
-    def start(self) -> dict:
-        """Start, or continue where it stopped (call in the event loop). Stories Pro AI couldn't answer before get one
-        more try."""
+    def start(self) -> None:
+        """Start, or continue where it stopped (call in the event loop; read status() from a worker thread). Stories
+        Pro AI couldn't answer before get one more try."""
         self._set_wanted(True)
         self.ctx.db.execute("DELETE FROM pro_labels WHERE status = 'failed'")
         self._fails = 0
+        self._cursor = self._counts = None
         if not self.running:
             self._set("waiting", "Starting...")
             self._task = asyncio.get_running_loop().create_task(self._loop(), name="pro-ai-labels")
-        return self.status()
 
-    def pause(self) -> dict:
+    def pause(self) -> None:
         self._set_wanted(False)
         if self._task is not None:
             self._task.cancel()
             self._task = None
         self._set("off", "Paused - click Start to continue where it stopped.")
-        return self.status()
 
     def resume_if_wanted(self) -> None:
         """At start-up: carry on if it was running when the app closed."""
@@ -196,7 +203,7 @@ class TeacherJob:
         if why:
             self._set("waiting", why)
             return wait
-        row = self.next_story()
+        row = await asyncio.to_thread(self.next_story)
         if row is None:
             self._set("done", "Every downloaded headline is labelled. Training the price model on more history "
                               "downloads more headlines to label.")
@@ -217,11 +224,16 @@ class TeacherJob:
         return 0.0
 
     def next_story(self) -> dict | None:
-        """The newest downloaded story nobody labelled yet."""
-        return self.ctx.db.query_one(
-            "SELECT news_id, MAX(published_at) AS published_at, headline, summary FROM ml_samples "
-            "WHERE text_version = 2 AND news_id NOT IN (SELECT news_id FROM pro_labels) "
-            "GROUP BY news_id ORDER BY published_at DESC LIMIT 1")
+        """The newest downloaded story nobody labelled yet (reads the database - call from a worker thread). Stories
+        are labelled newest first, so it looks from the last one picked onwards, and through everything again only
+        when that finds nothing (headlines downloaded since, or the end)."""
+        row = None
+        if self._cursor:
+            row = self.ctx.db.query_one(NEXT_STORY.format(" AND published_at <= ?"), (self._cursor,))
+        if row is None:
+            row = self.ctx.db.query_one(NEXT_STORY.format(""))
+        self._cursor = row["published_at"] if row is not None else None
+        return row
 
     async def label_story(self, row: dict) -> str:
         """Ask Pro AI about one old story and store a label for each of its stocks. "ok", "failed" (stored as failed,
@@ -230,9 +242,10 @@ class TeacherJob:
         if engine is None:
             return "skipped"
         nid = str(row["news_id"])
-        syms = [r["symbol"] for r in self.ctx.db.query(
-            "SELECT DISTINCT symbol FROM ml_samples WHERE news_id = ? ORDER BY symbol", (nid,))
-            if TICKER_RE.match(r["symbol"] or "")][:MAX_TICKERS]
+        found = await asyncio.to_thread(self.ctx.db.query,
+                                        "SELECT DISTINCT symbol FROM ml_samples WHERE news_id = ? ORDER BY symbol",
+                                        (nid,))
+        syms = [r["symbol"] for r in found if TICKER_RE.match(r["symbol"] or "")][:MAX_TICKERS]
         published = parse_iso(row["published_at"]) or self._now()
         item = NewsItem(source_id="training", source_type="alpaca_news", source_name="Benzinga (history)",
                         external_id=nid, title=row["headline"] or "", body=row["summary"] or "",
@@ -267,13 +280,36 @@ class TeacherJob:
         else:
             rows = [(nid, s, *calls.get(s, ("neutral", 0)), kinds.get(s, ""), *common, "ok") for s in syms]
             self.labelled_now += 1
-        self.ctx.db.executemany(
+        await asyncio.to_thread(
+            self.ctx.db.executemany,
             "INSERT OR REPLACE INTO pro_labels (news_id, ticker, direction, confidence, event, model, labelled_at, "
             "headline_hash, day, status) VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
+        self._counted(rows)
         return "ok" if calls is not None else "failed"
 
     # ------------------------------------------------------------------ status
     def counts(self) -> dict:
+        """How many stories there are, how many are left and the labels so far. Counted again at most every
+        COUNTS_EVERY seconds (it reads every downloaded headline); stories labelled meanwhile are added as they go."""
+        if self._counts is None or time.monotonic() - self._counts_at > COUNTS_EVERY:
+            self._counts, self._counts_at = self._count(), time.monotonic()
+        return {**self._counts, "labels": dict(self._counts["labels"])}
+
+    def _counted(self, rows: list[tuple]) -> None:
+        """One more story labelled (its pro_labels rows): keep the reused counts right."""
+        c = self._counts
+        if c is None:
+            return
+        c["remaining"] = max(c["remaining"] - 1, 0)
+        c["done"] = c["total"] - c["remaining"]
+        if rows and rows[0][-1] == "failed":
+            c["failed"] += 1
+            return
+        for r in rows:
+            c["labels"][r[2]] = c["labels"].get(r[2], 0) + 1
+        c["label_count"] += len(rows)
+
+    def _count(self) -> dict:
         db = self.ctx.db
         total = db.scalar("SELECT COUNT(DISTINCT news_id) FROM ml_samples WHERE text_version = 2") or 0
         remaining = db.scalar("SELECT COUNT(DISTINCT news_id) FROM ml_samples WHERE text_version = 2 AND news_id "

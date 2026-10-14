@@ -9,10 +9,12 @@ Every crypto buy gets an exit plan (table crypto_exits):
   works while NewsTrader is open.
 
 Every check - the first one right after start-up - re-syncs with Alpaca: a buy that filled gets its safety stop, a buy
-that never filled ends its plan, a plan whose position is gone is closed (the stop filled, or it was sold), and a
-position whose safety stop isn't working any more gets a new one. If the price falls through the stop's limit while
-the stop is still open (a drop too fast for a stop-limit to fill) it sells at market. Only positions NewsTrader
-opened are managed. Orders are only placed while holding the trader's lock, so a check never races a trade or the
+that never filled ends its plan, a plan whose position is gone is closed (the stop filled, or it was sold - also
+before its stop went in), and a position whose safety stop isn't working any more gets a new one before anything
+else. If the price falls through the stop's limit while the stop is still open (a drop too fast for a stop-limit to
+fill) it sells at market. A sale that fails puts the safety stop straight back. A new buy of a coin ends any old plan
+for it (the trader only buys when nothing of that coin is held or waiting). Only positions NewsTrader opened are
+managed. Orders are only placed while holding the trader's lock, so a check never races a trade or the
 kill switch. While the kill switch is engaged (it cancels the stops like every other order) or an update is being
 installed it does nothing; once trading is re-armed the next check puts the safety stops back.
 """
@@ -26,7 +28,7 @@ import time
 import uuid
 
 from ..context import AppContext
-from ..db import Database, iso
+from ..db import Database, iso, parse_iso, utcnow
 from . import crypto
 
 log = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ WORKING = {"new", "accepted", "held", "pending_new", "partially_filled", "accept
            "replaced", "calculated"}
 ENDED = {"canceled", "expired", "rejected", "done_for_day", "stopped", "suspended"}
 DUST = 1e-9            # a position smaller than this is gone
+POSITION_GRACE = 60.0  # seconds after a buy filled that Alpaca may still not show the position
+NO_COINS = "no coins free for a stop yet"
 CHANGED = {"stop placed", "stop placed again", "sold", "closed", "buy didn't fill"}  # results that changed orders
 
 
@@ -65,6 +69,19 @@ def open_plans(db: Database, mode: str | None = None, symbol: str | None = None)
         sql += " AND symbol = ?"
         params.append(crypto.normalize(symbol))
     return db.query(sql + " ORDER BY id", params)
+
+
+def replace_plans(db: Database, symbol: str, mode: str) -> list[str]:
+    """A new buy of the coin is about to be sent (nothing of it is held or waiting): end its old open plans, so they
+    never manage the new position. Returns their safety stops, to cancel in case one is somehow still open."""
+    stops = []
+    for plan in open_plans(db, mode, symbol):
+        sold = plan["status"] == "closing" and plan["reason"]  # its sale filled: keep why it was sold
+        _update(db, plan["id"], status="closed",
+                reason=plan["reason"] if sold else "Ended by a new buy of this coin (the old position was gone)")
+        if plan["stop_order_id"]:
+            stops.append(plan["stop_order_id"])
+    return stops
 
 
 def mark_closing(db: Database, symbol: str, mode: str, exit_order_id: str | None, reason: str) -> int:
@@ -277,16 +294,19 @@ class CryptoExitManager:
                 _update(self.ctx.db, fresh["id"], status="active", reason="Some coins were left after the sale")
             plan = self.ctx.db.query_one("SELECT * FROM crypto_exits WHERE id = ?", (plan["id"],))
         price = await asyncio.to_thread(broker.latest_price, sym)
-        if price and plan["take_profit_price"] and price >= plan["take_profit_price"]:
-            return await self._sell(plan, broker, stop, "take_profit",
-                                    f"Crypto take-profit: {sym} reached ${price:,.2f} (target "
-                                    f"${plan['take_profit_price']:,.2f}) - NewsTrader sold it")
+        target = bool(price and plan["take_profit_price"] and price >= plan["take_profit_price"])
         if stop is None:
             if price and plan["stop_price"] and price <= plan["stop_price"]:
                 return await self._sell(plan, broker, None, "stop_loss",
                                         f"Crypto safety stop: {sym} is at ${price:,.2f}, already below the "
                                         f"${plan['stop_price']:,.2f} stop - NewsTrader sold it at market")
-            return await self._place_stop(plan, broker, pos)
+            placed = await self._place_stop(plan, broker, pos)
+            if placed != NO_COINS or not target:
+                return placed  # the stop goes back first: the take-profit is tried at the next check
+        if target:
+            return await self._sell(plan, broker, stop, "take_profit",
+                                    f"Crypto take-profit: {sym} reached ${price:,.2f} (target "
+                                    f"${plan['take_profit_price']:,.2f}) - NewsTrader sold it")
         if price and plan["stop_limit_price"] and price < plan["stop_limit_price"]:
             return await self._sell(plan, broker, stop, "stop_loss",
                                     f"Crypto safety stop: {sym} fell to ${price:,.2f}, past the stop's limit "
@@ -309,6 +329,12 @@ class CryptoExitManager:
                 return "buy didn't fill"
             return "waiting for the fill"
         if pos is None or _num(pos.get("qty")) <= DUST:
+            filled_at = parse_iso(order.get("filled_at") or order.get("updated_at") or plan["created_at"])
+            if filled_at is not None and (utcnow() - filled_at).total_seconds() > POSITION_GRACE:
+                async with self._trade_lock(plan) as fresh:  # e.g. the kill switch closed it first
+                    _update(self.ctx.db, fresh["id"], status="closed",
+                            reason="The position was closed before its safety stop went in")
+                return "closed"
             return "waiting for the position"  # Alpaca shows the position a moment after the fill
         entry = _num(order.get("filled_avg_price")) or _num(pos.get("avg_entry_price"))
         s = self.ctx.config.settings.crypto
@@ -321,22 +347,30 @@ class CryptoExitManager:
         plan = self.ctx.db.query_one("SELECT * FROM crypto_exits WHERE id = ?", (plan["id"],))
         return await self._place_stop(plan, broker, pos)
 
-    async def _place_stop(self, plan: dict, broker, pos: dict) -> str:
-        """A safety stop for the whole position, held at Alpaca."""
-        asset = await asyncio.to_thread(broker.asset, plan["symbol"]) if hasattr(broker, "asset") else None
+    async def _stop_qty(self, symbol: str, broker, pos: dict) -> float:
+        """How much of the position a safety stop can cover (what isn't held by another order)."""
+        asset = await asyncio.to_thread(broker.asset, symbol) if hasattr(broker, "asset") else None
         qty = _num(pos.get("qty"))
         if pos.get("qty_available") is not None:
             qty = min(qty, _num(pos.get("qty_available")))
-        qty = crypto.round_down(qty, (asset or {}).get("min_trade_increment"))
+        return crypto.round_down(qty, (asset or {}).get("min_trade_increment"))
+
+    async def _submit_stop(self, plan: dict, broker, qty: float) -> None:
+        """Send the safety stop (call while holding the trade lock)."""
+        coid = f"nt-stop-{plan['id']}-{uuid.uuid4().hex[:8]}"
+        order = await asyncio.to_thread(broker.submit_crypto_stop, plan["symbol"], qty, plan["stop_price"],
+                                        plan["stop_limit_price"], coid)
+        _update(self.ctx.db, plan["id"], stop_order_id=order["id"], qty=qty, status="active", reason="")
+        self._record(order, plan, "stop_loss", "Crypto safety stop (held at Alpaca)", stop=plan["stop_price"])
+
+    async def _place_stop(self, plan: dict, broker, pos: dict) -> str:
+        """A safety stop for the whole position, held at Alpaca."""
+        qty = await self._stop_qty(plan["symbol"], broker, pos)
         if qty <= DUST:
-            return "no coins free for a stop yet"
+            return NO_COINS
         async with self._trade_lock(plan) as fresh:
             first = not fresh["stop_order_id"]
-            coid = f"nt-stop-{fresh['id']}-{uuid.uuid4().hex[:8]}"
-            order = await asyncio.to_thread(broker.submit_crypto_stop, fresh["symbol"], qty, fresh["stop_price"],
-                                            fresh["stop_limit_price"], coid)
-            _update(self.ctx.db, fresh["id"], stop_order_id=order["id"], qty=qty, status="active", reason="")
-            self._record(order, fresh, "stop_loss", "Crypto safety stop (held at Alpaca)", stop=fresh["stop_price"])
+            await self._submit_stop(fresh, broker, qty)
         if first:
             log.info("Crypto safety stop for %g %s at $%s (limit $%s)", qty, plan["symbol"], plan["stop_price"],
                      plan["stop_limit_price"])
@@ -373,10 +407,26 @@ class CryptoExitManager:
                     if o.get("status") not in WORKING and o.get("status") != "pending_cancel":
                         break
                     await asyncio.sleep(0.5)
-            order = await asyncio.to_thread(broker.close_position, sym)
+            try:
+                order = await asyncio.to_thread(broker.close_position, sym)
+            except Exception:
+                await self._restore_stop(fresh, broker)
+                raise
             _update(self.ctx.db, fresh["id"], status="closing", exit_order_id=order["id"], reason=reason[:300])
             self._record(order, fresh, intent, reason, tp=fresh["take_profit_price"] if intent == "take_profit" else None)
         title = (f"Crypto take-profit: selling {sym}" if intent == "take_profit" else f"Crypto stop: selling {sym}")
         log.info(reason)
         await self._alert("trade_placed", title, reason)
         return "sold"
+
+    async def _restore_stop(self, plan: dict, broker) -> None:
+        """A sale failed after the safety stop was cancelled: put a stop back straight away (still holding the trade
+        lock), so the coins are never left without one. The sale is tried again at the next check."""
+        try:
+            pos = next((p for p in await asyncio.to_thread(broker.positions) if p["symbol"] == plan["symbol"]), None)
+            qty = await self._stop_qty(plan["symbol"], broker, pos) if pos is not None else 0.0
+            if qty > DUST:
+                await self._submit_stop(plan, broker, qty)
+                log.warning("Selling %s failed - its crypto safety stop was put back", plan["symbol"])
+        except Exception as exc:
+            log.warning("Couldn't put the crypto safety stop for %s back: %s", plan["symbol"], exc)

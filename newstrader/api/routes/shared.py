@@ -39,12 +39,15 @@ async def labels_start(ctx: AppContext = Depends(get_ctx)):
     if not ctx.db.scalar("SELECT 1 FROM ml_samples WHERE text_version = 2 LIMIT 1"):
         raise bad_request("There are no old headlines to label yet. Train the price model first (Backtest -> Local "
                           "ML model): that downloads the old headlines Pro AI labels.", 409)
-    return teacher.start()
+    teacher.start()
+    return await asyncio.to_thread(teacher.status)
 
 
 @router.post("/pro-ai/labels/pause")
 async def labels_pause(ctx: AppContext = Depends(get_ctx)):
-    return _pro(ctx).teacher.pause()
+    teacher = _pro(ctx).teacher
+    teacher.pause()
+    return await asyncio.to_thread(teacher.status)
 
 
 @router.get("/ml/shared")

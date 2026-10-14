@@ -463,6 +463,107 @@ async def test_manual_close_of_a_coin(env):
     assert env.broker.positions() == [] and plan_row(env.ctx, plan["id"])["reason"] == "Sold by you"
 
 
+def failing_close(broker):
+    """close_position fails like Alpaca's can: the coin's orders (its safety stop) are cancelled first."""
+    def close_position(symbol, wait_seconds=0):
+        broker.cancel_orders_for(symbol)
+        raise RuntimeError("insufficient qty available for order")
+    broker.close_position = close_position
+
+
+async def killed_before_the_stop(env) -> dict:
+    """A buy, then Kill switch + close positions before the first check put its safety stop in, then re-arm."""
+    await env.trader.handle_signal(sig())
+    old = plan_row(env.ctx)
+    assert old["status"] == "pending"
+    await env.trader.kill(close_positions=True)
+    await env.trader.rearm()
+    assert (await env.exits.run_once())["plans"][old["id"]] == "waiting for the position"  # Alpaca can be behind
+    return old
+
+
+async def test_a_position_closed_before_its_stop_went_in_ends_its_plan(env):
+    old = await killed_before_the_stop(env)
+    entry = next(o for o in env.broker._orders if o["id"] == old["entry_order_id"])
+    entry["filled_at"] = iso(datetime.now(UTC) - timedelta(minutes=2))
+    await env.exits.run_once()
+    p = plan_row(env.ctx, old["id"])
+    assert p["status"] == "closed" and "closed before its safety stop went in" in p["reason"]
+    assert open_plans(env.ctx.db) == [] and not [c for c in env.broker.calls if c[0] == "submit_crypto_stop"]
+
+
+async def test_a_rebuy_after_kill_and_close_gets_its_own_plan(env):
+    env.ctx.config.update({"risk": {"ticker_cooldown_minutes": 0}})
+    old = await killed_before_the_stop(env)
+    env.broker.prices["BTC/USD"] = 50000.0
+    assert (await env.trader.handle_signal(sig(id=2)))["action"] == "bought"
+    assert plan_row(env.ctx, old["id"])["status"] == "closed"
+    for _ in range(2):
+        await env.exits.run_once()
+    new = plan_row(env.ctx)
+    assert new["status"] == "active" and (new["stop_price"], new["take_profit_price"]) == (48500.0, 53000.0)
+    stops = [c for c in env.broker.calls if c[0] == "submit_crypto_stop"]
+    assert len(stops) == 1 and stops[0][3] == 48500.0  # not the old $58,200 stop, above the market
+    assert env.broker.positions() and env.broker.order(new["stop_order_id"])["status"] == "new"
+
+
+async def test_a_new_buy_ends_an_old_plan_for_the_same_coin(env):
+    env.ctx.config.update({"risk": {"ticker_cooldown_minutes": 0}})
+    old = await bought(env)
+    env.broker.prices["BTC/USD"] = 58100.0
+    assert env.broker.check_stops() == 1  # the safety stop sold it; the exit manager hasn't looked yet
+    env.broker.prices["BTC/USD"] = 50000.0
+    assert (await env.trader.handle_signal(sig(id=2)))["action"] == "bought"
+    p = plan_row(env.ctx, old["id"])
+    assert p["status"] == "closed" and "new buy" in p["reason"]
+    for _ in range(2):
+        await env.exits.run_once()
+    new = plan_row(env.ctx)
+    assert new["id"] != old["id"] and new["status"] == "active" and new["stop_price"] == 48500.0
+    assert env.broker.order(new["stop_order_id"])["status"] == "new"
+    assert env.broker.positions()  # the old plan's $58,200 stop never sold the new position
+    assert [p["id"] for p in open_plans(env.ctx.db)] == [new["id"]]
+
+
+async def test_a_failed_take_profit_sale_puts_the_safety_stop_back(env):
+    plan = await bought(env)
+    failing_close(env.broker)
+    env.broker.prices["BTC/USD"] = 64000.0  # past the $63,600 target
+    for _ in range(3):
+        out = await env.exits.run_once()
+        assert out["plans"][plan["id"]].startswith("error")
+        p = plan_row(env.ctx, plan["id"])
+        assert p["status"] == "active" and "insufficient qty" in p["reason"]
+        assert env.broker.order(p["stop_order_id"])["status"] == "new"  # the coins always have a stop at Alpaca
+
+
+async def test_a_missing_stop_goes_back_before_the_take_profit_sells(env):
+    plan = await bought(env)
+    env.broker.cancel_order(plan["stop_order_id"])  # e.g. cancelled while NewsTrader was closed
+    env.broker.prices["BTC/USD"] = 64000.0
+    events = track(env.broker)
+    assert (await env.exits.run_once())["plans"][plan["id"]] == "stop placed again"
+    assert events == [] and env.broker.positions()
+    await env.exits.run_once()  # the take-profit sells at the next check
+    assert env.broker.positions() == [] and "take-profit" in plan_row(env.ctx, plan["id"])["reason"]
+
+
+async def test_a_failed_crypto_sale_by_the_trader_gets_its_stop_back_straight_away(env):
+    plan = await bought(env)
+    failing_close(env.broker)
+    env.exits._wake.clear()
+    res = await env.trader.handle_signal(sig(direction="bearish", id=2))
+    assert res["action"] == "error" and "insufficient qty" in res["reason"]
+    assert env.exits._wake.is_set()  # the exit manager checks now, not in 15 seconds...
+    await env.exits.run_once()
+    p = plan_row(env.ctx, plan["id"])
+    assert p["stop_order_id"] != plan["stop_order_id"] and env.broker.order(p["stop_order_id"])["status"] == "new"
+    env.exits._wake.clear()
+    with pytest.raises(RuntimeError):
+        await env.trader.manual_close("BTC/USD")
+    assert env.exits._wake.is_set()  # ...also after a failed sale by hand
+
+
 # ================================================================================ the local engine
 @pytest.fixture
 async def local_crypto(ctx, tmp_path):

@@ -712,9 +712,12 @@
   <!-- ===================== TRADES ===================== -->
   <section x-show="store.tab === 'trades'" class="tab-page" x-data="tradesTab">
     <div class="kpis">
-      <div class="kpi"><div class="kpi-label">Closed trades</div><div class="kpi-value" x-text="totals.closed"></div></div>
-      <div class="kpi"><div class="kpi-label">Realized P/L</div><div class="kpi-value" :class="fmt.plClass(totals.pl)" x-text="fmt.signedMoney(totals.pl)"></div></div>
-      <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" x-text="totals.winRate === null ? '—' : totals.winRate.toFixed(0) + '%'"></div></div>
+      <div class="kpi"><div class="kpi-label">Closed trades</div><div class="kpi-value" x-text="totals.closed"></div>
+        <div class="kpi-sub" x-text="bookLabel"></div></div>
+      <div class="kpi"><div class="kpi-label">Realized P/L</div><div class="kpi-value" :class="fmt.plClass(totals.pl)" x-text="fmt.signedMoney(totals.pl)"></div>
+        <div class="kpi-sub" x-text="bookLabel"></div></div>
+      <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" x-text="totals.win_rate === null ? '—' : totals.win_rate.toFixed(0) + '%'"></div>
+        <div class="kpi-sub" x-text="bookLabel"></div></div>
     </div>
     <div class="card">
       <div class="card-head">

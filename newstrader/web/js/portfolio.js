@@ -122,6 +122,8 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("tradesTab", () => ({
     fmt: NT.fmt,
     trades: [],
+    // the KPIs only count the account in use (Alpaca paper / live, or the simulator), so they never mix
+    totals: { book: "", closed: 0, pl: 0, win_rate: null },
     symbol: "",
     showLegs: true,
     loading: false,
@@ -134,7 +136,11 @@ document.addEventListener("alpine:init", () => {
 
     async load() {
       this.loading = true;
-      try { this.trades = (await NT.api.get(`/trades?limit=1000&symbol=${encodeURIComponent(this.symbol)}`)).trades; }
+      try {
+        const r = await NT.api.get(`/trades?limit=1000&symbol=${encodeURIComponent(this.symbol)}`);
+        this.trades = r.trades;
+        this.totals = r.totals;
+      }
       catch (e) { Alpine.store("nt").error(e, "Couldn't load trades"); }
       finally { this.loading = false; }
     },
@@ -143,11 +149,8 @@ document.addEventListener("alpine:init", () => {
       return this.showLegs ? this.trades : this.trades.filter((t) => !["take_profit", "stop_loss"].includes(t.intent) || t.status === "filled");
     },
 
-    get totals() {
-      const filled = this.trades.filter((t) => t.realized_pl !== null && t.realized_pl !== undefined);
-      const pl = filled.reduce((s, t) => s + t.realized_pl, 0);
-      const wins = filled.filter((t) => t.realized_pl > 0).length;
-      return { closed: filled.length, pl, winRate: filled.length ? (100 * wins) / filled.length : null };
+    get bookLabel() {
+      return { paper: "Alpaca paper account", live: "LIVE account (real money)", simulated: "Built-in simulator" }[this.totals.book] || "";
     },
 
     why(t) { window.dispatchEvent(new CustomEvent("nt:why", { detail: { order_id: t.id } })); },

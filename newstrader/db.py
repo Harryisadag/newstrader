@@ -408,6 +408,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE signals ADD COLUMN decision_trail TEXT;
     """,
+    # 16 - "Label old news" finds the newest unlabelled headline without scanning every downloaded one
+    """
+    CREATE INDEX idx_ml_samples_text ON ml_samples(text_version, published_at);
+    """,
 ]
 
 

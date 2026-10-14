@@ -55,7 +55,8 @@ Every upload is a pull request. An automatic check (`scripts/check_shared_labels
 - has more than 500 labels of which over 90% point the same way (that looks broken or made up)
 
 The check only reads the files; it never runs anything from an upload, and it fails if a pull request changes
-anything outside this folder.
+anything outside this folder. It always runs the repository's own copy of the check (from the branch the upload goes
+into), so a pull request can't change or skip the check it is judged by.
 
 **The owner reviews every upload before merging it.** Merge only pull requests that add files to this folder and pass
 the check. A newer file with the same `<code>` contains that PC's older labels again, so older files from the same

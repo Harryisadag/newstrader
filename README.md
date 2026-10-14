@@ -176,7 +176,7 @@ The header always shows:
 | **Signals** | Every AI call: ticker, bullish/bearish, confidence, outcome (bought / review / blocked and why), source and one-line reasoning. **Click a signal** for the [Why did it trade?](#why-did-it-trade) card. The news event it recognised (e.g. "Cut its forecast") shows as a blue label, and warnings such as "not confirmed" in orange. A second label says what the chart thought before it was traded ("Chart agrees +4", "Stretched: RSI 84"... see [Charts](#charts-patterns-and-indicators)), and chart signals have a teal **Chart** label. A small grey line says how fast it was (see [How fast is it?](#how-fast-is-it)). The **Manual review** box has **Approve & Buy / Dismiss** buttons. **Test the AI** lets you paste any headline and see what the engine says about each company, including why one came out neutral (never trades). |
 | **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. **Click any stock** for its chart: price with VWAP and support/resistance, indicator labels and the patterns showing now, each explained (see [Charts](#charts-patterns-and-indicators)). |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
-| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Click a trade** for the [Why did it trade?](#why-did-it-trade) card. The last column says which account it was: paper, live or simulated. **Export CSV** saves it to the exports folder. |
+| **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Click a trade** for the [Why did it trade?](#why-did-it-trade) card. The last column says which account it was: paper, live or simulated. The totals at the top (closed trades, realized P/L, win rate) only count the account in use, so fake and real money never add up together. **Export CSV** saves it to the exports folder. |
 | **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
 | **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw, and **Shared training** (the student model that learns from Pro AI's labels, see [Shared training](#shared-training)). **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
 | **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
@@ -319,7 +319,9 @@ Benzinga headlines that training the price model downloaded (so train the price 
 each company whether the news was good, bad or neutral, and how sure it is.
 - It runs in the background, one story at a time, so Pro AI's other slot stays free for live news, and live stories
   always go first.
-- It pauses while the US stock market is open (from 9:20am ET until the 4:00pm close), so trading is never slowed.
+- It pauses while the US stock market is open (from 9:20am ET until the 4:00pm close), so stock trading is never
+  slowed. Crypto trades around the clock: live stories still go first, and the labelling's database work runs in
+  the background, so crypto signals and the take-profit checks aren't held up.
   *Label old news while the market is open* in Settings → Pro AI changes that.
 - Pause it any time. It carries on where it stopped, also after a restart. The box shows how many stories are done and
   roughly how much labelling time is left.
@@ -463,9 +465,10 @@ Alpaca **paper** account. It's **off by default**: turn it on in **Settings -> C
    the price. At the target (6% above the buy, *Take-profit*) it cancels the safety stop and sells the whole position.
    **While NewsTrader is closed, only the safety stop works.**
 
-Every time NewsTrader starts, it checks each crypto position it opened: a missing safety stop is put back, and the
-plans for coins that were sold (by the stop, or by you) are tidied away. Crypto bought outside NewsTrader is left
-alone. Selling on bearish news, or with **Close** on the Portfolio tab, cancels the safety stop first.
+Every time NewsTrader starts, it checks each crypto position it opened: a missing safety stop is put back (before
+the take-profit is tried), and the plans for coins that were sold (by the stop, by you, or by the kill switch) are
+tidied away. Crypto bought outside NewsTrader is left alone. Selling on bearish news, or with **Close** on the
+Portfolio tab, cancels the safety stop first; if the sale fails, the safety stop goes straight back in.
 
 **Which news trades crypto.** The pre-filter finds the coins in your list by name ("bitcoin", "ether", "ethereum",
 "solana"), by cashtag ("$BTC"), and by Alpaca's news tags ("BTCUSD"). Short forms such as "sol" or "eth" only count
@@ -919,7 +922,7 @@ On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache
   GitHub Actions runs them on Windows, Linux and macOS for every push. It also runs a job that downloads the real FinBERT model, checks it on known headlines, and checks that the Apple-GPU Whisper repos exist (`scripts/check_models.py`).
 - **Lint:** `ruff check .`
 - **Detection scores:** `python scripts/eval_detection.py --set set2 --compare` (local engine). For Pro AI: `--engine pro --pro-url http://127.0.0.1:8080` (a llama-server you started) or `--engine pro --pro-model model.gguf --pro-server path/to/llama-server` (starts and stops its own). For a student model: `--sentiment finbert --student data/models/student`. The holdout set stays sealed either way.
-- **Shared labels:** `python scripts/check_shared_labels.py [folder]` runs the checks every upload to `shared/labels` gets (`.github/workflows/check-shared-labels.yml`: read-only, no secrets, and it runs the checker from the target branch, never code from the upload). A student model can ship with the app: put its `student.npz` and `student.json` in `newstrader/ml/student_model/` (used when none was trained on the PC; the app builds include that folder when it exists).
+- **Shared labels:** `python scripts/check_shared_labels.py [folder]` runs the checks every upload to `shared/labels` gets (`.github/workflows/check-shared-labels.yml`: read-only, no secrets, and both the workflow (`pull_request_target`) and the checker come from the target branch, never code from the upload, so an upload can't change its own check). A student model can ship with the app: put its `student.npz` and `student.json` in `newstrader/ml/student_model/` (used when none was trained on the PC; the app builds include that folder when it exists).
 - **Modes:**
   - `run.bat --browser` / `./run.command --browser` opens the dashboard in your normal browser
   - `--headless` runs the server only

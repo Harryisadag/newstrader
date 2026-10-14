@@ -3,9 +3,11 @@ name: check-shared-labels
 # Checks every shared label file in shared/labels (see shared/labels/README.md) whenever an upload is proposed
 # (pull request) or the folder changes. Safe for uploads from anyone: it can only read, uses no secrets, and runs the
 # checker from the branch the upload goes INTO - never code from the pull request, whose files are only read as data.
-# Results are on the run's summary page.
+# pull_request_target (not pull_request) so this workflow file itself also comes from the branch the upload goes
+# into: a pull request that edits it can't change or skip the check it is judged by. Nothing from the pull request is
+# ever run, and the token can only read. Results are on the run's summary page.
 on:
-  pull_request:
+  pull_request_target:
     paths:
       - "shared/labels/**"
   push:
@@ -25,15 +27,15 @@ jobs:
       - name: Get the checker (from the target branch, not from the upload)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
           path: trusted
           persist-credentials: false
 
       - name: Get the uploaded files (read as data only)
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           path: upload
           persist-credentials: false
           sparse-checkout: shared/labels
@@ -43,7 +45,7 @@ jobs:
           python-version: "3.12"
 
       - name: The upload only adds label files
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

@@ -149,6 +149,27 @@ async def test_simulator_orders_are_their_own_book(ctx):
     await t.stop()
 
 
+def test_trade_log_totals_only_count_the_account_in_use(client, ctx):
+    t = Trader(ctx, broker_factory=FakeBroker)
+    t.broker = FakeBroker()  # Alpaca paper
+    ctx.services["trader"] = t
+    start = datetime(2026, 10, 1, 14, 0, tzinfo=UTC)
+    n = 0
+    for book, qty, buy, sell in ((f"{SIM_BOOK} (reset 2026-09-30 10:00:00 UTC)", 10, 100.0, 70.0),  # -$300 fake
+                                 (SIM_BOOK, 5, 10.0, 20.0), ("paper", 10, 100.0, 150.0), ("live", 1, 100.0, 90.0)):
+        for side, intent, price in (("buy", "open_long", buy), ("sell", "close_long", sell)):
+            n += 1
+            ctx.db.insert("orders", {"alpaca_order_id": f"o{n}", "symbol": "NVDA", "side": side, "intent": intent,
+                                     "qty": qty, "status": "filled", "filled_qty": qty, "filled_avg_price": price,
+                                     "filled_at": iso(start + timedelta(minutes=n)), "mode": book})
+    body = client.get("/api/trades?limit=1000").json()
+    assert len([r for r in body["trades"] if r["realized_pl"] is not None]) == 4  # every row still shows its P/L
+    assert body["book"] == "paper"
+    assert body["totals"] == {"book": "paper", "closed": 1, "pl": 500.0, "win_rate": 100.0}  # not -$300+50+500-10
+    t.broker.kind = "simulator"
+    assert t.trade_totals(t.trade_log()) == {"book": SIM_BOOK, "closed": 1, "pl": 50.0, "win_rate": 100.0}
+
+
 # ================================================================================ simulator reset
 @pytest.fixture
 def sim_trader(ctx, tmp_path):

@@ -107,7 +107,8 @@ async def cancel_order(order_id: str, ctx: AppContext = Depends(get_ctx)):
 async def trades(limit: int = Query(500, ge=1, le=5000), symbol: str = Query(""), mode: str = Query(""),
                  ctx: AppContext = Depends(get_ctx)):
     t = _trader(ctx)
-    return {"trades": t.trade_log(limit=limit, symbol=symbol or None, mode=mode or None)}
+    rows = t.trade_log(limit=limit, symbol=symbol or None, mode=mode or None)
+    return {"trades": rows, "book": t.book, "totals": t.trade_totals(rows)}
 
 
 def _csv_text(rows: list[dict]) -> str:

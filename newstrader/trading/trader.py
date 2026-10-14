@@ -400,8 +400,8 @@ class Trader:
                 msg += f" (P/L {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f})"
         log.info(msg)
         await self._alert("trade_filled", msg, "", "trade")
-        if intent == "open_long" and crypto.is_crypto(o["symbol"]):
-            self._kick_exits()  # its safety stop goes in now
+        if crypto.is_crypto(o["symbol"]):
+            self._kick_exits()  # a buy gets its safety stop now; a sale or a filled stop ends its plan
 
     def _kick_exits(self) -> None:
         exits = self.ctx.service("crypto_exits")
@@ -690,6 +690,11 @@ class Trader:
             log.info("Sent crypto buy %s to manual review: %s", symbol, chart_review)
             trail.check("Chart check", REVIEW, chart_review)
             return self._result("review", chart_review)
+        # Nothing of this coin is held or waiting (checked above), so an old exit plan for it is over: end it, so it
+        # never manages the new position with the old prices.
+        for stop_id in crypto_exits.replace_plans(self.ctx.db, symbol, self.broker.mode):
+            with contextlib.suppress(Exception):  # already filled or cancelled
+                await asyncio.to_thread(self.broker.cancel_order, stop_id)
         coid = f"nt-{signal.get('id') or 'm'}-{uuid.uuid4().hex[:10]}"
         try:
             order = await asyncio.to_thread(self.broker.submit_crypto_buy, symbol, decision.notional, coid)
@@ -775,6 +780,8 @@ class Trader:
                 await self._cancel_crypto_stops(symbol)
             order = await asyncio.to_thread(self.broker.close_position, symbol)
         except Exception as exc:
+            if coin:
+                self._kick_exits()  # its safety stop was cancelled: the exit manager puts it back now
             trail.check("Order", STOP, f"Couldn't sell {symbol}: {exc}")
             await self._alert("error", f"Couldn't sell {symbol}", str(exc), "error")
             return self._result("error", f"Couldn't sell {symbol}: {exc}")
@@ -845,9 +852,14 @@ class Trader:
             if self._held_for_update:
                 raise RuntimeError(UPDATE_HOLD)
             symbol = crypto.normalize(symbol)
-            if crypto.is_crypto(symbol):
-                await self._cancel_crypto_stops(symbol)
-            order = await asyncio.to_thread(self.broker.close_position, symbol)
+            try:
+                if crypto.is_crypto(symbol):
+                    await self._cancel_crypto_stops(symbol)
+                order = await asyncio.to_thread(self.broker.close_position, symbol)
+            except Exception:
+                if crypto.is_crypto(symbol):
+                    self._kick_exits()  # its safety stop was cancelled: the exit manager puts it back now
+                raise
             pos_long = order.get("side") == "sell"
             self._record_order(order, {}, "close_long" if pos_long else "close_short", "Closed manually")
             if crypto.is_crypto(symbol):
@@ -951,6 +963,15 @@ class Trader:
             entry = r["signal_id"] and not r.get("parent_alpaca_id") and r["intent"] in SIGNAL_INTENTS
             r["speed"] = signal_speed(sig, r["submitted_at"]) if entry else None
         return rows
+
+    def trade_totals(self, rows: list[dict]) -> dict:
+        """Closed trades, realized P/L and win rate of Trade Log rows from the account in use only (self.book), so
+        the simulator, a reset simulator, Alpaca paper and live money never add up together."""
+        pls = [r["realized_pl"] for r in rows
+               if r.get("realized_pl") is not None and (r.get("mode") or "paper") == self.book]
+        wins = sum(1 for pl in pls if pl > 0)
+        return {"book": self.book, "closed": len(pls), "pl": round(sum(pls), 2),
+                "win_rate": round(100 * wins / len(pls), 1) if pls else None}
 
     def today_realized(self) -> float:
         day_start = datetime.now(UTC) - timedelta(hours=24)
