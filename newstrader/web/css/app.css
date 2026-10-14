@@ -410,6 +410,12 @@ td.reasons .tag { margin: 0 4px 2px 0; }
 .pro-setup > div > div { margin: 4px 0; }
 .pro-test { margin-top: 14px; }
 .pro-test h3 { margin: 0 0 8px; font-size: 14px; }
+.pro-labels { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.pro-labels h3, .shared-training h3 { margin: 0 0 6px; font-size: 14px; }
+.shared-training { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-2); }
+.share-steps { margin-top: 12px; padding: 12px; border: 1px solid var(--border-2); border-radius: 8px; }
+.share-steps ol { margin: 6px 0; padding-left: 20px; }
+.share-steps li { margin: 4px 0; }
 
 /* charts (Market tab chart card, chart labels on signals) */
 .pill.chart { background: rgba(20,184,166,.16); color: #5eead4; }

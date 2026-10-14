@@ -1222,3 +1222,8 @@ def crypto_reading(text: str, coin_terms: list[str], companies: list[tuple[str, 
     elif companies:
         r.neutral_reason = "a company's news that mentions the coin - not news about the coin itself"
     return r
+
+
+# every kind of event the rules can report (a shared label file may only name these - see ml/shared_labels.py)
+EVENT_KINDS = frozenset({r[0] for r in RULES} | {r[0] for r in _CRYPTO_RULES}
+                        | {"guidance_inline", "earnings_inline", "lost_out", "lost_customer", "won_customer", "macro"})

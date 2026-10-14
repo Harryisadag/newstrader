@@ -132,7 +132,10 @@ class ProAIEngine:
         return AnalysisResult(engine="pro", model=self.model_key, cost_usd=0.0, **kw)
 
     async def analyze(self, item, pre: PrefilterResult, market_open: bool | None, now: datetime,
-                      model: str | None = None, skip_rate_limit: bool = False) -> AnalysisResult:
+                      model: str | None = None, skip_rate_limit: bool = False, *, max_signals: int | None = None,
+                      timeout_s: float | None = None) -> AnalysisResult:
+        """`max_signals` / `timeout_s` override the settings for one question ("Label old news" asks about every
+        stock of an old story and nothing waits on its answer)."""
         tickers = allowed_tickers(pre)
         if not tickers:  # nothing it could name: neutral, without asking the model
             return self._result(ok=True, text=EMPTY, stop_reason="end_turn")
@@ -141,7 +144,7 @@ class ProAIEngine:
             if getattr(self.server, "state", "") == "error":
                 self._maybe_restart()
             return self._result(ok=False, status="error", error=problem)
-        max_signals = self.max_signals()
+        max_signals = max_signals or self.max_signals()
         schema = request_schema(tickers, max_signals)
         started = time.monotonic()
         try:
@@ -149,7 +152,7 @@ class ProAIEngine:
                 res = await self._chat(self.server.url, self.server.api_key, system_prompt(max_signals),
                                        user_message(item, pre, now, market_open), schema,
                                        max_tokens=self.max_tokens or 150 + TOKENS_PER_SIGNAL * max_signals,
-                                       timeout_s=self.timeout_s)
+                                       timeout_s=timeout_s or self.timeout_s)
         except ChatError as exc:
             if exc.kind == "unreachable":
                 self._maybe_restart()

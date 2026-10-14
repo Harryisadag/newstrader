@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Body, Depends
 
-from ...backtest.runner import BacktestParams, estimate, lookahead_note
+from ...backtest.runner import BacktestParams, estimate, lookahead_note, student_note
 from ...context import AppContext
 from ..deps import bad_request, get_ctx
 
@@ -23,7 +23,10 @@ async def _warning(ctx: AppContext, p: BacktestParams) -> str:
     pipeline = ctx.service("pipeline")
     pm = pipeline.local.price_model_for_run() if pipeline else None
     if pm is None:
-        return "The local engine is free. No trained price model is in use, so this tests sentiment scoring only."
+        student = pipeline.local.active_student() if pipeline else None
+        return student_note(student, p.start) or (
+            "The local engine is free. No trained price model is in use, so this tests sentiment scoring"
+            + (" and the student model." if student is not None else " only."))
     return lookahead_note(pm, p.start) or LOCAL_WARNING
 
 

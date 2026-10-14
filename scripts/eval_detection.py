@@ -4,6 +4,10 @@ for each.
     python scripts/eval_detection.py                         # dev set, built-in word list (works offline)
     python scripts/eval_detection.py --sentiment finbert      # downloads FinBERT (~110 MB) the first time
     python scripts/eval_detection.py --set set2 --compare     # also runs the v0.2 behaviour (no event rules)
+    python scripts/eval_detection.py --sentiment finbert --student data/models/student
+                                                              # also runs the local engine with a student model
+                                                              # (shared training; it needs the sentiment model it
+                                                              # was trained with)
     python scripts/eval_detection.py --engine pro --pro-url http://127.0.0.1:8080 [--pro-key KEY]
                                                               # Pro AI on a llama-server that is already running
     python scripts/eval_detection.py --engine pro --pro-model model.gguf --pro-server path/to/llama-server
@@ -40,6 +44,7 @@ from newstrader.llm.engine import ProAIEngine  # noqa: E402
 from newstrader.llm.server import LlamaServer  # noqa: E402
 from newstrader.ml.engine import LocalMLEngine  # noqa: E402
 from newstrader.ml.sentiment import SentimentService  # noqa: E402
+from newstrader.ml.student import StudentModel  # noqa: E402
 from newstrader.sources.base import NewsItem  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "eval"
@@ -59,14 +64,18 @@ def make_table(db_dir: Path) -> TickerTable:
     return table
 
 
-def make_engine(table: TickerTable, sentiment: SentimentService, event_rules: bool) -> LocalMLEngine:
+def make_engine(table: TickerTable, sentiment: SentimentService, event_rules: bool,
+                student: StudentModel | None = None) -> LocalMLEngine:
     settings = AppSettings()
     settings.ml.event_rules = event_rules
     settings.ml.sentiment_only_trading = "always"  # measure the engine's own confidence, not the review cap
+    settings.ml.use_student = student is not None
     ctx = SimpleNamespace(config=SimpleNamespace(settings=settings), state=SimpleNamespace(mode="paper"))
-    engine = LocalMLEngine(ctx, sentiment=sentiment, model_dir=Path(tempfile.mkdtemp()) / "none")
+    none = Path(tempfile.mkdtemp()) / "none"
+    engine = LocalMLEngine(ctx, sentiment=sentiment, model_dir=none, student_dir=none)
     engine.tickers = table
     engine.set_price_model(None)
+    engine.set_student(student)  # never one from this PC's data folder unless --student points at it
     return engine
 
 
@@ -245,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pro-model", default="", help="Pro AI: a .gguf model file to start a llama-server with")
     ap.add_argument("--pro-server", default="", help="Pro AI: the llama-server program for --pro-model")
     ap.add_argument("--pro-timeout", type=float, default=60.0, help="Pro AI: seconds allowed per answer")
+    ap.add_argument("--student", default="", help="a student model folder (student.npz + student.json) to score too")
     args = ap.parse_args(argv)
     sealed = is_sealed(args.set, args.unseal)
     pro = args.engine == "pro"
@@ -252,6 +262,13 @@ def main(argv: list[str] | None = None) -> int:
         print("--engine pro needs --pro-url (a running llama-server) or --pro-model with --pro-server")
         return 2
 
+    student = None
+    if args.student:
+        student = StudentModel.load(Path(args.student))
+        if student is None:
+            print(f"No usable student model in {args.student} (it needs student.npz and student.json from this "
+                  "version of NewsTrader)")
+            return 1
     items = load_items(args.set)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # Windows: the db is still open
         table = make_table(Path(tmp))
@@ -267,6 +284,13 @@ def main(argv: list[str] | None = None) -> int:
             runs = {"with event rules": evaluate(items, make_engine(table, sentiment, True), table)}
             if args.compare and not pro:
                 runs = {"v0.2 (wording only)": evaluate(items, make_engine(table, sentiment, False), table), **runs}
+            if student is not None:
+                if student.meta.get("sentiment_model") != sentiment.model_id:
+                    print(f"The student model was trained with {student.meta.get('sentiment_model')} scores, not "
+                          f"{sentiment.model_id} - run with the sentiment model it was trained with "
+                          "(e.g. --sentiment finbert).")
+                    return 1
+                runs["with student model"] = evaluate(items, make_engine(table, sentiment, True, student), table)
         if pro:
             with pro_engine(args, Path(tmp)) as engine:
                 runs[f"Pro AI ({engine.model_key})"] = evaluate(items, engine, table)

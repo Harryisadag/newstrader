@@ -75,6 +75,7 @@ class Orchestrator:
         from .chart.service import ChartService
         from .llm.service import ProAIService
         from .market.monitor import MarketMonitor
+        from .ml.sharing import SharedTraining
         from .ml.trainer import ModelTrainer
         from .performance.tracker import PerformanceTracker
         from .sources.manager import SourceManager
@@ -97,6 +98,7 @@ class Orchestrator:
         self.add(ChartService(self.ctx))  # chart checks for the trader, chart signals after each market check
         self.add(BacktestRunner(self.ctx))
         self.add(ModelTrainer(self.ctx))
+        self.add(SharedTraining(self.ctx))  # shared labels from GitHub, "Share my labels", the student model
         self.add(UpdateChecker(self.ctx))
         self.add(Updater(self.ctx))  # "Update now": only ever runs when you click it
 

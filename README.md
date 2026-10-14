@@ -43,18 +43,19 @@ You don't need Python to use a release:
 3. [Using NewsTrader](#using-newstrader)
 4. [The AI engine: local machine learning or Claude](#the-ai-engine-local-machine-learning-or-claude)
 5. [Pro AI (for strong PCs)](#pro-ai-for-strong-pcs)
-6. [Charts: patterns and indicators](#charts-patterns-and-indicators)
-7. [Crypto (paper)](#crypto-paper)
-8. [Settings explained](#settings-explained)
-9. [How a trade happens](#how-a-trade-happens)
-10. [Kill switch and live trading](#kill-switch-and-live-trading)
-11. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-12. [Updating](#updating)
-13. [Troubleshooting](#troubleshooting)
-14. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-15. [What it costs](#what-it-costs)
-16. [Where your files are](#where-your-files-are)
-17. [For developers](#for-developers)
+6. [Shared training](#shared-training)
+7. [Charts: patterns and indicators](#charts-patterns-and-indicators)
+8. [Crypto (paper)](#crypto-paper)
+9. [Settings explained](#settings-explained)
+10. [How a trade happens](#how-a-trade-happens)
+11. [Kill switch and live trading](#kill-switch-and-live-trading)
+12. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+13. [Updating](#updating)
+14. [Troubleshooting](#troubleshooting)
+15. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+16. [What it costs](#what-it-costs)
+17. [Where your files are](#where-your-files-are)
+18. [For developers](#for-developers)
 
 ---
 
@@ -174,7 +175,7 @@ The header always shows:
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
 | **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Export CSV** saves it to the exports folder. |
 | **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
-| **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw. **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
+| **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw, and **Shared training** (the student model that learns from Pro AI's labels, see [Shared training](#shared-training)). **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
 | **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
 | **Logs** | System status (GPU, Alpaca, AI engine, every stream/feed), **Run diagnostics**, the full log, and **Rejected AI responses** (anything that failed validation). |
 
@@ -221,6 +222,7 @@ It runs on your computer, needs no API key, and keeps working offline after the 
    - With **no** recognised event, the wording alone decides, but those signals are always sent to **manual review**, never auto-bought.
    - Confidence is a bit lower when the company is only mentioned in the article, not the headline.
 4. If you've trained the **price model** (below), it takes over the decision for written news (it also learns from the event the rules found). If the model and the event point opposite ways, the signal goes to manual review. It answers: "after headlines like this, how often did the stock beat the S&P 500 over the next hour?" Confidence is then that tested probability. TV transcripts are always scored on wording only, because the price model learned from written articles.
+5. Without a price model in use, a **student model** (if you've trained one, see [Shared training](#shared-training)) reads the written stories that have no recognised event instead of FinBERT. Those signals still always go to manual review.
 
 What it can't do (Claude can):
 - understand context, such as whether news was already expected, or who is speaking
@@ -301,6 +303,62 @@ Besides the model, the app downloads the llama.cpp server that runs it: about 58
 Pro AI runs only on this computer (`127.0.0.1`, with a random password). If it crashes, it is restarted once; Logs → Run diagnostics checks its files, its server and whether the whole model is on the graphics card.
 
 **Delete it:** Settings → Pro AI → **Delete downloads** removes the server and every model (and turns Pro AI off). You can set it up again any time. The files are in the `models/llm` folder (see [Where your files are](#where-your-files-are)).
+
+---
+
+## Shared training
+
+Pro AI reads news better than the free local engine, but it needs a strong graphics card. Shared training lets people
+who have one help everyone else - and nobody needs an AI service at trade time.
+
+**1. Pro AI labels old news.** Settings → Pro AI → **Label old news** → **Start labelling**. Pro AI reads the old
+Benzinga headlines that training the price model downloaded (so train the price model once first), and writes down for
+each company whether the news was good, bad or neutral, and how sure it is.
+- It runs in the background, one story at a time, so Pro AI's other slot stays free for live news, and live stories
+  always go first.
+- It pauses while the US stock market is open (from 9:20am ET until the 4:00pm close), so trading is never slowed.
+  *Label old news while the market is open* in Settings → Pro AI changes that.
+- Pause it any time. It carries on where it stopped, also after a restart. The box shows how many stories are done and
+  roughly how much labelling time is left.
+
+**2. A student model learns from the labels.** Backtest → Local ML model → Shared training → **Train with everyone's
+labels**. A small, fast model learns from your labels and everyone's shared ones what Pro AI would say. It runs on any
+computer (it reads a story in about a millisecond, no graphics card needed). It reads what the price model reads:
+the headline and the sentences about the company, with the company's name replaced by a placeholder (and every other
+company by another one, so it learns wording, not names), plus FinBERT's scores and what the news-event rules found.
+- It's tested on the newest 20% of the labels (by date), which it never saw while learning. The card shows how often it
+  agreed with Pro AI there, next to the score of always giving the most common answer, and how many of the "Test my PC"
+  headlines (labelled by people) it gets right.
+- A newly trained student is only used if it does at least as well as the one in use, on the test labels the one
+  in use never learned from. (When it already learned from nearly all of them, the bar is the score it got on its
+  own test when it was trained.)
+- **How the engine uses it:** only for written stories where the news-event rules found no concrete event - the ones
+  the engine used to judge by FinBERT's reading of the wording alone. There, the student's reading replaces FinBERT's
+  direction, and those signals still **always go to manual review**, never auto-bought. When an event *is* recognised,
+  the event still decides; if the student confidently reads it differently, the confidence goes down a little (8
+  points, or 4 if it reads the story as neutral). It never raises a confidence. TV transcripts, crypto and country
+  funds don't use it, and nothing changes until a student is trained (Settings → AI engine → *Use the student model*
+  turns it off).
+- Whether the student reads news better than FinBERT alone hasn't been measured yet - that needs real shared labels.
+  Check it with `python scripts/eval_detection.py --sentiment finbert --compare --student data/models/student` and in
+  Performance → By AI engine before you trust it.
+
+**3. Sharing your labels.** Backtest → Local ML model → **Share my labels** saves your labels in one file in your
+Downloads folder (`newstrader-labels-<date>-<code>.jsonl.gz`), shows it and opens GitHub's upload page. Then:
+1. Sign in (a free GitHub account is enough) and drag the file onto the page.
+2. Click **Propose changes** (it may say **Commit changes**).
+3. Click **Create pull request**.
+
+The file holds only the news id, a fingerprint of the headline, the ticker, Pro AI's direction and confidence, the
+kind of event, the Pro AI model and the date: **no headline text, no keys, no trades**. `<code>` is a random code made
+once on your PC; it isn't linked to you. The owner reviews every upload, and an automatic check turns down broken files
+(see [shared/labels/README.md](shared/labels/README.md)).
+
+**4. Everyone's labels** are downloaded once a day (and with **Get everyone's labels now**) from the `shared/labels`
+folder of this repo. Only new files come down, and each one has to match GitHub's fingerprint for it and pass the same
+checks as the automatic check before it's used. Labels are matched with the headlines *you* downloaded, by news id and
+the headline fingerprint, so the more history you've trained the price model on, the more labels you can use. Turn the
+daily check off in Settings → AI engine → *Get everyone's labels once a day*.
 
 ---
 
@@ -481,6 +539,8 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Max stocks per story | 3 | |
 | Recognise news events | on | The event rules above. Off = the v0.2 behaviour (wording score only). |
 | Country funds for world news | on | International macro news can create signals for country ETFs (always manual review). |
+| Use the student model | on | Only does something once a student model is trained ([Shared training](#shared-training)): it replaces FinBERT's reading where no news event was recognised (manual review only) and can only lower an event's confidence. |
+| Get everyone's labels once a day | on | Downloads new shared label files from GitHub, checked before they're kept. Nothing is uploaded. |
 
 **Pro AI (for strong PCs)** - see [Pro AI](#pro-ai-for-strong-pcs)
 | Setting | Default | Meaning |
@@ -492,6 +552,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Skip a story after | 20 s | When Pro AI is busy, newer stories go first and older ones are skipped. Also how long a signal waits for Pro AI in Judge mode. |
 | Keep room for TV transcription | on | Leaves graphics memory free for live-TV speech-to-text when TV sources are on. |
 | Server version | Auto | Matched to your graphics card and driver. |
+| Label old news while the market is open | off | Off = [Label old news](#shared-training) pauses from just before 9:30am ET until the 4:00pm close, so it never slows trading. |
 
 **Charts** - see [Charts](#charts-patterns-and-indicators)
 | Setting | Default | Meaning |
@@ -713,6 +774,7 @@ You can add more social accounts the same way (any RSS feed works as a "Social" 
 - **Alpaca paper trading, news and price history:** free.
 - **Local ML engine (default):** free. It uses your computer's CPU, and needs one ~110 MB download.
 - **Pro AI (optional):** free. It uses your graphics card, and needs a one-time download of about 3–23 GB depending on the model (about 6.3 GB for an RTX 5070 Ti).
+- **Shared training:** free. Labelling uses Pro AI on your graphics card; sharing needs a free GitHub account.
 - **Claude (optional):** each analysed story costs roughly **$0.002–$0.02** with Sonnet 5.5 at low effort, and about half that with Haiku 4.5.
   - Most news is filtered out for free before reaching Claude.
   - A busy day with all default sources is typically **$1–$5**.
@@ -738,6 +800,7 @@ You can add more social accounts the same way (any RSS feed works as a "Social" 
 | CSV exports | `data/exports/` | `%LOCALAPPDATA%\NewsTrader\exports\` | `…/NewsTrader/exports/` |
 | Models (Whisper ~3 GB, FinBERT ~110 MB, your price model) | `data/models/` | `%LOCALAPPDATA%\NewsTrader\models\` | `…/NewsTrader/models/` |
 | Pro AI (its server and models) | `data/models/llm/` | `%LOCALAPPDATA%\NewsTrader\models\llm\` | `…/NewsTrader/models/llm/` |
+| Shared training: your student model, everyone's label files | `data/models/student/`, `data/shared_labels/` | `%LOCALAPPDATA%\NewsTrader\models\student\`, `…\shared_labels\` | `…/NewsTrader/models/student/`, `…/NewsTrader/shared_labels/` |
 
 On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache/huggingface`).
 
@@ -753,7 +816,8 @@ On a Mac, Apple-GPU Whisper models are kept in the Hugging Face cache (`~/.cache
 
   GitHub Actions runs them on Windows, Linux and macOS for every push. It also runs a job that downloads the real FinBERT model, checks it on known headlines, and checks that the Apple-GPU Whisper repos exist (`scripts/check_models.py`).
 - **Lint:** `ruff check .`
-- **Detection scores:** `python scripts/eval_detection.py --set set2 --compare` (local engine). For Pro AI: `--engine pro --pro-url http://127.0.0.1:8080` (a llama-server you started) or `--engine pro --pro-model model.gguf --pro-server path/to/llama-server` (starts and stops its own). The holdout set stays sealed either way.
+- **Detection scores:** `python scripts/eval_detection.py --set set2 --compare` (local engine). For Pro AI: `--engine pro --pro-url http://127.0.0.1:8080` (a llama-server you started) or `--engine pro --pro-model model.gguf --pro-server path/to/llama-server` (starts and stops its own). For a student model: `--sentiment finbert --student data/models/student`. The holdout set stays sealed either way.
+- **Shared labels:** `python scripts/check_shared_labels.py [folder]` runs the checks every upload to `shared/labels` gets (`.github/workflows/check-shared-labels.yml`: read-only, no secrets, and it runs the checker from the target branch, never code from the upload). A student model can ship with the app: put its `student.npz` and `student.json` in `newstrader/ml/student_model/` (used when none was trained on the PC; the app builds include that folder when it exists).
 - **Modes:**
   - `run.bat --browser` / `./run.command --browser` opens the dashboard in your normal browser
   - `--headless` runs the server only
@@ -779,8 +843,10 @@ newstrader/
   sources/            RSS, Alpaca news websocket, social RSS, X API, presets
   audio/              yt-dlp resolver, ffmpeg capture, chunker, Whisper (CUDA / Apple GPU / CPU), stream manager
   ai/                 ticker table, pre-filter, de-dupe, engine choice, Claude client, prompts, validator, pipeline
-  ml/                 local engine: FinBERT sentiment, text targeting, price model, training data, trainer
-  llm/                Pro AI: hardware check, pinned downloads, llama-server, engine, routing, service, Test my PC
+  ml/                 local engine: FinBERT sentiment, text targeting, price model, training data, trainer,
+                      shared training (student model, label file format and checks, GitHub sharing)
+  llm/                Pro AI: hardware check, pinned downloads, llama-server, engine, routing, service, Test my PC,
+                      Label old news (the teacher for shared training)
   chart/              indicators, candlestick / chart patterns, chart reading, chart service (bar cache, chart
                       check on news signals, watch-only chart signals)
   market/             market monitor: spikes, market-wide moves, top movers
@@ -790,6 +856,7 @@ newstrader/
   performance/        price checkpoints and win-rate stats
   backtest/           historical replay + bracket simulator
   web/                the dashboard (HTML/CSS/Alpine.js/Chart.js, no build step)
+shared/labels/        shared training: label files people uploaded (checked on every upload)
 tests/                pytest suite (risk rules, AI validation, ML engine, Mac support, pipeline, audio, alerts, backtest...)
 ```
 Yes AI made it.

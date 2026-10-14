@@ -223,6 +223,9 @@ class ProAISettings(_Model):
     max_wait_seconds: int = Field(20, ge=5, le=120)
     # keep graphics memory free for TV transcription when TV sources are on
     keep_tv_memory_free: bool = True
+    # "Label old news" (shared training) also runs while the US stock market is open. Off = it pauses from just before
+    # the open to the close, so it never slows live trading.
+    label_while_market_open: bool = False
 
     @field_validator("model", mode="before")
     @classmethod
@@ -290,6 +293,12 @@ class MLSettings(_Model):
     # International macro news (e.g. "Bank of Japan raises rates") can create signals for US-listed country
     # ETFs (EWJ, FXI, EWG...). They are always sent to manual review, never auto-traded.
     country_etfs: bool = True
+    # Shared training: use the student model (learned from Pro AI's labels) once one is trained. It only replaces
+    # FinBERT's direction where no news event was recognised (those signals stay manual-review-only), and can only
+    # lower the confidence of an event it disagrees with.
+    use_student: bool = True
+    # Download everyone's shared labels from GitHub once a day (only new files; nothing is uploaded)
+    shared_labels_pull: bool = True
 
     @field_validator("train_horizon_minutes", mode="before")
     @classmethod

@@ -19,6 +19,8 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 block_cipher = None
 datas = [("newstrader/web", "newstrader/web"),
          ("newstrader/llm/samples.json", "newstrader/llm")]  # Pro AI's "Test my PC" headlines
+if os.path.isdir("newstrader/ml/student_model"):  # a student model shipped with the app (shared training)
+    datas.append(("newstrader/ml/student_model", "newstrader/ml/student_model"))
 
 # A version file (_internal/newstrader/version.txt on Windows), so "Update now" can check an unpacked update is the
 # version it expects. Macs check the version in Info.plist.

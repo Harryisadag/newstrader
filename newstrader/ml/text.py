@@ -146,17 +146,28 @@ def relevance(t: Target, n_symbols: int) -> float:
 
 def mask_company(snippet: str, cand: Candidate, table: TickerTable) -> str:
     """Replace the company's name/ticker with a placeholder so the trained model learns wording, not names."""
-    m = mention_for(cand, table)
-    text = re.sub(rf"(?<![\w])\$?{re.escape(cand.symbol)}(?![\w])", " companyx ", snippet)
+    return mask_companies(snippet, cand, [], table)
+
+
+def mask_companies(snippet: str, cand: Candidate, others: list[Candidate], table: TickerTable) -> str:
+    """mask_company, and every other company named in the item becomes "companyy" (the student model learns that
+    "companyx beats companyy" is different from "companyy beats companyx", not which names are which)."""
+    marks = [(cand, "companyx")] + [(o, "companyy") for o in others if o.symbol != cand.symbol]
+    text = snippet
+    for c, word in marks:
+        # (another company's one-letter ticker only with a $: "A spokesperson" isn't Agilent)
+        dollar = "\\$" if word == "companyy" and len(c.symbol) == 1 else "\\$?"
+        text = re.sub(rf"(?<![\w]){dollar}{re.escape(c.symbol)}(?![\w])", f" {word} ", text)
+    terms = sorted(((term, word) for c, word in marks for term in mention_for(c, table).terms),
+                   key=lambda tw: len(tw[0]), reverse=True)
     toks = tokenize(text)
     out: list[str] = []
     i = 0
-    terms = sorted(m.terms, key=len, reverse=True)
     while i < len(toks):
-        for term in terms:
+        for term, word in terms:
             n = len(term)
             if tuple(toks[i:i + n]) == term:
-                out.append("companyx")
+                out.append(word)
                 i += n
                 break
         else:

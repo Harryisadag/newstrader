@@ -1,9 +1,21 @@
-// Settings -> Pro AI: status, "Set up Pro AI" (one-time download), start / stop, "Test my PC", delete downloads.
+// Settings -> Pro AI: status, "Set up Pro AI" (one-time download), start / stop, "Test my PC", delete downloads and
+// "Label old news" (shared training).
 // Lives inside the settings tab, so get()/set() and proFits are the settings form's.
 document.addEventListener("alpine:init", () => {
   const STATE_LABELS = { off: "Off", not_set_up: "Not set up", downloading: "Downloading", starting: "Starting",
     ready: "Running", error: "Problem" };
   const LEVELS = { ready: "ok", starting: "starting", downloading: "starting", error: "error", not_set_up: "warn", off: "off" };
+  const LABEL_STATES = { off: "Not running", running: "Labelling", waiting: "Waiting", done: "All labelled", stopped: "Stopped" };
+  const LABEL_PILLS = { running: "good", waiting: "", done: "good", stopped: "bad", off: "" };
+
+  function duration(seconds) {
+    if (seconds === null || seconds === undefined) return "";
+    const m = Math.round(seconds / 60);
+    if (m < 1) return "under a minute";
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    return h < 48 ? `${h} h ${m % 60} min` : `${Math.round(h / 24)} days`;
+  }
 
   Alpine.data("proAI", () => ({
     fmt: NT.fmt,
@@ -13,6 +25,8 @@ document.addEventListener("alpine:init", () => {
     showSetup: false,
     busy: false,
     _onEvent: null,
+    _onLabels: null,
+    _poll: null,
 
     async init() {
       this._onEvent = (e) => {
@@ -23,12 +37,19 @@ document.addEventListener("alpine:init", () => {
         if (e.detail.state !== before || (testing && !e.detail.selftest_progress)) this.load();
       };
       window.addEventListener("nt:pro_ai", this._onEvent);
+      this._onLabels = () => this.loadLabels();
+      window.addEventListener("nt:pro_ai_labels", this._onLabels);
+      this._poll = setInterval(() => { if (this.labels && this.labels.wanted) this.loadLabels(); }, 10000);
       // picking another model or server version while "Set up" is open shows its sizes straight away
       this.$watch("form && [form.ai.pro_ai.model, form.ai.pro_ai.build].join()", () => { if (this.showSetup) this.loadPlan(); });
       await this.load();
       if (this.st && this.st.disk_bytes) this.loadPlan(false);  // model list: which ones fit this PC
     },
-    destroy() { window.removeEventListener("nt:pro_ai", this._onEvent); },
+    destroy() {
+      window.removeEventListener("nt:pro_ai", this._onEvent);
+      window.removeEventListener("nt:pro_ai_labels", this._onLabels);
+      clearInterval(this._poll);
+    },
 
     async load() {
       try { this.st = await NT.api.get("/pro-ai"); } catch (e) { /* engine still starting */ }
@@ -75,6 +96,44 @@ document.addEventListener("alpine:init", () => {
       return speed + quality;
     },
     yesNo(v) { return v === true ? "yes" : v === false ? "no" : "can't tell"; },
+
+    // ---- Label old news ----
+    get labels() { return this.st && this.st.labels; },
+    get labelsPct() { const l = this.labels; return l && l.total ? Math.min(100, Math.round((100 * l.done) / l.total)) : 0; },
+    get labelsStateLabel() {
+      const l = this.labels;
+      if (!l) return "";
+      return l.state === "off" && l.done ? "Paused" : LABEL_STATES[l.state] || l.state;
+    },
+    get labelsLevel() { return this.labels ? LABEL_PILLS[this.labels.state] || "" : ""; },
+    get labelsLine() {
+      const l = this.labels;
+      if (!l) return "";
+      if (!l.total) return "No old headlines downloaded yet - train the price model first (Backtest → Local ML model).";
+      const n = (v) => Number(v || 0).toLocaleString();
+      let text = `${n(l.done)} of ${n(l.total)} stories labelled · ${n(l.label_count)} labels (bullish ${n(l.labels.bullish)}, ` +
+        `bearish ${n(l.labels.bearish)}, neutral ${n(l.labels.neutral)})`;
+      if (l.seconds_per_story) text += ` · ${l.seconds_per_story} s per story`;
+      if (l.eta_seconds && l.remaining) text += ` · about ${duration(l.eta_seconds)} of labelling left`;
+      if (l.failed) text += ` · ${n(l.failed)} Pro AI couldn't answer (tried again when you start it)`;
+      return text;
+    },
+    async loadLabels() {
+      if (!this.st) return;
+      try { this.st.labels = await NT.api.get("/pro-ai/labels"); } catch (e) { /* engine still starting */ }
+    },
+    async startLabels() {
+      this.busy = true;
+      try { this.st.labels = await NT.api.post("/pro-ai/labels/start"); }
+      catch (e) { Alpine.store("nt").error(e, "Labelling didn't start"); }
+      finally { this.busy = false; }
+    },
+    async pauseLabels() {
+      this.busy = true;
+      try { this.st.labels = await NT.api.post("/pro-ai/labels/pause"); }
+      catch (e) { Alpine.store("nt").error(e); }
+      finally { this.busy = false; }
+    },
 
     async confirmSetup() {
       const m = this.setupModel, b = this.setupBuild;

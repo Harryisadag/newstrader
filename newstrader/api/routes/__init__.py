@@ -11,6 +11,7 @@ from . import (
     performance,
     pro_ai,
     settings,
+    shared,
     signals,
     sources,
     status,
@@ -37,5 +38,6 @@ ALL_ROUTERS = [
     backtest.router,
     ml.router,
     pro_ai.router,
+    shared.router,
     updates.router,
 ]

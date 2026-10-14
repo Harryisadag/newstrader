@@ -170,6 +170,9 @@ class Pipeline:
             parts.append(f"price model not used: {pm['why_inactive']}")
         else:
             parts.append("price model not trained yet (Backtest tab -> Local ML model)")
+        student = st.get("student")
+        if student and student["active"] and not st["price_model_active"]:
+            parts.append(f"student model active (learned from {student.get('n_labels') or 0:,} Pro AI labels)")
         level = "warn" if st["sentiment_error"] else "ok"
         self.ctx.state.set_status("ml", level, " · ".join(parts))
 

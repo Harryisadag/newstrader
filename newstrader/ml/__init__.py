@@ -7,4 +7,7 @@ Two layers:
      actually moved (vs the S&P 500) in the hour after past headlines, and turns that into a probability.
 engine.py ties both together and answers in the same format as the Claude engine, so every safety check,
 risk rule and the validator still apply.
+
+Shared training: student.py is a small model that learns from Pro AI's labels for old news (yours and the ones
+everyone shares - shared_labels.py, sharing.py); the engine uses it only where it would otherwise go by wording alone.
 """

@@ -11,6 +11,7 @@
   <script src="/static/js/app.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/proai.js"></script>
+  <script src="/static/js/shared.js"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/portfolio.js"></script>
   <script src="/static/js/live.js"></script>
@@ -982,6 +983,66 @@
           <div class="small muted" x-show="st.cached_samples" x-text="`${st.cached_samples.toLocaleString()} labelled headlines saved from earlier downloads (re-used).`"></div>
         </div>
       </template>
+
+      <!-- Shared training: Pro AI's labels (yours and everyone's) teach the small student model -->
+      <div class="shared-training" x-data="sharedTraining">
+        <h3>Shared training <span class="pill small" :class="studentPill[0]" x-text="studentPill[1]"></span></h3>
+        <p class="muted small">People with a strong PC let <b>Pro AI</b> label old news (Settings → Pro AI → Label old
+          news). A small, fast <b>student model</b> learns from those labels - yours and the ones everyone shares on
+          GitHub - and then runs on any computer, with no AI service needed when trading. It only reads the stories where
+          the news-event rules found nothing concrete, and those signals still always go to manual review; when it
+          disagrees with a recognised event it can only lower the confidence. Shared files hold no headline text, no
+          keys and no trades.</p>
+        <template x-if="st">
+          <div>
+            <div class="kpis">
+              <div class="kpi"><div class="kpi-label">Your labels</div><div class="kpi-value" x-text="fmt.num(st.own_labels)"></div></div>
+              <div class="kpi"><div class="kpi-label">Everyone's labels</div><div class="kpi-value" x-text="fmt.num(st.shared.labels)"></div>
+                <div class="small muted" x-text="sharedLine"></div></div>
+              <div class="kpi"><div class="kpi-label">Student model</div><div class="kpi-value small-text" x-text="studentText"></div></div>
+              <template x-if="report">
+                <div class="kpi"><div class="kpi-label">Agrees with Pro AI on labels it never saw</div>
+                  <div class="kpi-value" x-text="report.accuracy + '%'"></div>
+                  <div class="small muted" x-text="`the newest ${fmt.num(report.n_valid)} labels · always saying &quot;${report.always_guess}&quot;: ${report.majority_accuracy}%`"></div></div>
+              </template>
+              <template x-if="report && report.samples_check">
+                <div class="kpi"><div class="kpi-label">Test headlines right</div>
+                  <div class="kpi-value" x-text="`${report.samples_check.right}/${report.samples_check.total}`"></div>
+                  <div class="small muted">Pro AI's "Test my PC" headlines, labelled by people</div></div>
+              </template>
+            </div>
+            <p class="note" x-show="lastLine" x-text="lastLine"></p>
+            <p class="note warn-text" x-show="st.shared.error" x-text="st.shared.error"></p>
+            <template x-if="st.shared.rejected.length">
+              <div class="small muted">
+                <div>Shared files not used (they failed the checks):</div>
+                <ul><template x-for="r in st.shared.rejected" :key="r.name"><li x-text="r.why"></li></template></ul>
+              </div>
+            </template>
+            <div class="row gap wrap" style="margin-top:10px">
+              <button class="btn primary" :disabled="busy || st.training" @click="train()"
+                      x-text="st.training ? 'Training...' : 'Train with everyone\'s labels'"></button>
+              <button class="btn ghost" x-show="st.training" @click="cancel()">Cancel</button>
+              <button class="btn ghost" :disabled="busy || st.shared.pulling" @click="pull()"
+                      x-text="st.shared.pulling ? 'Getting labels...' : 'Get everyone\'s labels now'"></button>
+              <button class="btn ghost" :disabled="busy || !st.own_labels" @click="share()" title="Saves your labels to a file and opens GitHub's upload page">Share my labels</button>
+              <button class="btn ghost danger" x-show="st.student && !st.student.bundled && !st.training" @click="remove()">Delete student model</button>
+            </div>
+            <div class="progress" x-show="st.training"><div class="bar" :style="`width:${Math.round(progress * 100)}%`"></div></div>
+            <div class="small muted" x-show="message" x-text="message"></div>
+            <template x-if="shared">
+              <div class="share-steps">
+                <div><b>Saved</b> <span x-text="shared.name"></span> in <span x-text="shared.where"></span>
+                  (<span x-text="fmt.num(shared.rows)"></span> labels). GitHub's upload page should have opened in your
+                  browser - if not, <a :href="shared.upload_url" target="_blank" rel="noopener">open it here</a>.</div>
+                <ol><template x-for="step in shared.steps"><li x-text="step"></li></template></ol>
+                <div class="small muted">You need a free GitHub account. The owner checks every upload before it is used,
+                  and an automatic check turns down broken files.</div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
     </div>
 
     <div class="card">
@@ -1178,6 +1239,31 @@
                     how often it read the news the way a trader would.</p>
                 </div>
               </template>
+
+              <div class="pro-labels" x-show="st && downloaded">
+                <h3>Label old news (shared training)</h3>
+                <p class="small muted">Pro AI reads the old headlines the price model downloaded and writes down, for each
+                  company, whether the news was good, bad or neutral. Those labels teach the small, fast <b>student
+                  model</b> that runs on any computer (Backtest → Local ML model → Shared training), and you can share
+                  them so everyone's NewsTrader learns from them. It runs in the background, one story at a time, and
+                  live stories always go first. Unless you change it below, it pauses while the US stock market is open.
+                  Nothing here ever trades.</p>
+                <template x-if="labels">
+                  <div>
+                    <div class="pro-status">
+                      <span class="pill small" :class="labelsLevel" x-text="labelsStateLabel"></span>
+                      <span class="small" x-text="labels.message"></span>
+                    </div>
+                    <div class="progress" x-show="labels.total"><div class="bar" :style="`width:${labelsPct}%`"></div></div>
+                    <div class="small muted" x-text="labelsLine"></div>
+                    <div class="row gap wrap pro-actions">
+                      <button class="btn primary" x-show="!labels.wanted" :disabled="busy" @click="startLabels()"
+                              x-text="labels.done ? 'Continue labelling' : 'Start labelling'"></button>
+                      <button class="btn ghost" x-show="labels.wanted" :disabled="busy" @click="pauseLabels()">Pause</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </template>
           <div class="form-grid">

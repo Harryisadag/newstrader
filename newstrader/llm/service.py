@@ -1,5 +1,5 @@
 """Pro AI inside the app: setting it up (the one-time download), the llama-server it runs on, a small queue of
-stories for it, and "Test my PC". Registered in the orchestrator as "pro_ai".
+stories for it, "Test my PC" and "Label old news" (teacher.py). Registered in the orchestrator as "pro_ai".
 
 States: off (turned off) / not_set_up (files missing) / downloading / starting / ready / error, each with a plain
 message. Every change is pushed to the window as a "pro_ai" event and shown on the Logs tab's status grid.
@@ -28,6 +28,7 @@ from . import download, hardware, selftest
 from .catalog import MODELS, MODELS_BY_KEY, NOT_AUTO, SERVER_BUILDS
 from .engine import ProAIEngine
 from .server import LlamaServer
+from .teacher import TeacherJob
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class ProAIService:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._applied: tuple | None = None
         self._stopping = False
+        self.teacher = TeacherJob(ctx, self)  # "Label old news" (shared training)
 
     # ------------------------------------------------------------------ settings
     @property
@@ -106,6 +108,11 @@ class ProAIService:
     @property
     def downloading(self) -> bool:
         return self._setup_task is not None and not self._setup_task.done()
+
+    @property
+    def testing(self) -> bool:
+        """"Test my PC" is running."""
+        return self._selftest_task is not None and not self._selftest_task.done()
 
     @staticmethod
     def _key(s) -> tuple:
@@ -122,9 +129,11 @@ class ProAIService:
             self._spawn(self.start_server(), "pro-ai-start")
         else:
             self._set("off", "Pro AI is off.")
+        self.teacher.resume_if_wanted()  # it waits until Pro AI is running
 
     async def stop(self) -> None:
         self._stopping = True
+        await self.teacher.stop()
         self._cancel_download.set()
         self._cancel_start.set()
         for t in [*self._tasks, *self._workers, self._setup_task, self._selftest_task]:
@@ -420,6 +429,10 @@ class ProAIService:
         if job.future is not None and not job.future.done():
             job.future.set_result(result)
 
+    def live_waiting(self) -> bool:
+        """Are live stories waiting for Pro AI? ("Label old news" lets them go first.)"""
+        return bool(self._jobs)
+
     def offer(self, job: ProJob) -> bool:
         """Queue a story for Pro AI (call in the event loop). Newest first when busy; the oldest is dropped when the
         queue is full. False when Pro AI isn't running."""
@@ -643,7 +656,8 @@ class ProAIService:
                 "disk_bytes": files.get("total_bytes", 0), "folder": files.get("folder", ""),
                 "server": server, "queue": {"waiting": len(self._jobs), **self.stats},
                 "agreement": agreement, "selftest": test,
-                "selftest_running": self._selftest_task is not None and not self._selftest_task.done()}
+                "selftest_running": self.testing,
+                "labels": self.teacher.status()}
 
 
 def describe(hw: hardware.HardwareInfo) -> str:

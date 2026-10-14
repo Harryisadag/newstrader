@@ -382,6 +382,26 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_crypto_exits_status ON crypto_exits(status, symbol);
     """,
+    # 14 - shared training: Pro AI's labels for the old headlines the price model downloaded (ml_samples), one row per
+    # (Alpaca news id, ticker). direction bullish / bearish / neutral, confidence 0-100 (0 = Pro AI didn't name the
+    # stock), event = the event rules' kind for that stock ("" = none), model = the catalog key of the Pro AI model,
+    # headline_hash = first 16 hex of the headline's SHA-256, day = the news's New York date, status ok | failed
+    """
+    CREATE TABLE pro_labels (
+        news_id TEXT NOT NULL,
+        ticker TEXT NOT NULL,
+        direction TEXT,
+        confidence INTEGER,
+        event TEXT,
+        model TEXT,
+        labelled_at TEXT,
+        headline_hash TEXT,
+        day TEXT,
+        status TEXT NOT NULL,
+        PRIMARY KEY (news_id, ticker)
+    );
+    CREATE INDEX idx_pro_labels_status ON pro_labels(status, day);
+    """,
 ]
 
 

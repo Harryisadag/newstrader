@@ -69,6 +69,15 @@ def lookahead_note(pm, start: date) -> str:
     return ""
 
 
+def student_note(student, start: date) -> str:
+    """The same for a student model (shared training): it learned Pro AI's answers for news up to `labels_to`."""
+    hi = str(student.meta.get("labels_to") or "") if student is not None else ""
+    if hi and start.isoformat() <= hi:
+        return (f"Note: the student model learned from labels for news up to {hi}, so for these dates it may already "
+                f"know the answers. Backtest dates after {hi} for an honest test.")
+    return ""
+
+
 def _session_for(t: datetime, sessions: list[dict]) -> tuple[dict | None, bool]:
     """(session on or after t, whether t is inside that session's hours)."""
     for s in sessions:
@@ -221,7 +230,9 @@ class BacktestRunner:
         summary = self._summary(results, len(articles), analysed, cost)
         summary["engine"] = engine
         if engine == "local":
-            note = lookahead_note(analyzer.active_price_model(), params.start)
+            pm = analyzer.active_price_model()
+            note = lookahead_note(pm, params.start) or (student_note(analyzer.active_student(), params.start)
+                                                        if pm is None else "")
             if note:
                 summary["warning"] = note
         status = "cancelled" if self._cancel else "done"

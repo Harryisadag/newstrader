@@ -5,6 +5,9 @@ For each company the pre-filter found:
   2. FinBERT scores that wording positive / negative / neutral (sentiment.py)
   3. if a price model has been trained and passed its test, it turns those scores + the words into the
      probability the stock beats the S&P 500 over the next hour (model.py)
+  4. otherwise, if a student model has been trained from Pro AI's labels (student.py), it replaces FinBERT's direction
+     where no news event was recognised (those signals still only go to manual review), and a confident
+     disagreement with a recognised event lowers the confidence a little (it never raises it)
 The answer is written in the same JSON shape Claude uses, so the same validator and trade rules apply.
 
 Crypto pairs (with crypto on) are read by a small set of crypto rules instead (events.crypto_reading: spot ETF
@@ -33,6 +36,8 @@ from ..trading import crypto
 from .events import Reading, ascii_fold, crypto_reading, find_spans, macro_reading, read_events
 from .model import PriceModel, SampleFeatures
 from .sentiment import SentimentScores, SentimentService
+from .student import CLASSES as STUDENT_CLASSES
+from .student import StudentModel, student_features
 from .text import Target, analysable_body, mask_company, mention_for, relevance, target_text
 
 log = logging.getLogger(__name__)
@@ -44,6 +49,9 @@ MODEL_NEUTRAL_BELOW = 55  # price-model calls this close to a coin flip are trea
 MAX_CONFIDENCE = 99
 AGREE_BONUS = 0.2  # FinBERT agreeing with an event adds up to +10 confidence...
 DISAGREE_PENALTY = 0.12  # ...and disagreeing takes 12 off (the event still decides the direction)
+STUDENT_SURE = 0.7  # the student disagreeing with a recognised event this surely...
+STUDENT_DISAGREE_PENALTY = 0.08  # ...takes 8 off when it reads the opposite direction...
+STUDENT_NEUTRAL_PENALTY = 0.04  # ...and 4 when it reads the story as neutral (it never adds confidence)
 
 
 def time_of_day(t: datetime | None) -> float | None:
@@ -127,14 +135,18 @@ def readings_for(item: NewsItem, targets: list[tuple[Candidate, Target]], table:
 class LocalMLEngine:
     engine = "local"
 
-    def __init__(self, ctx, sentiment: SentimentService | None = None, model_dir: Path | None = None):
+    def __init__(self, ctx, sentiment: SentimentService | None = None, model_dir: Path | None = None,
+                 student_dir: Path | None = None):
         self.ctx = ctx
         self.sentiment = sentiment or SentimentService(paths.models_dir())
         self.model_dir = model_dir or (paths.models_dir() / "price_model")
+        self.student_dir = student_dir or student_folder()
         self.tickers: TickerTable | None = None
         self.price_model: PriceModel | None = None
+        self.student: StudentModel | None = None
         self._model_lock = threading.Lock()
         self._loaded_model_file = False
+        self._loaded_student_file = False
 
     # ---------------------------------------------------------------- models
     def load_price_model(self) -> PriceModel | None:
@@ -166,12 +178,60 @@ class LocalMLEngine:
             return None
         return m
 
+    # ---------------------------------------------------------------- the student model (shared training)
+    def load_student(self) -> StudentModel | None:
+        """The student trained on this PC, else one that came with the app (if any)."""
+        with self._model_lock:
+            self.student = None
+            for folder in (self.student_dir, bundled_student_folder()):
+                try:
+                    self.student = StudentModel.load(folder)
+                except Exception as exc:
+                    log.warning("Couldn't load the student model in %s: %s", folder, exc)
+                if self.student is not None:
+                    self.student.meta.setdefault("bundled", folder != self.student_dir)
+                    break
+            self._loaded_student_file = True
+            return self.student
+
+    def set_student(self, model: StudentModel | None) -> None:
+        with self._model_lock:
+            self.student = model
+            self._loaded_student_file = True
+
+    def current_student(self) -> StudentModel | None:
+        return self.student if self._loaded_student_file else self.load_student()
+
+    def student_problem(self, m: StudentModel | None) -> str:
+        """Why a student model isn't used ("" = it is)."""
+        if m is None:
+            return "none trained yet"
+        if not self.ctx.config.settings.ml.use_student:
+            return "turned off in Settings"
+        if m.meta.get("sentiment_model") != self.sentiment.model_id:
+            return "trained with a different sentiment model - train it again"
+        return ""
+
+    def active_student(self) -> StudentModel | None:
+        m = self.current_student()
+        return None if self.student_problem(m) else m
+
+    def student_status(self) -> dict | None:
+        m = self.current_student()
+        if m is None:
+            return None
+        meta = m.meta
+        return {**{k: meta.get(k) for k in ("trained_at", "n_labels", "labels_from", "labels_to", "sentiment_model",
+                                             "report", "bundled")},
+                "active": not self.student_problem(m), "why_inactive": self.student_problem(m)}
+
     def model_status(self) -> dict:
         m = self.price_model if self._loaded_model_file else self.load_price_model()
         active = self.active_price_model() is not None
         info = {"sentiment": self.sentiment.describe(), "sentiment_model_id": self.sentiment.model_id,
                 "sentiment_error": self.sentiment.error, "price_model": None, "price_model_active": active,
-                "sentiment_cap": self.sentiment_cap_reason() if not active else ""}
+                "sentiment_cap": self.sentiment_cap_reason() if not active else "",
+                "student": self.student_status()}
         if m is not None:
             meta = m.meta
             why_inactive = ""
@@ -223,6 +283,9 @@ class LocalMLEngine:
         m = self.active_price_model()
         if m is not None:
             return f"local: {s} + price model ({str(m.meta.get('trained_at', ''))[:10]})"
+        st = self.active_student()
+        if st is not None:
+            return f"local: {s} + student model ({str(st.meta.get('trained_at', ''))[:10]})"
         return f"local: {s}"
 
     async def ensure_ready(self) -> None:
@@ -274,6 +337,12 @@ class LocalMLEngine:
         coins = {c.symbol for c, _t in targets if crypto.is_crypto(c.symbol)}
         coin_cap = (cap_reason if pm is None else self.sentiment_cap_reason()) if coins else ""
         buy = self.ctx.config.settings.trading.buy_threshold
+        # The student learned from written news with the event rules on; never for TV speech, coins or country funds
+        student = self.active_student() if pm is None and rules and item.kind != "transcript" else None
+        st_probs = None
+        if student is not None:
+            st_probs = student.predict_proba([student_features(c, t, s, table, r, pre.candidates)
+                                              for (c, t), s, r in zip(targets, scores, all_readings, strict=True)])
 
         signals, details = [], []
         for i, ((cand, target), s, f, rd) in enumerate(zip(targets, scores, feats, readings, strict=True)):
@@ -287,6 +356,8 @@ class LocalMLEngine:
             label = s.label
             p_dir = s.positive if label == "positive" else s.negative if label == "negative" else s.neutral
             fin = {"positive": 1, "negative": -1}.get(label, 0)
+            sp = st_probs[i] if st_probs is not None and not coin and not cand.why.startswith("country:") else None
+            student_note = ""
             if p_up is not None and not coin:
                 p = float(p_up[i])
                 conf = round(100 * max(p, 1 - p))
@@ -303,9 +374,27 @@ class LocalMLEngine:
                         sure += AGREE_BONUS * max(0.0, p_dir - 0.5)
                     elif fin == -rd.direction:
                         sure -= DISAGREE_PENALTY
+                    if sp is not None:
+                        k = int(sp.argmax())
+                        call = STUDENT_CLASSES[k]
+                        if call != ("bullish" if rd.direction > 0 else "bearish") and sp[k] >= STUDENT_SURE:
+                            sure -= STUDENT_DISAGREE_PENALTY if call != "neutral" else STUDENT_NEUTRAL_PENALTY
+                            student_note = (f" The student model reads it {_pct(float(sp[k]))}% {call} - "
+                                            "confidence lowered.")
                     conf = round(100 * sure * rel)
                     direction = "bullish" if rd.direction > 0 else "bearish"
                     if conf < MIN_EVENT_CONFIDENCE:
+                        direction = "neutral"
+                elif sp is not None:
+                    # no event: the student's reading (it learned from Pro AI's labels) replaces FinBERT's direction
+                    k = int(sp.argmax())
+                    conf = round(100 * float(sp[k]) * rel)
+                    direction = STUDENT_CLASSES[k]
+                    student_note = f" Student model (learned from Pro AI's labels): {_pct(float(sp[k]))}% {direction}."
+                    if direction != "neutral" and not review:
+                        review = ("no concrete event (earnings, deal, FDA decision, analyst action...) - the student "
+                                  "model's reading alone isn't enough to auto-trade")
+                    if conf < MIN_SENTIMENT_CONFIDENCE:
                         direction = "neutral"
                 else:
                     conf = round(100 * p_dir * rel)
@@ -340,6 +429,8 @@ class LocalMLEngine:
             ev = rd.event if rd is not None and rd.direction else None
             details.append({"ticker": cand.symbol, "matched": cand.why, "snippet": target.snippet[:300],
                             "sentiment": s.as_dict(), "relevance": rel, "p_up": None if p is None else round(p, 4),
+                            "student": None if sp is None else {c: round(float(v), 4)
+                                                                for c, v in zip(STUDENT_CLASSES, sp, strict=True)},
                             "direction": direction, "confidence": conf,
                             "event": rd.label if rd is not None else "", "event_detail": ev.detail if ev else "",
                             "flags": rd.flags if rd is not None else [], "neutral_because": why_neutral})
@@ -350,12 +441,22 @@ class LocalMLEngine:
                 "bull_case": _bull(s, p, horizon, rd), "bear_case": _bear(s, p, horizon, rd),
                 "direction": direction, "confidence": conf,
                 "time_sensitivity": ev.horizon if ev else "hours",
-                "reasoning": (_reasoning(short, s, p, horizon, target, rd, coin)
+                "reasoning": (_reasoning(short, s, p, horizon, target, rd, coin) + student_note
                               + (f" Sent for review: {review}." if capped else ""))[:400],
                 "event": rd.label if ev else "", "flags": rd.flags if rd is not None else [],
             })
         signals.sort(key=lambda x: x["confidence"], reverse=True)
         return {"signals": signals[:max_signals], "details": details}
+
+
+def student_folder() -> Path:
+    """Where "Train with everyone's labels" saves the student model."""
+    return paths.models_dir() / "student"
+
+
+def bundled_student_folder() -> Path:
+    """A student model that came with the app (used when none was trained on this PC)."""
+    return paths.package_dir() / "ml" / "student_model"
 
 
 # -------------------------------------------------------------------------------------------- wording
