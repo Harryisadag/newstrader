@@ -146,6 +146,11 @@ jobs:
           # "Update now" checks this file in the unpacked download
           $v = (Get-Content dist/NewsTrader/_internal/newstrader/version.txt -Raw).Trim()
           if ($v -ne $env:VERSION) { Write-Error "version.txt says '$v', not $env:VERSION"; exit 1 }
+          # the list of app files that lets an incomplete download say so plainly (newstrader/integrity.py)
+          $list = "dist/NewsTrader/_internal/newstrader/app_files.txt"
+          if (-not (Test-Path $list)) { Write-Error "app_files.txt is missing from the build"; exit 1 }
+          $missing = Get-Content $list | Where-Object { $_ -and -not (Test-Path -LiteralPath "dist/NewsTrader/_internal/$_") }
+          if ($missing) { Write-Error "app_files.txt lists files that aren't in the build: $($missing | Select-Object -First 5)"; exit 1 }
           7z a -tzip -mx=5 "$env:ASSET" ./dist/NewsTrader
           if ($LASTEXITCODE -ne 0) { exit 1 }
 

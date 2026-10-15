@@ -21,6 +21,7 @@ On macOS 14 or older, run NewsTrader from the source code instead. See "Setup on
 
 **Windows**
 1. Download the Windows zip, right-click it → **Extract All…**, and pick an easy folder such as `C:\NewsTrader`.
+   Wait until the progress window has closed (it takes a minute or two); opening the app before that gives a "folder is incomplete" message.
 2. Open the extracted `NewsTrader` folder and double-click **`NewsTrader.exe`**. Keep the whole folder together, because the exe needs the `_internal` folder next to it.
 3. If Windows SmartScreen says it protected your PC, click **More info → Run anyway**. The app isn't code-signed (that costs money), so this happens once for each new version.
    - If it says **Smart App Control** blocked NewsTrader, there's no Run anyway button. Run NewsTrader from the source code instead (README, "Setup on Windows"). Turning Smart App Control off also works, but it's a security setting for the whole PC.
@@ -66,6 +67,12 @@ The app has its own copy of yt-dlp (the YouTube downloader). If TV streams stop 
 Every release also lists a SHA-256 checksum for each file, so you can check a download is intact.
 
 ## Versions
+
+## v0.5.1 — 15 October 2026
+
+Fix for the Windows download.
+- If NewsTrader is opened before Windows' **Extract All** has finished (or the extraction was stopped), the folder is missing files and v0.5.0 crashed with a "No time zone found" error. The app now says plainly that its folder is incomplete and how to fix it: delete the extracted folder, extract the zip again, wait for the progress window to close, then open NewsTrader.exe.
+- Nothing else changed. If v0.5.0 already starts fine for you, you don't need this.
 
 ## v0.5.0 — 15 October 2026
 

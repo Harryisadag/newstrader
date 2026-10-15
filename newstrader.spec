@@ -123,6 +123,17 @@ coll = COLLECT(
     name="NewsTrader",
 )
 
+# Windows / Linux: a list of every file in _internal, so an incomplete folder (the exe opened before "Extract All"
+# finished) gets a plain message instead of a Python error - see newstrader/integrity.py. Not on a Mac: the app
+# bundle is signed after this and Archive Utility only shows the app once it's fully unpacked.
+if not MAC:
+    _internal = os.path.join(DISTPATH, "NewsTrader", "_internal")
+    _files = sorted(os.path.relpath(os.path.join(d, f), _internal).replace(os.sep, "/")
+                    for d, _, fs in os.walk(_internal) for f in fs)
+    with open(os.path.join(_internal, "newstrader", "app_files.txt"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(_files) + "\n")
+    print(f"[newstrader.spec] listed {len(_files)} app files")
+
 if MAC:
     app = BUNDLE(
         coll,
