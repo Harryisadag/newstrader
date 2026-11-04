@@ -98,6 +98,13 @@ class SimBroker:
     def latest_price(self, symbol: str) -> float | None:
         return self.data.latest_price(symbol)
 
+    def latest_price_info(self, symbol: str) -> tuple[float | None, datetime | None]:
+        """The latest price and when it was printed (None = the price source can't say)."""
+        info = getattr(self.data, "latest_price_info", None)
+        if info is None:
+            return self.data.latest_price(symbol), None
+        return info(symbol)
+
     def bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min") -> list[dict]:
         return self.data.bars(symbol, start, end, timeframe)
 

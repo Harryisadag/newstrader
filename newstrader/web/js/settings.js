@@ -14,6 +14,8 @@ document.addEventListener("alpine:init", () => {
         F("trading.allow_shorting", "Allow short selling", "toggle", { help: "Bearish signals open a short (bracket order) when you don't hold the stock. Off by default." }),
         F("trading.data_feed", "Market data feed", "select", { alpacaOnly: true, options: { iex: "IEX (free)", sip: "SIP (paid Alpaca data plan)" }, help: "Alpaca only - the built-in simulator uses free Yahoo Finance prices." }),
         F("trading.max_chase_pct", "Don't chase moves bigger than", "number", { min: 0, max: 50, step: 0.5, suffix: "%", help: "If the price already moved this much in the signal's direction since the news came out, the signal goes to manual review instead of being bought - the move may already be over. 0 = off." }),
+        F("trading.max_news_age_minutes", "Fresh data only: news no older than", "number", { min: 0, max: 1440, suffix: "minutes", help: "A signal is only bought automatically while its news is at most this old - older news is probably priced in, so it goes to manual review. If NewsTrader can't tell when the news came out, it goes to manual review too (it never trades blind). 0 = off." }),
+        F("trading.max_price_age_seconds", "Fresh data only: price no older than", "number", { min: 0, max: 3600, suffix: "seconds", help: "The price an order is sized on (and the don't-chase check uses) must be at most this old, or the signal goes to manual review. Quiet stocks on the free IEX feed can go a while without a trade - raise this if too many signals stop here. 0 = off." }),
       ],
     },
     {

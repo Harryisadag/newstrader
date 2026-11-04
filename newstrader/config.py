@@ -319,6 +319,10 @@ class TradingSettings(_Model):
     # Don't chase: if the price already moved this much (%) in the signal's direction since the news came out,
     # send the signal to manual review instead of auto-trading it. 0 = off.
     max_chase_pct: float = Field(3.0, ge=0, le=50)
+    # Fresh data only (fail closed): a signal is auto-traded only while the news is at most this many minutes old
+    # and the price it would trade on is at most this many seconds old. Older, or unknown -> manual review. 0 = off.
+    max_news_age_minutes: int = Field(30, ge=0, le=1440)
+    max_price_age_seconds: int = Field(120, ge=0, le=3600)
     # Where paper trades go: "auto" = your Alpaca paper account if its keys are set, otherwise the built-in
     # simulator; "simulator" = always the built-in simulator (fake money, free Yahoo prices, no account needed);
     # "alpaca" = always Alpaca. Real-money (live) trading always uses Alpaca.
