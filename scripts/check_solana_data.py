@@ -131,6 +131,38 @@ def main() -> int:
         call(c, rep, "jupiter_quote_usdc", "GET", "https://lite-api.jup.ag/swap/v1/quote",
              "Jupiter: a liquid pair for comparison", params={"inputMint": SOL, "outputMint": USDC,
                                                               "amount": 100_000_000, "slippageBps": 50})
+        # 3b. more quote / data variants (which ones still work without a key)
+        BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+        bonk = call(c, rep, "jupiter_quote_buy_bonk", "GET", "https://lite-api.jup.ag/swap/v1/quote",
+                    "Jupiter: 0.1 SOL -> BONK (established token)",
+                    params={"inputMint": SOL, "outputMint": BONK, "amount": 100_000_000, "slippageBps": 100})
+        if (bonk or {}).get("outAmount"):
+            call(c, rep, "jupiter_quote_sell_bonk", "GET", "https://lite-api.jup.ag/swap/v1/quote",
+                 "Jupiter: BONK -> SOL", params={"inputMint": BONK, "outputMint": SOL, "amount": bonk["outAmount"],
+                                                 "slippageBps": 100})
+        if out:
+            call(c, rep, "jupiter_quote_sell_half", "GET", "https://lite-api.jup.ag/swap/v1/quote",
+                 "Jupiter: half of it back -> SOL", params={"inputMint": mint, "outputMint": SOL,
+                                                            "amount": str(int(out) // 2), "slippageBps": 1000})
+            call(c, rep, "jupiter_ultra_sell", "GET", "https://lite-api.jup.ag/ultra/v1/order",
+                 "Jupiter Ultra: order quote (no taker) token -> SOL",
+                 params={"inputMint": mint, "outputMint": SOL, "amount": out})
+        call(c, rep, "jupiter_ultra_buy", "GET", "https://lite-api.jup.ag/ultra/v1/order",
+             "Jupiter Ultra: order quote (no taker) SOL -> token",
+             params={"inputMint": SOL, "outputMint": mint, "amount": 100_000_000})
+        call(c, rep, "jupiter_api_quote_nokey", "GET", "https://api.jup.ag/swap/v1/quote",
+             "Jupiter main API without a key", params={"inputMint": SOL, "outputMint": BONK, "amount": 100_000_000})
+        call(c, rep, "jupiter_token_search", "GET", "https://lite-api.jup.ag/tokens/v2/search",
+             "Jupiter token info (audit: authorities, holders, organic score)", params={"query": mint})
+        call(c, rep, "jupiter_tokens_recent", "GET", "https://lite-api.jup.ag/tokens/v2/recent",
+             "Jupiter: recently created tokens")
+        call(c, rep, "pumpfun_amm_sell_quote_dexscreener", "GET",
+             f"https://api.dexscreener.com/latest/dex/tokens/{mint}", "DexScreener: token (all pairs)")
+        for name, url in (("publicnode", "https://solana-rpc.publicnode.com"),):
+            call(c, rep, f"rpc_{name}_largest_accounts", "POST", url, f"{name}: getTokenLargestAccounts",
+                 json={"jsonrpc": "2.0", "id": 1, "method": "getTokenLargestAccounts", "params": [mint]})
+        time.sleep(3)
+        rpc(c, rep, "rpc_largest_accounts_retry", "getTokenLargestAccounts", [mint], "Solana RPC: retry after 3 s")
         # 4. third-party risk report (LP lock, creator, insiders)
         call(c, rep, "rugcheck_report", "GET", f"https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary",
              "RugCheck: summary report")
