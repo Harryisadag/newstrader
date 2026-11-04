@@ -5,6 +5,8 @@
 `check_exit` decides whether an existing long position may be closed on a bearish signal.
 Each returns a RiskDecision with a plain-English reason when something is blocked.
 `chase_check` sends a signal to manual review when the price already moved a lot before we could act.
+`freshness_check` sends it to manual review when the news or the price is too old (or its age is unknown).
+Both fail closed: when they can't measure something, the answer is "manual review", never "trade".
 """
 
 from __future__ import annotations
@@ -266,15 +268,50 @@ def chase_check(direction: str, pre_move_pct: float | None, limit_pct: float) ->
     """Don't chase: why a signal should go to manual review instead of being auto-traded, or "" if it's fine.
 
     pre_move_pct is how far the price already moved IN the signal's direction since the news came out (up for
-    bullish, down for bearish - see performance.prices.directional_return). A move the other way never counts,
-    a limit of 0 turns the check off, and missing prices never block anything."""
-    if not limit_pct or pre_move_pct is None or direction not in ("bullish", "bearish"):
+    bullish, down for bearish - see performance.prices.directional_return). A move the other way never counts and a
+    limit of 0 turns the check off. It fails closed: when the move couldn't be measured (pre_move_pct None - no
+    prices from before the news, or the price lookup failed) the signal goes to manual review too."""
+    if not limit_pct or direction not in ("bullish", "bearish"):
         return ""
+    if pre_move_pct is None:
+        return ("Couldn't tell how far the price already moved since the news (no prices from before it) - sent for "
+                "manual review instead of trading blind.")
     if pre_move_pct < limit_pct:
         return ""
     raw = pre_move_pct if direction == "bullish" else -pre_move_pct
     return (f"Price already moved {raw:+.1f}% toward the signal since the news (limit {limit_pct:g}%) - "
             "sent for manual review instead of chasing it.")
+
+
+def _age_words(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:.0f} s"
+    if seconds < 7200:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
+
+
+def freshness_check(news_age_s: float | None, price_age_s: float | None, max_news_minutes: float,
+                    max_price_seconds: float, price_age_known: bool = True) -> str:
+    """Fresh data only: why a signal should go to manual review instead of being auto-traded, or "" if it's fine.
+
+    news_age_s: seconds since the news came out (None = unknown). price_age_s: seconds since the price the order
+    would be sized on was printed (None = unknown). price_age_known=False means the price source can't tell its age
+    at all (e.g. a test double) - then only the news is checked. It fails closed: an unknown age counts as too old.
+    A limit of 0 turns that half off."""
+    if max_news_minutes:
+        if news_age_s is None:
+            return "Couldn't tell when the news came out - sent for manual review instead of trading blind."
+        if news_age_s > max_news_minutes * 60:
+            return (f"The news is {_age_words(news_age_s)} old (limit {max_news_minutes:g} min) - it's probably "
+                    "priced in already, so it was sent for manual review.")
+    if max_price_seconds and price_age_known:
+        if price_age_s is None:
+            return "Couldn't tell how old the latest price is - sent for manual review instead of trading on it."
+        if price_age_s > max_price_seconds:
+            return (f"The latest price is {_age_words(price_age_s)} old (limit {max_price_seconds:g} s) - sent for "
+                    "manual review instead of trading on a stale price.")
+    return ""
 
 
 def check_exit(symbol: str, ctx: RiskContext, manual: bool = False) -> RiskDecision:

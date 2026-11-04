@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from newstrader.db import iso
 from newstrader.trading.fake_broker import FakeBroker
 from newstrader.trading.trader import Trader, decide_action
 
@@ -19,8 +20,9 @@ async def trader(ctx):
 
 
 def sig(ticker="AAPL", direction="bullish", confidence=85, **kw):
+    # created_at: when the news came out, as on every real signal (the fresh-data check needs it)
     return {"id": kw.pop("id", 1), "ticker": ticker, "direction": direction, "confidence": confidence,
-            "reasoning": "test", **kw}
+            "reasoning": "test", "created_at": kw.pop("created_at", iso()), **kw}
 
 
 # ---------------------------------------------------------------- decide_action

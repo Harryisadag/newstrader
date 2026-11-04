@@ -65,6 +65,7 @@ class FakeBroker:
         self.cash = equity
         self.last_equity = equity
         self.prices: dict[str, float] = dict(prices or {"AAPL": 230.0, "NVDA": 180.0, "TSLA": 250.0, "MSFT": 510.0})
+        self.price_times: dict[str, datetime] = {}  # symbol -> when its price was printed (missing = just now)
         self.market_open = market_open
         self._positions: dict[str, dict] = {}  # symbol -> {qty, avg}
         self._orders: list[dict] = []
@@ -184,6 +185,13 @@ class FakeBroker:
     # ---- prices / data ----
     def latest_price(self, symbol: str) -> float | None:
         return self.prices.get(symbol)
+
+    def latest_price_info(self, symbol: str) -> tuple[float | None, datetime | None]:
+        """The price and when it was printed: now, unless a test set an older time in `price_times`."""
+        price = self.prices.get(symbol)
+        if price is None:
+            return None, None
+        return price, self.price_times.get(symbol, datetime.now(UTC))
 
     def bars(self, symbol, start, end, timeframe="1Min") -> list[dict]:
         from ..db import parse_iso

@@ -138,7 +138,8 @@ async def test_simulator_orders_are_their_own_book(ctx):
     t = Trader(ctx, broker_factory=lambda: sim)
     ctx.services["trader"] = t
     await t.connect()
-    res = await t.handle_signal({"id": 1, "ticker": "AAPL", "direction": "bullish", "confidence": 90})
+    res = await t.handle_signal({"id": 1, "ticker": "AAPL", "direction": "bullish", "confidence": 90,
+                                "created_at": iso()})
     assert res["traded"]
     assert {r["mode"] for r in ctx.db.query("SELECT mode FROM orders")} == {SIM_BOOK}
     sim.prices["AAPL"] = 240.0
