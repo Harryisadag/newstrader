@@ -433,6 +433,8 @@ async def test_daily_paper_loss_limit_halts_new_buys(env):
     assert "daily paper loss limit" in env.desk.desk.blocked(False, addr(1, "m"))
     assert any(a["kind"] == "daily_loss_limit" for a in env.alerts.sent)
     assert env.desk.summary()["state"] == "halted"
+    env.desk.reset_wallet("RESET")
+    assert env.desk.desk.halted_today()  # a new paper wallet doesn't lift today's halt
     env.clock.advance(24 * 3600)
     assert not env.desk.desk.halted_today()  # a new day (UTC)
 
@@ -595,6 +597,21 @@ async def test_status_states(env):
         await env.desk.check_feed_now()
 
 
+async def test_a_problem_shows_until_that_loop_runs_well_again(env):
+    async def broken():
+        raise RuntimeError("something odd")
+
+    async def fine():
+        return None
+
+    await env.desk.run_step("exits", broken)
+    assert env.desk.summary()["state"] == "problem" and "something odd" in env.desk.summary()["text"]
+    await env.desk.run_step("audit", fine)
+    assert env.desk.summary()["state"] == "problem"  # another loop's good run doesn't hide it
+    await env.desk.run_step("exits", fine)
+    assert env.desk.summary()["state"] == "watching"
+
+
 async def test_the_desk_makes_no_calls_while_off(ctx):
     clock = Clock()
     data = FakeData(clock)
@@ -605,6 +622,17 @@ async def test_the_desk_makes_no_calls_while_off(ctx):
     await desk.stop()
     assert data.calls == [] and not ctx.config.settings.solana.enabled
     assert next(c for c in ctx.state.components() if c["component"] == "solana")["level"] == "off"
+
+
+async def test_a_restart_closes_coins_left_waiting(env):
+    env.data.new = [hot_pool()]
+    await env.desk.feed_tick()
+    restarted = SolanaDesk(env.ctx, data=env.data, now=env.clock.now, mono=env.clock.mono)
+    env.ctx.config.update({"solana": {"enabled": False}})
+    await restarted.start()
+    await restarted.stop()
+    row = env.db.query_one("SELECT * FROM sol_candidates")
+    assert row["status"] == "expired" and "stopped" in row["reason"]
 
 
 async def test_the_desk_runs_by_itself_when_on(env):

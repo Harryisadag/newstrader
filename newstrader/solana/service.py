@@ -65,7 +65,7 @@ class SolanaDesk:
         self.checking: dict | None = None
         self.last_feed: dict = {}
         self.last_exit_at: str | None = None
-        self.last_error: str | None = None
+        self.errors: dict[str, str] = {}  # the last problem of each loop (cleared by its next good run)
         self.sol_usd: float | None = None
 
     @property
@@ -76,6 +76,8 @@ class SolanaDesk:
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
         self.data.rpc_url = self.s.rpc_url
+        self.ctx.db.execute("UPDATE sol_candidates SET status = 'expired', finished_at = ?, reason = ? WHERE status IN "
+                            "('queued', 'checking')", (iso(self._now()), "NewsTrader stopped before it was checked"))
 
         def on_settings(settings) -> None:  # called from whichever thread saved the settings
             self.data.rpc_url = settings.solana.rpc_url
@@ -84,7 +86,7 @@ class SolanaDesk:
 
         self.ctx.config.on_change(on_settings)
         loops = (("feed", lambda: float(self.s.poll_seconds), self._feed_step),
-                 ("worker", lambda: 5.0, self.work_once),
+                 ("worker", lambda: 0.5 if self.queue else 5.0, self.work_once),
                  ("exits", lambda: EXIT_EVERY, self.check_exits),
                  ("audit", lambda: AUDIT_EVERY, self.follow_up))
         for name, every, step in loops:
@@ -105,15 +107,22 @@ class SolanaDesk:
         for event in self._wake.values():
             event.set()
 
+    async def run_step(self, name: str, step) -> None:
+        """One run of a loop's step (only while the desk is on). A problem is shown until that loop's next good run."""
+        if not self.s.enabled:
+            self.errors.clear()
+            return
+        try:
+            await step()
+            self.errors.pop(name, None)
+        except Exception as exc:
+            self.errors[name] = f"{type(exc).__name__}: {exc}"[:300]
+            log.warning("Solana paper desk (%s): %s", name, exc)
+            log.debug("solana desk traceback", exc_info=True)
+
     async def _loop(self, name: str, every, step) -> None:
         while True:
-            try:
-                if self.s.enabled:
-                    await step()
-            except Exception as exc:
-                self.last_error = f"{type(exc).__name__}: {exc}"[:300]
-                log.warning("Solana paper desk (%s): %s", name, exc)
-                log.debug("solana desk traceback", exc_info=True)
+            await self.run_step(name, step)
             self._status()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake[name].wait(), every())
@@ -445,7 +454,7 @@ class SolanaDesk:
             return "paused", "warn", f"Solana paper desk: paused - {held} still watched"
         if w["halted_today"]:
             return "halted", "warn", f"Solana paper desk: daily loss limit hit - no new paper buys today, {held}"
-        err = self.last_error or (self.last_feed or {}).get("error")
+        err = next(iter(self.errors.values()), None) or (self.last_feed or {}).get("error")
         if err:
             return "problem", "warn", f"Solana paper desk: {err}"
         checking = f" · checking {self.checking['symbol']}" if self.checking else ""

@@ -119,8 +119,7 @@ class PaperDesk:
         w = {"id": int(old["id"]) + 1, "sol": float(self.s.starting_sol), "starting_sol": float(self.s.starting_sol),
              "started_at": now}
         self.set_state("wallet", w)
-        self.set_state("halted_day", None)
-        return w
+        return w  # a daily-loss halt stays until midnight UTC, new wallet or not
 
     @property
     def paused(self) -> bool:
@@ -174,9 +173,6 @@ class PaperDesk:
         self.set_state("halted_reason", reason)
         return reason
 
-    def clear_halt(self) -> None:
-        self.set_state("halted_day", None)
-
     def blocked(self, kill_engaged: bool, mint: str | None = None, order_sol: float | None = None) -> str:
         """Why a new paper buy isn't allowed right now ("" = it is)."""
         s = self.s
@@ -225,6 +221,8 @@ class PaperDesk:
              cant_sell: bool | None = None) -> dict:
         """Record what the position is worth now: from a real sell quote ("quote") or the price feed ("estimate")."""
         values: dict = {"value_at": iso(self._now())}
+        if kind == "estimate":
+            values["value_kind"] = "estimate"  # no sell route: whatever value it shows is only a guess now
         if value_sol is not None:
             values.update(value_sol=value_sol, value_kind=kind)
             if kind == "quote":
