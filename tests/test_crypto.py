@@ -73,8 +73,9 @@ def crypto_table(db, wanted=("BTC/USD", "ETH/USD", "SOL/USD")) -> TickerTable:
 
 
 def sig(ticker="BTC/USD", direction="bullish", confidence=90, **kw):
+    # created_at: when the news came out, as on every real signal (the fresh-data check needs it)
     return {"id": kw.pop("id", 1), "ticker": ticker, "direction": direction, "confidence": confidence,
-            "reasoning": "test", **kw}
+            "reasoning": "test", "created_at": kw.pop("created_at", iso()), **kw}
 
 
 def plan_row(ctx, plan_id=None) -> dict:
@@ -306,6 +307,13 @@ async def bought(env) -> dict:
     plan = plan_row(env.ctx)
     assert plan["status"] == "active" and plan["stop_order_id"], plan
     return plan
+
+
+async def test_old_news_on_a_coin_goes_to_review(env):
+    old = iso(datetime.now(UTC) - timedelta(hours=2))
+    res = await env.trader.handle_signal(sig(created_at=old))
+    assert res["action"] == "review" and res["reason"].startswith("The news is 2.0 h old")
+    assert not any(c[0] == "submit_crypto_buy" for c in env.broker.calls)
 
 
 async def test_buy_fills_then_gets_a_safety_stop_at_alpaca(env):

@@ -110,6 +110,8 @@ NOW = datetime(2026, 10, 7, 15, 0, tzinfo=UTC)
 @pytest.fixture
 async def env(ctx, monkeypatch):
     monkeypatch.setattr("newstrader.chart.service.utcnow", lambda: NOW)
+    # these signals' news is at the fixed NOW, so it would look days old to the fresh-data check (tested on its own)
+    ctx.config.update({"trading": {"max_news_age_minutes": 0}})
     broker = FakeBroker(prices={"AAPL": 100.0, "XYZ": 102.7})
     trader = Trader(ctx, broker_factory=lambda: broker)
     ctx.services["trader"] = trader
@@ -282,6 +284,9 @@ async def test_real_charts_end_to_end(ctx, monkeypatch, make, action, verdict):
     """Real bars -> the chart service -> confirm() -> the trader, downloading each chart once."""
     minutes, daily, now = make()
     monkeypatch.setattr("newstrader.chart.service.utcnow", lambda: now)
+    # The bars end at a fixed past `now`, so neither the news age nor the move since the news can be measured against
+    # the real clock here (before "fail closed", don't-chase silently skipped itself) - this tests the chart only.
+    ctx.config.update({"trading": {"max_news_age_minutes": 0, "max_chase_pct": 0}})
     broker = FakeBroker(prices={"XYZ": 103.0})
     broker.bar_data["XYZ"], broker.daily_data["XYZ"] = minutes, daily
     trader = Trader(ctx, broker_factory=lambda: broker)

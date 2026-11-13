@@ -143,6 +143,27 @@ class FreeMarketData:
         """Today's 1-minute bars (incl. pre/after-market) and the meta block, cached briefly."""
         return self._cached(("today", symbol.upper()), max_age, lambda: self.chart(symbol, "1m", "1d"))
 
+    def latest_price_info(self, symbol: str) -> tuple[float | None, datetime | None]:
+        """latest_price() plus when it was printed (UTC): the last 1-minute bar's start, or Yahoo's last-trade time
+        when that is later and the same price. (None, None) when there's no price."""
+        try:
+            meta, bars = self._today(symbol)
+        except Exception as exc:
+            log.debug("price for %s unavailable: %s", symbol, exc)
+            return None, None
+        traded_at = meta.get("regularMarketTime")
+        traded_at = datetime.fromtimestamp(int(traded_at), UTC) if isinstance(traded_at, int | float) else None
+        if bars:
+            stamp = bars[-1]["t"]
+            price, at = bars[-1]["c"], datetime.fromisoformat(stamp.replace("Z", "+00:00")) if stamp else None
+            meta_price = meta.get("regularMarketPrice")
+            if (traded_at is not None and at is not None and traded_at > at and meta_price
+                    and abs(float(meta_price) - price) < 1e-6):
+                at = traded_at
+            return price, at
+        price = meta.get("regularMarketPrice")
+        return (float(price), traded_at) if price else (None, None)
+
     def latest_price(self, symbol: str) -> float | None:
         try:
             meta, bars = self._today(symbol)
