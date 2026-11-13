@@ -1,0 +1,62 @@
+[
+ {
+  "url": "https://dexscreener.com/solana/3pcaygbryugyi6al74rbiw2x4grvjkswhcz2mvb2pump",
+  "chainId": "solana",
+  "tokenAddress": "3PcAYGBrYUGYi6aL74RbiW2X4GRVjKSwHCZ2Mvb2pump",
+  "icon": "https://cdn.dexscreener.com/cms/images/49bMWVg5bPVepXru?width=64&height=64&fit=crop&quality=95&format=auto",
+  "header": "https://cdn.dexscreener.com/cms/images/llI4Ng_LH3DYLty6?width=600&height=200&fit=crop&quality=95&format=auto",
+  "openGraph": "https://cdn.dexscreener.com/token-images/og/solana/3PcAYGBrYUGYi6aL74RbiW2X4GRVjKSwHCZ2Mvb2pump?timestamp=1794598800000",
+  "description": "",
+  "links": [
+   {
+    "label": "Website",
+    "url": "https://sdhumane.org/support/volunteer/dog-day-out/"
+   },
+   {
+    "type": "twitter",
+    "url": "https://x.com/imoffchain/status/2121316248927822047?a=W5fzIDqauZx4sL0a8Ig&s=20"
+   }
+  ],
+  "cto": false
+ },
+ {
+  "url": "https://dexscreener.com/solana/anyq8telpcstvejwvpxzgvthu2k5vxfzzemnnjfqpump",
+  "chainId": "solana",
+  "tokenAddress": "ANYq8tELPCSTvEjWVpxzgvtHu2K5vXFZZEmnNJfQpump",
+  "icon": "https://cdn.dexscreener.com/cms/images/2VDzooN8y-zsEtaO?width=64&height=64&fit=crop&quality=95&format=auto",
+  "header": "https://cdn.dexscreener.com/cms/images/kpNZCrvbDs7iOC_L?width=600&height=200&fit=crop&quality=95&format=auto",
+  "openGraph": "https://cdn.dexscreener.com/token-images/og/solana/ANYq8tELPCSTvEjWVpxzgvtHu2K5vXFZZEmnNJfQpump?timestamp=1794598800000",
+  "description": "Fees redirected to Zoo. The real one!",
+  "links": [
+   {
+    "label": "Website",
+    "url": "https://solscan.io/account/Bf2WTmxKznX1ceZCfLbVE9hbGcMXd1Zv4KLkfdTqWhMP"
+   },
+   {
+    "label": "Official Youtube",
+    "url": "https://www.youtube.com/shorts/erWGUV4l6mg"
+   }
+  ],
+  "cto": false
+ },
+ {
+  "url": "https://dexscreener.com/solana/hwya5cpqiqwlnjfjvrdf9o8ahaupnpmra3vfqrczpump",
+  "chainId": "solana",
+  "tokenAddress": "HWya5CpQiQWLnJfJVRDF9o8AHaUPnPMRa3vfQRczpump",
+  "icon": "https://cdn.dexscreener.com/cms/images/5p7_e0IAmXkXgSlp?width=64&height=64&fit=crop&quality=95&format=auto",
+  "header": "https://cdn.dexscreener.com/cms/images/nu3mOZGtlo6Rbfz1?width=600&height=200&fit=crop&quality=95&format=auto",
+  "openGraph": "https://cdn.dexscreener.com/token-images/og/solana/HWya5CpQiQWLnJfJVRDF9o8AHaUPnPMRa3vfQRczpump?timestamp=1794598800000",
+  "description": "Brews tea, waits patiently, then sends it.",
+  "links": [
+   {
+    "label": "Website",
+    "url": "https://amihaocat.space"
+   },
+   {
+    "type": "twitter",
+    "url": "https://x.com/amihaocat"
+   }
+  ],
+  "cto": false
+ }
+]

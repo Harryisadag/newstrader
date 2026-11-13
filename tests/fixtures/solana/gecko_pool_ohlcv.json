@@ -1,0 +1,34 @@
+{
+ "data": {
+  "id": "d92a64f1-9150-4cf1-8784-3d0544f856ca",
+  "type": "ohlcv_request_response",
+  "attributes": {
+   "ohlcv_list": [
+    [
+     1794598920,
+     2.2764830981255625e-06,
+     2.3177593414982314e-06
+    ],
+    [
+     1794598860,
+     2.2764830981255625e-06,
+     2.2764830981255625e-06
+    ]
+   ]
+  }
+ },
+ "meta": {
+  "base": {
+   "name": "Macca &amp; Friends",
+   "symbol": "M&amp;F",
+   "coingecko_coin_id": null,
+   "address": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d"
+  },
+  "quote": {
+   "name": "Wrapped SOL",
+   "symbol": "SOL",
+   "coingecko_coin_id": "wrapped-solana",
+   "address": "So11111111111111111111111111111111111111112"
+  }
+ }
+}

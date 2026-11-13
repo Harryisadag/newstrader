@@ -1,0 +1,42 @@
+{
+ "inputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+ "inAmount": "294320000000",
+ "outputMint": "So11111111111111111111111111111111111111112",
+ "outAmount": "99992125",
+ "otherAmountThreshold": "98992204",
+ "swapMode": "ExactIn",
+ "slippageBps": 100,
+ "platformFee": null,
+ "priceImpactPct": "0",
+ "routePlan": [
+  {
+   "swapInfo": {
+    "ammKey": "5zpyutJu9ee6jFymDGoK7F6S5Kczqtc9FomP3ueKuyA9",
+    "label": "Whirlpool",
+    "inputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "294320000000",
+    "outAmount": "99992125",
+    "updateContextSlot": "469047273"
+   },
+   "percent": 100,
+   "bps": null
+  }
+ ],
+ "contextSlot": 469047357,
+ "timeTaken": 0.004418237,
+ "swapUsdValue": "8.0069005187797314352875",
+ "mostReliableAmmsQuoteReport": {
+  "info": {
+   "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "99929712",
+   "8B8KYcFPMjZyDtJ1BENsqhW3fEmMrB4ekoEQJiM6z3SC": "TesseraV has been paused..."
+  }
+ },
+ "longtailMarketQuoteReport": null,
+ "useIncurredSlippageForQuoting": null,
+ "useRewards": null,
+ "otherRoutePlans": null,
+ "loadedLongtailToken": false,
+ "instructionVersion": null,
+ "transactionVersion": 0
+}

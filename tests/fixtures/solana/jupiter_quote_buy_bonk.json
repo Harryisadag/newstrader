@@ -1,0 +1,70 @@
+{
+ "inputMint": "So11111111111111111111111111111111111111112",
+ "inAmount": "100000000",
+ "outputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+ "outAmount": "294320000000",
+ "otherAmountThreshold": "291376800000",
+ "swapMode": "ExactIn",
+ "slippageBps": 100,
+ "platformFee": null,
+ "priceImpactPct": "0.0005544447568492692905025302",
+ "routePlan": [
+  {
+   "swapInfo": {
+    "ammKey": "Ckp1kwZqosaLU1h3zWtuaMBubyWM7LX3cxYezRVin7p2",
+    "label": "Whirlpool",
+    "inputMint": "So11111111111111111111111111111111111111112",
+    "outputMint": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+    "inAmount": "100000000",
+    "outAmount": "7224158",
+    "updateContextSlot": "469047348"
+   },
+   "percent": 100,
+   "bps": null
+  },
+  {
+   "swapInfo": {
+    "ammKey": "Daopjqyt5qZZ111x7MDbWbxtf72cdNEUnCECzZ7hVpbp",
+    "label": "GoonFi V2",
+    "inputMint": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "inAmount": "7224158",
+    "outAmount": "8012017",
+    "updateContextSlot": "469047352"
+   },
+   "percent": 100,
+   "bps": null
+  },
+  {
+   "swapInfo": {
+    "ammKey": "5ZWCKP2E8LqTUmo98xhq1YELjcqvxpNsv4xfzVbKGswc",
+    "label": "Scorch",
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    "inAmount": "8012017",
+    "outAmount": "294320000000",
+    "updateContextSlot": "469047357"
+   },
+   "percent": 100,
+   "bps": null
+  }
+ ],
+ "contextSlot": 469047357,
+ "timeTaken": 0.004639412,
+ "swapUsdValue": "8.007531111854790",
+ "mostReliableAmmsQuoteReport": {
+  "info": {
+   "8B8KYcFPMjZyDtJ1BENsqhW3fEmMrB4ekoEQJiM6z3SC": "TesseraV has been paused...",
+   "3C5YE97HADPDxZehYq9Cis8AXr9aNyrUsczKzE1nDbW9": "7991505",
+   "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "8005663",
+   "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "8015550"
+  }
+ },
+ "longtailMarketQuoteReport": null,
+ "useIncurredSlippageForQuoting": null,
+ "useRewards": null,
+ "otherRoutePlans": null,
+ "loadedLongtailToken": false,
+ "instructionVersion": null,
+ "transactionVersion": 0
+}

@@ -1,0 +1,51 @@
+{
+ "swapType": "aggregator",
+ "inAmount": "3514996623441",
+ "outAmount": "96796524",
+ "otherAmountThreshold": "96796524",
+ "swapMode": "ExactIn",
+ "slippageBps": 0,
+ "priceImpactPct": "-0.03203099955404779",
+ "routePlan": [
+  {
+   "percent": 100,
+   "bps": 10000,
+   "usdValue": 7.751054450118863,
+   "swapInfo": {
+    "ammKey": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+    "label": "Pump.fun",
+    "inputMint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "3514996623441",
+    "outAmount": "96893417"
+   }
+  }
+ ],
+ "feeMint": "So11111111111111111111111111111111111111112",
+ "feeBps": 10,
+ "platformFee": {
+  "feeBps": 10,
+  "feeMint": "So11111111111111111111111111111111111111112"
+ },
+ "signatureFeeLamports": 0,
+ "signatureFeePayer": null,
+ "prioritizationFeeLamports": 0,
+ "prioritizationFeePayer": null,
+ "rentFeeLamports": 0,
+ "rentFeePayer": null,
+ "transaction": null,
+ "gasless": false,
+ "jitOptimized": false,
+ "taker": null,
+ "inputMint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+ "outputMint": "So11111111111111111111111111111111111111112",
+ "router": "metis",
+ "guaranteedPrice": false,
+ "requestId": "01a1d66e-f99d-7252-b30f-a1a415c9740c",
+ "inUsdValue": 8.007544091337513,
+ "outUsdValue": 7.751054450118863,
+ "swapUsdValue": 7.751054450118863,
+ "priceImpact": -3.203099955404779,
+ "mode": "ultra",
+ "totalTime": 103
+}

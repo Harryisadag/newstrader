@@ -1,0 +1,38 @@
+[
+ {
+  "mint": "KM6j363LryQtiaHpo3ARCEixMAGzBZiKYhGYNifpump",
+  "decimals": 6,
+  "symbol": "criminal",
+  "creator": "CSnQ1SQNyJ9nCYiyfqXxPZuVvZ8rzA8NFUZdLubxtbe5",
+  "mintAuthority": "",
+  "freezeAuthority": "",
+  "program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "createAt": "2026-11-13T19:42:38.598234557Z",
+  "updatedAt": "2026-11-13T19:42:38.798036439Z",
+  "events": null
+ },
+ {
+  "mint": "92cJojvVvwzcaPzkwDw9VguYUw3i3oUaTAVa7D5423Ln",
+  "decimals": 9,
+  "symbol": "",
+  "creator": "7qLfNm22SDEgBWBiZ7d9s9ckQEzp9m59Yw4HdrDFAtTR",
+  "mintAuthority": "7qLfNm22SDEgBWBiZ7d9s9ckQEzp9m59Yw4HdrDFAtTR",
+  "freezeAuthority": "",
+  "program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "createAt": "2026-11-13T19:42:36.396490932Z",
+  "updatedAt": "2026-11-13T19:42:36.396666584Z",
+  "events": null
+ },
+ {
+  "mint": "AeSKU4DVNBXhQnwYRLCAi9T7okzz1PTazZh6MJqXpump",
+  "decimals": 6,
+  "symbol": "FROG",
+  "creator": "2QZk9UUYb7yBNS64taqZt15V96XvAToNy6ooXthz5iz7",
+  "mintAuthority": "",
+  "freezeAuthority": "",
+  "program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "createAt": "2026-11-13T19:42:35.333689489Z",
+  "updatedAt": "2026-11-13T19:42:35.352294538Z",
+  "events": null
+ }
+]

@@ -1,0 +1,181 @@
+[
+ {
+  "id": "KM6j363LryQtiaHpo3ARCEixMAGzBZiKYhGYNifpump",
+  "name": "criminal",
+  "symbol": "criminal",
+  "icon": "https://ipfs.io/ipfs/bafkreigslgaae2mtnw5xbqskft5ykwtnkk5dn52f7fty46tysf6x7upx5i",
+  "decimals": 6,
+  "dev": "CSnQ1SQNyJ9nCYiyfqXxPZuVvZ8rzA8NFUZdLubxtbe5",
+  "circSupply": 1000000000,
+  "totalSupply": 1000000000,
+  "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "launchpad": "pump.fun",
+  "fdv": 2249.849494753478,
+  "mcap": 2249.849494753478,
+  "usdPrice": 2.2498494947534784e-06,
+  "priceBlockId": 469047352,
+  "stats5m": {
+   "buyVolume": 12.133649907419068,
+   "numBuys": 1
+  },
+  "stats1h": {
+   "buyVolume": 12.133649907419068,
+   "numBuys": 1
+  },
+  "stats6h": {
+   "buyVolume": 12.133649907419068,
+   "numBuys": 1
+  },
+  "stats24h": {
+   "buyVolume": 12.133649907419068,
+   "numBuys": 1
+  },
+  "firstPool": {
+   "id": "KM6j363LryQtiaHpo3ARCEixMAGzBZiKYhGYNifpump",
+   "createdAt": "2026-11-13T19:42:38Z"
+  },
+  "audit": {
+   "mintAuthorityDisabled": true,
+   "freezeAuthorityDisabled": true,
+   "devBalancePercentage": 0.5393094042829999,
+   "devMigrations": 37,
+   "devMints": 3361
+  },
+  "organicScore": 0,
+  "organicScoreLabel": "low",
+  "createdAt": "2026-11-13T19:42:38Z",
+  "updatedAt": "2026-11-13T19:42:39.226699476Z"
+ },
+ {
+  "id": "CD1Z5rBFWg6fXJ98391opD6xsMmrojvLQ2mqi3Dcpump",
+  "name": "Soljack",
+  "symbol": "$SLJK",
+  "icon": "https://static.datapi.jup.ag/token-icons/1d688b596fcb58b6d6f6bbd6a91106fc5ff4b80ce4a7aa773abd844123d3eb7f.webp",
+  "decimals": 6,
+  "dev": "GTfDYnrbvTRqmxR4Ytu1XgHbhGEdWSUH58wopFbNc4T",
+  "circSupply": 1000000000,
+  "totalSupply": 2000000000,
+  "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "launchpad": "pump.fun",
+  "holderCount": 3,
+  "fdv": 4543.7830779462565,
+  "mcap": 2271.8915389731283,
+  "usdPrice": 2.2718915389731284e-06,
+  "priceBlockId": 469047346,
+  "liquidity": 2014.7426556822752,
+  "stats5m": {
+   "priceChange": 0.673276368107792,
+   "buyVolume": 19.481815846449898,
+   "sellVolume": 3.3099603866575737,
+   "numBuys": 1,
+   "numSells": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats1h": {
+   "priceChange": 0.673276368107792,
+   "buyVolume": 19.481815846449898,
+   "sellVolume": 3.3099603866575737,
+   "numBuys": 1,
+   "numSells": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats6h": {
+   "priceChange": 0.673276368107792,
+   "buyVolume": 19.481815846449898,
+   "sellVolume": 3.3099603866575737,
+   "numBuys": 1,
+   "numSells": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats24h": {
+   "priceChange": 0.673276368107792,
+   "buyVolume": 19.481815846449898,
+   "sellVolume": 3.3099603866575737,
+   "numBuys": 1,
+   "numSells": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "firstPool": {
+   "id": "CD1Z5rBFWg6fXJ98391opD6xsMmrojvLQ2mqi3Dcpump",
+   "createdAt": "2026-11-13T19:42:34Z"
+  },
+  "audit": {
+   "mintAuthorityDisabled": true,
+   "freezeAuthorityDisabled": true,
+   "devBalancePercentage": 0.43164433627599996,
+   "devMigrations": 1,
+   "devMints": 366
+  },
+  "organicScore": 0,
+  "organicScoreLabel": "low",
+  "tags": [
+   "unknown",
+   "token-2022"
+  ],
+  "createdAt": "2026-11-13T19:42:34Z",
+  "updatedAt": "2026-11-13T19:42:39.101573098Z"
+ },
+ {
+  "id": "AeSKU4DVNBXhQnwYRLCAi9T7okzz1PTazZh6MJqXpump",
+  "name": "PeteFroggin",
+  "symbol": "FROG",
+  "icon": "https://static.datapi.jup.ag/token-icons/542a33f555ffc11a2b4c68123bf5db82550081aeb7949907407a8c9476f1f575.webp",
+  "decimals": 6,
+  "dev": "2QZk9UUYb7yBNS64taqZt15V96XvAToNy6ooXthz5iz7",
+  "circSupply": 1000000000,
+  "totalSupply": 1000000000,
+  "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "launchpad": "pump.fun",
+  "holderCount": 2,
+  "fdv": 2256.9275366653324,
+  "mcap": 2256.9275366653324,
+  "usdPrice": 2.2569275366653324e-06,
+  "priceBlockId": 469047336,
+  "stats5m": {
+   "buyVolume": 19.728400770737565,
+   "numBuys": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats1h": {
+   "buyVolume": 19.728400770737565,
+   "numBuys": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats6h": {
+   "buyVolume": 19.728400770737565,
+   "numBuys": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "stats24h": {
+   "buyVolume": 19.728400770737565,
+   "numBuys": 1,
+   "numTraders": 1,
+   "numNetBuyers": 1
+  },
+  "firstPool": {
+   "id": "AeSKU4DVNBXhQnwYRLCAi9T7okzz1PTazZh6MJqXpump",
+   "createdAt": "2026-11-13T19:42:34Z"
+  },
+  "audit": {
+   "mintAuthorityDisabled": true,
+   "freezeAuthorityDisabled": true,
+   "devBalancePercentage": 0.8741264595445,
+   "devMints": 8
+  },
+  "organicScore": 0,
+  "organicScoreLabel": "low",
+  "tags": [
+   "unknown",
+   "token-2022"
+  ],
+  "createdAt": "2026-11-13T19:42:34Z",
+  "updatedAt": "2026-11-13T19:42:36.226405905Z"
+ }
+]

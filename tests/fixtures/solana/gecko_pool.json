@@ -1,0 +1,103 @@
+{
+ "data": {
+  "id": "solana_9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+  "type": "pool",
+  "attributes": {
+   "base_token_price_usd": "0.00000228216080378014158423037637300251506432432625967620036398853776",
+   "base_token_price_native_currency": "0.0000000284675786158043",
+   "quote_token_price_usd": "80.167015065803918649959952809044548753606160496",
+   "quote_token_price_native_currency": "1.0",
+   "base_token_price_quote_token": "0.00000002846757862",
+   "quote_token_price_base_token": "35127680.281344",
+   "address": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+   "name": "M&amp;F / SOL",
+   "pool_name": "M&amp;F / SOL",
+   "pool_fee_percentage": null,
+   "pool_created_at": "2026-11-13T19:41:57Z",
+   "fdv_usd": "2282.160804",
+   "market_cap_usd": null,
+   "price_change_percentage": {
+    "m5": "0.249",
+    "m15": "0.249",
+    "m30": "0.249",
+    "h1": "0.249",
+    "h6": "0.249",
+    "h24": "0.249"
+   },
+   "transactions": {
+    "m5": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    },
+    "m15": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    },
+    "m30": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    },
+    "h1": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    },
+    "h6": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    },
+    "h24": {
+     "buys": 2,
+     "sells": 1,
+     "buyers": 2,
+     "sellers": 1
+    }
+   },
+   "volume_usd": {
+    "m5": "81.3091696018",
+    "m15": "81.3091696018",
+    "m30": "81.3091696018",
+    "h1": "81.3091696018",
+    "h6": "81.3091696018",
+    "h24": "81.3091696018"
+   },
+   "reserve_in_usd": "1810.0009",
+   "locked_liquidity_percentage": null,
+   "launchpad_details": {
+    "graduation_percentage": 0.11,
+    "completed": false,
+    "completed_at": null,
+    "migrated_destination_pool_address": null
+   }
+  },
+  "relationships": {
+   "base_token": {
+    "data": {
+     "id": "solana_5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+     "type": "token"
+    }
+   },
+   "quote_token": {
+    "data": {
+     "id": "solana_So11111111111111111111111111111111111111112",
+     "type": "token"
+    }
+   },
+   "dex": {
+    "data": {
+     "id": "pump-fun",
+     "type": "dex"
+    }
+   }
+  }
+ }
+}

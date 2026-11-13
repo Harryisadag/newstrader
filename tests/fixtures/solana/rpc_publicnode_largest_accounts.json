@@ -1,0 +1,8 @@
+{
+ "jsonrpc": "2.0",
+ "error": {
+  "code": -32602,
+  "message": "Indexed requests require a personal token. Get one at: https://www.allnodes.com/publicnode"
+ },
+ "id": 1
+}

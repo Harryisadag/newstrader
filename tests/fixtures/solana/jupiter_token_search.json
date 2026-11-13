@@ -1,0 +1,75 @@
+[
+ {
+  "id": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+  "name": "Macca & Friends",
+  "symbol": "M&F",
+  "icon": "https://static.datapi.jup.ag/token-icons/2569639f122f154029d9900ec51b4a33a5110402457f98c7eea722c8953a9526.webp",
+  "decimals": 6,
+  "twitter": "https://twitter.com/MetroUK/status/2121327673620250998",
+  "dev": "4tu57EX6x3WV21q9ZSGejKWkXrQPTst3iQDDg1yNqS9x",
+  "circSupply": 1000000000,
+  "totalSupply": 1000000000,
+  "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "launchpad": "pump.fun",
+  "holderCount": 2,
+  "fdv": 2278.108615506589,
+  "mcap": 2278.108615506589,
+  "usdPrice": 2.278108615506589e-06,
+  "priceBlockId": 469047228,
+  "liquidity": 2402.764994762665,
+  "stats5m": {
+   "priceChange": 0.17014799301471115,
+   "buyVolume": 41.61045767662541,
+   "sellVolume": 39.58559566468315,
+   "numBuys": 2,
+   "numSells": 1,
+   "numTraders": 2,
+   "numNetBuyers": 1
+  },
+  "stats1h": {
+   "priceChange": 0.17014799301471115,
+   "buyVolume": 41.61045767662541,
+   "sellVolume": 39.58559566468315,
+   "numBuys": 2,
+   "numSells": 1,
+   "numTraders": 2,
+   "numNetBuyers": 1
+  },
+  "stats6h": {
+   "priceChange": 0.17014799301471115,
+   "buyVolume": 41.61045767662541,
+   "sellVolume": 39.58559566468315,
+   "numBuys": 2,
+   "numSells": 1,
+   "numTraders": 2,
+   "numNetBuyers": 1
+  },
+  "stats24h": {
+   "priceChange": 0.17014799301471115,
+   "buyVolume": 41.61045767662541,
+   "sellVolume": 39.58559566468315,
+   "numBuys": 2,
+   "numSells": 1,
+   "numTraders": 2,
+   "numNetBuyers": 1
+  },
+  "firstPool": {
+   "id": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+   "createdAt": "2026-11-13T19:41:57Z"
+  },
+  "audit": {
+   "mintAuthorityDisabled": true,
+   "freezeAuthorityDisabled": true,
+   "topHoldersPercentage": 1.7376518132293,
+   "devMints": 3
+  },
+  "organicScore": 0,
+  "organicScoreLabel": "low",
+  "tags": [
+   "unknown",
+   "token-2022"
+  ],
+  "createdAt": "2026-11-13T19:41:57Z",
+  "updatedAt": "2026-11-13T19:42:19.239167143Z"
+ }
+]

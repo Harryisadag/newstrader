@@ -1,0 +1,313 @@
+{
+ "data": [
+  {
+   "id": "solana_9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+   "type": "pool",
+   "attributes": {
+    "base_token_price_usd": "0.00000227648309812556254551918238314470665621199860681358652863086595",
+    "base_token_price_native_currency": null,
+    "quote_token_price_usd": "80.103633652999182339311696004075402796571134285",
+    "quote_token_price_native_currency": null,
+    "base_token_price_quote_token": null,
+    "quote_token_price_base_token": null,
+    "address": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+    "name": "M&amp;F / SOL",
+    "pool_created_at": "2026-11-13T19:41:57Z",
+    "fdv_usd": "2276.483098",
+    "market_cap_usd": null,
+    "price_change_percentage": {
+     "m5": "0",
+     "m15": "0",
+     "m30": "0",
+     "h1": "0",
+     "h6": "0",
+     "h24": "0"
+    },
+    "transactions": {
+     "m5": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     },
+     "m15": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     },
+     "m30": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     },
+     "h1": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     },
+     "h6": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     },
+     "h24": {
+      "buys": 1,
+      "sells": 0,
+      "buyers": 1,
+      "sellers": 0
+     }
+    },
+    "volume_usd": {
+     "m5": "39.5573498324",
+     "m15": "39.5573498324",
+     "m30": "39.5573498324",
+     "h1": "39.5573498324",
+     "h6": "39.5573498324",
+     "h24": "39.5573498324"
+    },
+    "reserve_in_usd": null
+   },
+   "relationships": {
+    "base_token": {
+     "data": {
+      "id": "solana_5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+      "type": "token"
+     }
+    },
+    "quote_token": {
+     "data": {
+      "id": "solana_So11111111111111111111111111111111111111112",
+      "type": "token"
+     }
+    },
+    "dex": {
+     "data": {
+      "id": "pump-fun",
+      "type": "dex"
+     }
+    }
+   }
+  },
+  {
+   "id": "solana_H1hyMiuYkXr2M2Zq4RNEqZc1KskBYTovEu7yaq8T9RhR",
+   "type": "pool",
+   "attributes": {
+    "base_token_price_usd": "0.0000030759485303737672055797847675157155192930205696052416830298424",
+    "base_token_price_native_currency": null,
+    "quote_token_price_usd": "80.16611755438245434190584632033533792896946068",
+    "quote_token_price_native_currency": null,
+    "base_token_price_quote_token": null,
+    "quote_token_price_base_token": null,
+    "address": "H1hyMiuYkXr2M2Zq4RNEqZc1KskBYTovEu7yaq8T9RhR",
+    "name": "Good Day / SOL",
+    "pool_created_at": "2026-11-13T19:41:56Z",
+    "fdv_usd": "6733.147006",
+    "market_cap_usd": null,
+    "price_change_percentage": {
+     "m5": "0",
+     "m15": "0",
+     "m30": "0",
+     "h1": "0",
+     "h6": "0",
+     "h24": "0"
+    },
+    "transactions": {
+     "m5": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     },
+     "m15": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     },
+     "m30": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     },
+     "h1": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     },
+     "h6": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     },
+     "h24": {
+      "buys": 0,
+      "sells": 1,
+      "buyers": 0,
+      "sellers": 1
+     }
+    },
+    "volume_usd": {
+     "m5": "1.5254785398",
+     "m15": "1.5254785398",
+     "m30": "1.5254785398",
+     "h1": "1.5254785398",
+     "h6": "1.5254785398",
+     "h24": "1.5254785398"
+    },
+    "reserve_in_usd": null
+   },
+   "relationships": {
+    "base_token": {
+     "data": {
+      "id": "solana_CtH6BbNRyaKuc1Mp4RThPQ8c9TdXp93b2Dc99ZRQpump",
+      "type": "token"
+     }
+    },
+    "quote_token": {
+     "data": {
+      "id": "solana_So11111111111111111111111111111111111111112",
+      "type": "token"
+     }
+    },
+    "dex": {
+     "data": {
+      "id": "pump-fun",
+      "type": "dex"
+     }
+    }
+   }
+  },
+  {
+   "id": "solana_GeP9iaYZWjCsejZe2kpistPWvNuQGaMESWCHFRNnRh7c",
+   "type": "pool",
+   "attributes": {
+    "base_token_price_usd": "0.00000566744193414211137260925358242143127205248182179798557461812716",
+    "base_token_price_native_currency": null,
+    "quote_token_price_usd": "80.166116809485798969369431851340800160359981017",
+    "quote_token_price_native_currency": null,
+    "base_token_price_quote_token": null,
+    "quote_token_price_base_token": null,
+    "address": "GeP9iaYZWjCsejZe2kpistPWvNuQGaMESWCHFRNnRh7c",
+    "name": "Sakura / SOL",
+    "pool_created_at": "2026-11-13T19:41:55Z",
+    "fdv_usd": "5661.720041",
+    "market_cap_usd": null,
+    "price_change_percentage": {
+     "m5": "0.075",
+     "m15": "0.075",
+     "m30": "0.075",
+     "h1": "0.075",
+     "h6": "0.075",
+     "h24": "0.075"
+    },
+    "transactions": {
+     "m5": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     },
+     "m15": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     },
+     "m30": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     },
+     "h1": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     },
+     "h6": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     },
+     "h24": {
+      "buys": 7,
+      "sells": 0,
+      "buyers": 6,
+      "sellers": 0
+     }
+    },
+    "volume_usd": {
+     "m5": "1.7518663078",
+     "m15": "1.7518663078",
+     "m30": "1.7518663078",
+     "h1": "1.7518663078",
+     "h6": "1.7518663078",
+     "h24": "1.7518663078"
+    },
+    "reserve_in_usd": null
+   },
+   "relationships": {
+    "base_token": {
+     "data": {
+      "id": "solana_4vPaMXGATRDRWZ17sK4JnwUV4jhKZV3TrsGiCXWWiXp9",
+      "type": "token"
+     }
+    },
+    "quote_token": {
+     "data": {
+      "id": "solana_So11111111111111111111111111111111111111112",
+      "type": "token"
+     }
+    },
+    "dex": {
+     "data": {
+      "id": "pumpswap",
+      "type": "dex"
+     }
+    }
+   }
+  }
+ ],
+ "included": [
+  {
+   "id": "solana_5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+   "type": "token",
+   "attributes": {
+    "address": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+    "name": "Macca &amp; Friends",
+    "symbol": "M&amp;F",
+    "decimals": 6,
+    "image_url": "https://assets.geckoterminal.com/ile5lel0sh9po5z5wb84v3jw6x58",
+    "coingecko_coin_id": null
+   }
+  },
+  {
+   "id": "pump-fun",
+   "type": "dex",
+   "attributes": {
+    "name": "Pump.fun"
+   }
+  },
+  {
+   "id": "solana_CtH6BbNRyaKuc1Mp4RThPQ8c9TdXp93b2Dc99ZRQpump",
+   "type": "token",
+   "attributes": {
+    "address": "CtH6BbNRyaKuc1Mp4RThPQ8c9TdXp93b2Dc99ZRQpump",
+    "name": "Good Day",
+    "symbol": "Good Day",
+    "decimals": 6,
+    "image_url": null,
+    "coingecko_coin_id": null
+   }
+  }
+ ]
+}

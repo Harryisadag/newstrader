@@ -1,0 +1,216 @@
+{
+ "mint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+ "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+ "creator": "4tu57EX6x3WV21q9ZSGejKWkXrQPTst3iQDDg1yNqS9x",
+ "creatorBalance": 0,
+ "token": {
+  "mintAuthority": null,
+  "supply": 1000000000000000,
+  "decimals": 6,
+  "isInitialized": true,
+  "freezeAuthority": null
+ },
+ "token_extensions": {
+  "nonTransferable": false,
+  "transferFeeConfig": null,
+  "defaultAccountState": null,
+  "permanentDelegate": null,
+  "metadataPointer": {
+   "authority": null,
+   "metadataAddress": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d"
+  },
+  "groupPointer": null,
+  "groupMemberPointer": null,
+  "tokenMetadata": {
+   "authority": null,
+   "mint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+   "name": "Macca & Friends",
+   "symbol": "M&F",
+   "uri": "https://metadata.j7tracker.io/metadata/c4a78176577f4d1b.json",
+   "additionalMetadata": {}
+  },
+  "mintCloseAuthority": null,
+  "confidentialTransferMint": null,
+  "interestBearingConfig": null,
+  "transferHook": null,
+  "confidentialTransferFeeConfig": null,
+  "tokenGroup": null,
+  "tokenGroupMember": null,
+  "scaledUiAmountConfig": null,
+  "pausableConfig": null
+ },
+ "tokenMeta": {
+  "name": "Macca & Friends",
+  "symbol": "M&F",
+  "uri": "https://metadata.j7tracker.io/metadata/c4a78176577f4d1b.json",
+  "mutable": false,
+  "updateAuthority": "11111111111111111111111111111111"
+ },
+ "topHolders": [
+  {
+   "address": "7d8mCLpKEyhCNNpxG9kjzZANEroSwKvVZb4jY1Apg5w3",
+   "amount": 999095759795168,
+   "decimals": 6,
+   "pct": 99.9095759795168,
+   "uiAmount": 999095759.795168,
+   "uiAmountString": "999095759.795168",
+   "owner": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+   "insider": false
+  },
+  {
+   "address": "ASPPxaDgfiFBpiwTdV35jdGtM5sg7hhr5cjdDGTT8sqX",
+   "amount": 904240204832,
+   "decimals": 6,
+   "pct": 0.0904240204832,
+   "uiAmount": 904240.204832,
+   "uiAmountString": "904240.204832",
+   "owner": "8t8oyQFoDtuJ1rcZw8j54sMLHwaYTs8WM2BZYVWVPXmu",
+   "insider": false
+  },
+  {
+   "address": "G54NRUsnD6wmCFfhR28EW8Zk5b5wRa8CiKavdPCQBgR",
+   "amount": 0,
+   "decimals": 6,
+   "pct": 0,
+   "uiAmount": 0,
+   "uiAmountString": "0",
+   "owner": "4tu57EX6x3WV21q9ZSGejKWkXrQPTst3iQDDg1yNqS9x",
+   "insider": false
+  }
+ ],
+ "freezeAuthority": null,
+ "mintAuthority": null,
+ "risks": [],
+ "score": 1,
+ "score_normalised": 1,
+ "fileMeta": {
+  "description": "",
+  "name": "Macca & Friends",
+  "symbol": "M&F",
+  "image": "https://axiomtrading-v2.axiom-cdn.io/724AMeMtZZQ5KmPMzqnPY5bixBoZA9hSHn2p886Lpump.webp"
+ },
+ "lockerOwners": {},
+ "lockers": {},
+ "lockerScanStatus": "none",
+ "markets": [
+  {
+   "pubkey": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+   "marketType": "pump_fun",
+   "mintA": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+   "mintB": "So11111111111111111111111111111111111111112",
+   "mintLP": "11111111111111111111111111111111",
+   "liquidityA": "GisPC49eS5Z8oKtMWeDJudABXamF92z1conTrbaiTyh9",
+   "liquidityB": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+   "mintAAccount": {
+    "mintAuthority": null,
+    "supply": 1000000000000000,
+    "decimals": 6,
+    "isInitialized": true,
+    "freezeAuthority": null
+   },
+   "mintBAccount": {
+    "mintAuthority": null,
+    "supply": 0,
+    "decimals": 9,
+    "isInitialized": false,
+    "freezeAuthority": null
+   },
+   "mintLPAccount": {
+    "mintAuthority": null,
+    "supply": 0,
+    "decimals": 0,
+    "isInitialized": false,
+    "freezeAuthority": null
+   },
+   "liquidityAAccount": {
+    "mint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+    "owner": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+    "amount": 792195759795168,
+    "delegate": null,
+    "state": 0,
+    "delegatedAmount": 0,
+    "closeAuthority": null
+   },
+   "liquidityBAccount": {
+    "mint": "So11111111111111111111111111111111111111112",
+    "owner": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+    "amount": 25302972,
+    "delegate": null,
+    "state": 0,
+    "delegatedAmount": 0,
+    "closeAuthority": null
+   },
+   "lp": {
+    "baseMint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+    "quoteMint": "So11111111111111111111111111111111111111112",
+    "lpMint": "11111111111111111111111111111111",
+    "quotePrice": 80.10383295903335,
+    "basePrice": 0,
+    "base": 792195759.795168,
+    "quote": 0.025302972,
+    "reserveSupply": 25302972,
+    "currentSupply": 0,
+    "quoteUSD": 2.026865042455098,
+    "baseUSD": 0,
+    "pctReserve": 0,
+    "pctSupply": 0,
+    "holders": null,
+    "totalTokensUnlocked": 0,
+    "tokenSupply": 0,
+    "lpLocked": 25302972,
+    "lpUnlocked": 0,
+    "lpLockedPct": 100,
+    "lpLockedUSD": 2.026865042455098,
+    "lpMaxSupply": 0,
+    "lpCurrentSupply": 0,
+    "lpTotalSupply": 25302972
+   }
+  }
+ ],
+ "totalMarketLiquidity": 2.026865042455098,
+ "totalStableLiquidity": 2.026865042455098,
+ "totalLPProviders": 0,
+ "totalHolders": 3,
+ "price": 0,
+ "rugged": false,
+ "tokenType": "",
+ "transferFee": {
+  "pct": 0,
+  "maxAmount": 0,
+  "authority": "11111111111111111111111111111111"
+ },
+ "knownAccounts": {
+  "4tu57EX6x3WV21q9ZSGejKWkXrQPTst3iQDDg1yNqS9x": {
+   "name": "Creator",
+   "type": "CREATOR"
+  },
+  "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno": {
+   "name": "Pump Fun",
+   "type": "AMM"
+  },
+  "DbNJA2rJF7L8EhdNFwuJNxcTbgtzCUc8pzdypQ9wnr4i": {
+   "name": "Printr Stake Pool",
+   "type": "LOCKER"
+  },
+  "GisPC49eS5Z8oKtMWeDJudABXamF92z1conTrbaiTyh9": {
+   "name": "Pump Fun",
+   "type": "AMM"
+  }
+ },
+ "events": [],
+ "verification": null,
+ "validation": {
+  "validated": false
+ },
+ "graphInsidersDetected": 0,
+ "insiderNetworks": null,
+ "detectedAt": "2026-11-13T19:41:58.010591179Z",
+ "creatorTokens": null,
+ "launchpad": {
+  "name": "Pump.Fun",
+  "logo": "https://api.rugcheck.xyz/public/logos/pump_fun.png",
+  "url": "https://x.com/pumpfun",
+  "platform": "pump_fun"
+ },
+ "deployPlatform": "unknown"
+}

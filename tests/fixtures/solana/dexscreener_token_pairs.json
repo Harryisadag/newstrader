@@ -1,0 +1,48 @@
+[
+ {
+  "chainId": "solana",
+  "dexId": "pumpfun",
+  "url": "https://dexscreener.com/solana/9lvrh9mvynkfgbwz1fzhgyusqjzrsi1f5cftnddxdwno",
+  "pairAddress": "9Lvrh9mvYnKfgbWZ1fzHGyusqJZrSi1f5cfTNDdxDWno",
+  "baseToken": {
+   "address": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+   "name": "Macca & Friends",
+   "symbol": "M&F"
+  },
+  "quoteToken": {
+   "address": "So11111111111111111111111111111111111111112",
+   "name": "Wrapped SOL",
+   "symbol": "SOL"
+  },
+  "priceNative": "0.00000002888",
+  "priceUsd": "0.000002312",
+  "txns": {
+   "m5": {
+    "buys": 1,
+    "sells": 0
+   },
+   "h1": {
+    "buys": 1,
+    "sells": 0
+   },
+   "h6": {
+    "buys": 1,
+    "sells": 0
+   },
+   "h24": {
+    "buys": 1,
+    "sells": 0
+   }
+  },
+  "volume": {
+   "h24": 39.53,
+   "h6": 39.53,
+   "h1": 39.53,
+   "m5": 39.53
+  },
+  "priceChange": {},
+  "fdv": 2312.7,
+  "marketCap": 2312.7,
+  "pairCreatedAt": 1794598917000
+ }
+]

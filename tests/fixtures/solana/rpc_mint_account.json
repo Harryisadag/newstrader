@@ -1,0 +1,51 @@
+{
+ "jsonrpc": "2.0",
+ "result": {
+  "context": {
+   "apiVersion": "4.4.0",
+   "slot": 469047353
+  },
+  "value": {
+   "data": {
+    "parsed": {
+     "info": {
+      "decimals": 6,
+      "extensions": [
+       {
+        "extension": "metadataPointer",
+        "state": {
+         "authority": null,
+         "metadataAddress": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d"
+        }
+       },
+       {
+        "extension": "tokenMetadata",
+        "state": {
+         "additionalMetadata": [],
+         "mint": "5N3r46YNyCuCsTsVZ4LXnzZuNqgJQ15pWm2cvemcrw5d",
+         "name": "Macca & Friends",
+         "symbol": "M&F",
+         "updateAuthority": null,
+         "uri": "https://metadata.j7tracker.io/metadata/c4a78176577f4d1b.json"
+        }
+       }
+      ],
+      "freezeAuthority": null,
+      "isInitialized": true,
+      "mintAuthority": null,
+      "supply": "1000000000000000"
+     },
+     "type": "mint"
+    },
+    "program": "spl-token-2022",
+    "space": 396
+   },
+   "executable": false,
+   "lamports": 2661920,
+   "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+   "rentEpoch": 18446744073709551615,
+   "space": 396
+  }
+ },
+ "id": 1
+}
