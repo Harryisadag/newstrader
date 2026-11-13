@@ -163,6 +163,45 @@ def main() -> int:
                  json={"jsonrpc": "2.0", "id": 1, "method": "getTokenLargestAccounts", "params": [mint]})
         time.sleep(3)
         rpc(c, rep, "rpc_largest_accounts_retry", "getTokenLargestAccounts", [mint], "Solana RPC: retry after 3 s")
+        # 3c. what the first desk build still needed
+        if pool:
+            call(c, rep, "gecko_pools_multi", "GET",
+                 f"https://api.geckoterminal.com/api/v2/networks/solana/pools/multi/{pool}",
+                 "GeckoTerminal: several pools in one call (follow-ups)")
+        rpc(c, rep, "rpc_owner_BwWK", "getAccountInfo",
+            ["BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s", {"encoding": "jsonParsed"}],
+            "Solana RPC: the wallet that held ~50% of new pump.fun coins (what is it?)")
+        grad = None
+        for p in (call(c, rep, "gecko_trending_pumpswap", "GET",
+                       "https://api.geckoterminal.com/api/v2/networks/solana/dexes/pumpswap/pools",
+                       "GeckoTerminal: graduated pump.fun coins (PumpSwap pools)", params={"page": 1}) or {}).get("data", []):
+            base = (p.get("relationships", {}).get("base_token", {}).get("data") or {}).get("id", "")
+            if base.startswith("solana_") and base != f"solana_{SOL}":
+                grad = base.removeprefix("solana_")
+                break
+        if grad:
+            time.sleep(2)
+            gq = call(c, rep, "jupiter_quote_buy_graduated", "GET", "https://lite-api.jup.ag/swap/v1/quote",
+                      f"Jupiter: 0.1 SOL -> graduated coin {grad}",
+                      params={"inputMint": SOL, "outputMint": grad, "amount": 100_000_000, "slippageBps": 500})
+            time.sleep(2)
+            if (gq or {}).get("outAmount"):
+                call(c, rep, "jupiter_quote_sell_graduated", "GET", "https://lite-api.jup.ag/swap/v1/quote",
+                     "Jupiter: all of it back -> SOL (graduated coin)",
+                     params={"inputMint": grad, "outputMint": SOL, "amount": gq["outAmount"], "slippageBps": 500})
+            time.sleep(1)
+            call(c, rep, "rugcheck_report_graduated", "GET", f"https://api.rugcheck.xyz/v1/tokens/{grad}/report",
+                 "RugCheck: full report for a graduated coin (lockers, insider networks)")
+        # Jupiter's 429: does it say when to retry?
+        r429 = None
+        for _ in range(8):
+            r429 = c.get("https://lite-api.jup.ag/price/v3", params={"ids": SOL})
+            if r429.status_code == 429:
+                break
+        if r429 is not None:
+            hdrs = {k: v for k, v in r429.headers.items() if "retry" in k.lower() or "ratelimit" in k.lower()}
+            rep.add("jupiter_429_headers", r429.status_code, 0, json.dumps(hdrs).encode(),
+                    "Jupiter: rate-limit headers after a burst of calls")
         # 4. third-party risk report (LP lock, creator, insiders)
         call(c, rep, "rugcheck_report", "GET", f"https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary",
              "RugCheck: summary report")
