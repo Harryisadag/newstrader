@@ -412,6 +412,109 @@ MIGRATIONS: list[str] = [
     """
     CREATE INDEX idx_ml_samples_text ON ml_samples(text_version, published_at);
     """,
+    # 17 - the Solana memecoin desk (PAPER ONLY). sol_candidates: every coin the entry trigger picked, what the
+    # checklist decided (status queued | checking | rejected | bought | skipped | expired, killer_gate 1-7) and the
+    # reject audit's follow-ups 1 hour and 24 hours later (outcome ran | rugged). sol_gate_results: every gate result
+    # of every attempt (step = the order the gates ran in). sol_positions / sol_fills: the paper wallet's positions and
+    # pretend fills, in SOL (raw token amounts are text: they can be bigger than SQLite's integers). wallet = which
+    # paper wallet (a reset starts a new one; older ones show as "old wallet"). sol_state: the wallet, pause, halt.
+    """
+    CREATE TABLE sol_candidates (
+        id INTEGER PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        wallet INTEGER,
+        pool TEXT NOT NULL,
+        mint TEXT NOT NULL,
+        symbol TEXT,
+        name TEXT,
+        dex TEXT,
+        pool_created_at TEXT,
+        signal_price_usd REAL,
+        signal_price_sol REAL,
+        signal_liquidity_usd REAL,
+        signal_fdv_usd REAL,
+        trigger TEXT,
+        status TEXT NOT NULL,
+        killer_gate INTEGER,
+        reason TEXT,
+        size_factor REAL,
+        attempts INTEGER DEFAULT 0,
+        started_at TEXT,
+        finished_at TEXT,
+        position_id INTEGER,
+        price_1h_usd REAL,
+        liquidity_1h_usd REAL,
+        checked_1h_at TEXT,
+        price_24h_usd REAL,
+        liquidity_24h_usd REAL,
+        checked_24h_at TEXT,
+        rugged_later INTEGER,
+        outcome TEXT
+    );
+    CREATE UNIQUE INDEX idx_sol_candidates_pool ON sol_candidates(pool);
+    CREATE INDEX idx_sol_candidates_mint ON sol_candidates(mint, created_at);
+    CREATE INDEX idx_sol_candidates_created ON sol_candidates(created_at);
+    CREATE TABLE sol_gate_results (
+        id INTEGER PRIMARY KEY,
+        candidate_id INTEGER NOT NULL,
+        attempt INTEGER NOT NULL,
+        step INTEGER NOT NULL,
+        gate INTEGER NOT NULL,
+        name TEXT,
+        passed INTEGER NOT NULL,
+        reason TEXT,
+        checked_at TEXT,
+        data TEXT
+    );
+    CREATE INDEX idx_sol_gates_candidate ON sol_gate_results(candidate_id, attempt);
+    CREATE TABLE sol_positions (
+        id INTEGER PRIMARY KEY,
+        wallet INTEGER NOT NULL,
+        candidate_id INTEGER,
+        mint TEXT NOT NULL,
+        pool TEXT,
+        symbol TEXT,
+        decimals INTEGER,
+        opened_at TEXT NOT NULL,
+        sol_in REAL,
+        tokens TEXT,
+        entry_price_sol REAL,
+        peak_value_sol REAL,
+        value_sol REAL,
+        value_kind TEXT,
+        value_at TEXT,
+        no_route_count INTEGER DEFAULT 0,
+        cant_sell INTEGER DEFAULT 0,
+        status TEXT NOT NULL,
+        exit_reason TEXT,
+        closed_at TEXT,
+        sol_out REAL,
+        pnl_sol REAL,
+        note TEXT
+    );
+    CREATE INDEX idx_sol_positions_status ON sol_positions(status, wallet);
+    CREATE TABLE sol_fills (
+        id INTEGER PRIMARY KEY,
+        position_id INTEGER NOT NULL,
+        wallet INTEGER NOT NULL,
+        ts TEXT NOT NULL,
+        side TEXT NOT NULL,
+        sol REAL,
+        tokens TEXT,
+        haircut_sol REAL,
+        fee_sol REAL,
+        net_sol REAL,
+        price_impact_pct REAL,
+        route TEXT,
+        reason TEXT
+    );
+    CREATE INDEX idx_sol_fills_position ON sol_fills(position_id);
+    CREATE TABLE sol_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT
+    );
+    """,
 ]
 
 

@@ -78,6 +78,7 @@ class Orchestrator:
         from .ml.sharing import SharedTraining
         from .ml.trainer import ModelTrainer
         from .performance.tracker import PerformanceTracker
+        from .solana.service import SolanaDesk
         from .sources.manager import SourceManager
         from .system_monitor import SystemMonitor
         from .trading.crypto_exits import CryptoExitManager
@@ -89,6 +90,7 @@ class Orchestrator:
         self.add(AlertManager(self.ctx))
         self.add(Trader(self.ctx))
         self.add(CryptoExitManager(self.ctx))  # crypto safety stops and take-profits (24/7 while the app runs)
+        self.add(SolanaDesk(self.ctx))  # the Solana memecoin desk: PAPER ONLY, off by default (Settings -> Solana)
         self.add(ProAIService(self.ctx))  # before the pipeline, so it stops after it
         self.add(Pipeline(self.ctx))
         self.add(SourceManager(self.ctx))

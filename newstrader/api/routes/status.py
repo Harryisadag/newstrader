@@ -59,6 +59,9 @@ async def status_summary(ctx: AppContext, light: bool = False) -> dict:
     exits = ctx.service("crypto_exits")
     if exits is not None:
         out["crypto"] = exits.summary()
+    desk = ctx.service("solana")
+    if desk is not None:
+        out["solana"] = desk.summary()
     if not light:
         out["data_dir"] = str(paths.data_dir())
         out["env_file"] = str(paths.env_file())

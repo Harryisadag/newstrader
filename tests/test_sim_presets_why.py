@@ -92,7 +92,7 @@ def test_migration_keeps_key_holders_on_alpaca(tmp_path, ctx, fake_alpaca):
     store = _old_config(tmp_path)
     assert store.settings.trading.broker == "auto" and store.settings.trading.buy_threshold == 85
     saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
-    assert saved["schema_version"] == 6 and saved["trading"]["broker"] == "auto"
+    assert saved["schema_version"] == 7 and saved["trading"]["broker"] == "auto"
     ctx.config = store
     paper_keys(ctx)
     broker = Trader(ctx)._default_factory()

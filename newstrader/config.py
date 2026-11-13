@@ -22,6 +22,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .llm.catalog import MODELS_BY_KEY, SERVER_BUILDS
+from .solana.parsers import check_rpc_url
 from .sources.presets import PRESET_URL_FIXES, default_sources, old_poll_seconds
 from .trading import crypto
 
@@ -439,6 +440,65 @@ class CryptoSettings(_Model):
         return crypto.parse_symbols(v)
 
 
+class SolanaSettings(_Model):
+    """The Solana memecoin desk: PAPER ONLY - a pretend wallet of SOL, never a real trade (newstrader/solana). Off by
+    default. A conservative momentum guess spots brand-new pools, and every coin must pass the 7-gate pre-flight
+    checklist before a paper buy."""
+
+    enabled: bool = False
+    # your own Solana RPC address (https); empty = the free public one. Only its host is ever shown or logged.
+    rpc_url: str = ""
+    poll_seconds: int = Field(60, ge=30, le=600)
+    # the entry trigger (a momentum guess - the reject audit measures it)
+    min_age_minutes: float = Field(3, ge=0, le=1440)
+    max_age_minutes: float = Field(120, ge=1, le=1440)
+    min_liquidity_usd: float = Field(8000, ge=0)  # also Gate 3's minimum
+    min_buys_5m: int = Field(10, ge=0, le=100000)
+    min_buy_sell_ratio: float = Field(1.5, ge=0, le=1000)
+    min_buyers_5m: int = Field(8, ge=0, le=100000)
+    min_change_5m_pct: float = Field(5, ge=-100, le=10000)
+    max_change_5m_pct: float = Field(40, ge=-100, le=10000)
+    min_fdv_usd: float = Field(20_000, ge=0)
+    max_fdv_usd: float = Field(5_000_000, ge=0)
+    # the seven gates
+    max_round_trip_loss_pct: float = Field(10, gt=0, le=100)
+    max_transfer_fee_pct: float = Field(10, ge=0, le=100)
+    min_lp_locked_pct: float = Field(99, ge=0, le=100)
+    min_lock_days: float = Field(30, ge=0, le=3650)
+    max_order_pct_of_pool: float = Field(2, gt=0, le=100)
+    max_top10_pct: float = Field(30, gt=0, le=100)
+    max_single_holder_pct: float = Field(10, gt=0, le=100)
+    max_creator_launches_24h: int = Field(3, ge=1, le=1000)
+    max_chase_pct: float = Field(15, ge=0, le=1000)
+    max_price_impact_pct: float = Field(3, gt=0, le=100)
+    max_evidence_age_seconds: float = Field(10, ge=2, le=120)
+    # the paper desk (all in SOL)
+    starting_sol: float = Field(10, gt=0, le=1_000_000)  # used when the paper wallet is (re)started
+    order_sol: float = Field(0.1, gt=0, le=1000)
+    fee_sol: float = Field(0.0005, ge=0, le=1)  # per paper transaction
+    haircut_pct: float = Field(1, ge=0, le=50)  # every paper fill is this much worse than the quote
+    max_open_positions: int = Field(5, ge=1, le=50)
+    daily_loss_limit_sol: float = Field(0.5, gt=0, le=1_000_000)
+    stop_loss_pct: float = Field(8, gt=0, le=100)
+    trail_start_pct: float = Field(15, gt=0, le=10000)  # the trailing stop starts once a position is up this much
+    trail_pct: float = Field(10, gt=0, le=100)  # ...and sells this far below the best value
+    time_stop_hours: float = Field(4, gt=0, le=168)
+
+    @field_validator("rpc_url", mode="before")
+    @classmethod
+    def _rpc(cls, v: Any) -> str:
+        return check_rpc_url(v)
+
+    @model_validator(mode="after")
+    def _ranges(self) -> SolanaSettings:
+        for lo, hi, what in (("min_age_minutes", "max_age_minutes", "pool age"),
+                             ("min_change_5m_pct", "max_change_5m_pct", "5-minute price change"),
+                             ("min_fdv_usd", "max_fdv_usd", "fully diluted value")):
+            if getattr(self, lo) > getattr(self, hi):
+                raise ValueError(f"the lowest {what} must be at or below the highest")
+        return self
+
+
 class UISettings(_Model):
     # Times in the app: "local" = this computer's time zone, "market" = New York (ET), "utc"
     time_zone: Literal["local", "market", "utc"] = "local"
@@ -447,7 +507,7 @@ class UISettings(_Model):
 
 
 class AppSettings(_Model):
-    schema_version: int = 6
+    schema_version: int = 7
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     ml: MLSettings = Field(default_factory=MLSettings)
@@ -457,6 +517,7 @@ class AppSettings(_Model):
     market: MarketSettings = Field(default_factory=MarketSettings)
     chart: ChartSettings = Field(default_factory=ChartSettings)
     crypto: CryptoSettings = Field(default_factory=CryptoSettings)
+    solana: SolanaSettings = Field(default_factory=SolanaSettings)
     ui: UISettings = Field(default_factory=UISettings)
     sources: list[SourceConfig] = Field(default_factory=lambda: [SourceConfig(**s) for s in default_sources()])
 
@@ -536,6 +597,14 @@ def _broker_auto(raw: dict, settings: AppSettings) -> AppSettings:
     if dump["trading"].get("broker") == "alpaca":
         dump["trading"]["broker"] = "auto"
     return AppSettings.model_validate({**dump, "schema_version": 6})
+
+
+def _add_solana(raw: dict, settings: AppSettings) -> AppSettings:
+    """Configs saved before the Solana paper desk (schema 6): add the solana section, switched off, whatever an older
+    file says - the desk is only ever turned on in Settings -> Solana (paper)."""
+    dump = settings.model_dump(mode="json")
+    dump["solana"] = SolanaSettings().model_dump(mode="json")
+    return AppSettings.model_validate({**dump, "schema_version": 7})
 
 
 def _fix_preset_urls(settings: AppSettings) -> AppSettings | None:
@@ -713,6 +782,9 @@ class ConfigStore:
                 self.needs_save = True
             if version < 6:
                 settings = _broker_auto(raw, settings)
+                self.needs_save = True
+            if version < 7:
+                settings = _add_solana(raw, settings)
                 self.needs_save = True
             # Configs from before the local ML engine existed have no ai.engine: they now use the local engine.
             self.engine_was_defaulted = isinstance(raw.get("ai"), dict) and "engine" not in raw["ai"]
