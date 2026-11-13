@@ -16,6 +16,9 @@ NewsTrader is a desktop app for **Windows and Mac** that:
 5. **Tracks whether the AI is actually right.** It checks the price 5 minutes, 1 hour and 1 trading day after every call. It can also **backtest** on historical news.
 6. **Watches the market**: sudden price spikes on unusual volume, big moves in the whole market or world markets, and today's top movers, with the news behind them (Market tab and alerts).
 7. Optional, off by default: **trades crypto** (Bitcoin, Ether, Solana) on paper through Alpaca, day and night (see [Crypto](#crypto-paper)).
+8. Optional, off by default: a **paper-only Solana memecoin desk** that runs brand-new coins through a strict 7-gate
+   checklist and makes pretend trades with pretend SOL (see [Solana memecoins (paper)](#solana-memecoins-paper)). It
+   has no real-money mode at all.
 
 > ⚠️ **Paper trading only by default.** NewsTrader always starts in **PAPER** mode (fake money). Real-money trading is locked in the code. Unlocking it takes all three of these:
 > - separate live keys
@@ -46,19 +49,20 @@ You don't need Python to use a release:
 6. [Shared training](#shared-training)
 7. [Charts: patterns and indicators](#charts-patterns-and-indicators)
 8. [Crypto (paper)](#crypto-paper)
-9. [The built-in simulator (no Alpaca account needed)](#the-built-in-simulator-no-alpaca-account-needed)
-10. [Trading styles: Cautious, Normal, Aggressive](#trading-styles-cautious-normal-aggressive)
-11. [Why did it trade?](#why-did-it-trade)
-12. [Settings explained](#settings-explained)
-13. [How a trade happens](#how-a-trade-happens)
-14. [Kill switch and live trading](#kill-switch-and-live-trading)
-15. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
-16. [Updating](#updating)
-17. [Troubleshooting](#troubleshooting)
-18. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
-19. [What it costs](#what-it-costs)
-20. [Where your files are](#where-your-files-are)
-21. [For developers](#for-developers)
+9. [Solana memecoins (paper)](#solana-memecoins-paper)
+10. [The built-in simulator (no Alpaca account needed)](#the-built-in-simulator-no-alpaca-account-needed)
+11. [Trading styles: Cautious, Normal, Aggressive](#trading-styles-cautious-normal-aggressive)
+12. [Why did it trade?](#why-did-it-trade)
+13. [Settings explained](#settings-explained)
+14. [How a trade happens](#how-a-trade-happens)
+15. [Kill switch and live trading](#kill-switch-and-live-trading)
+16. [Make a real app (.exe / .app)](#make-a-real-app-exe--app)
+17. [Updating](#updating)
+18. [Troubleshooting](#troubleshooting)
+19. [Truth Social and X (Twitter)](#truth-social-and-x-twitter)
+20. [What it costs](#what-it-costs)
+21. [Where your files are](#where-your-files-are)
+22. [For developers](#for-developers)
 
 ---
 
@@ -177,6 +181,7 @@ The header always shows:
 | **Market** | The S&P 500, Nasdaq 100, Russell 2000 and Dow (through their ETFs), world markets (Japan, China, Germany, UK, India, Brazil, Europe, Korea), today's top movers, every sudden spike found with the news behind it, and the list of stocks being watched. **Click any stock** for its chart: price with VWAP and support/resistance, indicator labels and the patterns showing now, each explained (see [Charts](#charts-patterns-and-indicators)). |
 | **Portfolio** | Account numbers, an account-value chart (1D–1Y), open positions with their stop/target, and open orders. You can close a position or cancel an order by hand. |
 | **Trade Log** | Every order (entries, exits, stop-loss/take-profit fills) with realized P/L, and for each news trade how many seconds it took from the news to the order. **Click a trade** for the [Why did it trade?](#why-did-it-trade) card. The last column says which account it was: paper, live or simulated. The totals at the top (closed trades, realized P/L, win rate) only count the account in use, so fake and real money never add up together. **Export CSV** saves it to the exports folder. |
+| **Solana (paper)** | The paper-only Solana memecoin desk (off by default): the paper wallet, every coin the trigger picked with its 7 gate lights, paper positions and trades, and the reject audit. See [Solana memecoins (paper)](#solana-memecoins-paper). |
 | **Performance** | **Is the AI right?** Win rate by confidence level, by source, by AI engine and by kind of news (earnings beat, forecast cut, buyout...), at +5 min / +1 hour / +1 trading day, for every signal (traded or not). Greyed-out rows have fewer than 10 signals, too few to tell yet. The **Speed** card shows how fast news turns into orders and which sources are slowest. |
 | **Backtest** | **Local ML model**: train or retrain the price model and see how it did on news it never saw, and **Shared training** (the student model that learns from Pro AI's labels, see [Shared training](#shared-training)). **Backtests**: run the AI over historical Benzinga news for a date range and see what it would have done. |
 | **Settings** | Everything below, plus news sources (search, filter by region/kind, turn whole groups on/off, edit or add any YouTube `/live` link or RSS feed), API keys and the live-trading lock. |
@@ -503,6 +508,93 @@ When you re-arm trading, the safety stops go back in.
 
 ---
 
+## Solana memecoins (paper)
+
+> ⚠️ **PAPER ONLY - pretend SOL, never a real trade.** The desk has no wallet and no keys, and it can't send anything
+> to the Solana network: it only reads public data and writes pretend trades into NewsTrader's database.
+> - **Real memecoins are mostly rugs.** Most brand-new coins lose nearly everything within hours, and their makers
+>   often sell on everyone else. Passing all 7 gates doesn't make a coin safe.
+> - **Paper fills are kinder than real ones.** Real trades face bots that buy first, transactions that fail and
+>   priority fees. Here a buy just takes Jupiter's quote minus a 1% haircut and a 0.0005 SOL fee.
+> - **Nobody knows whether it works.** NewsTrader never claims it makes money. The reject audit (below) measures it.
+
+It's **off by default**: turn it on in **Settings -> Solana (paper)**. While it's off it makes no internet calls.
+
+**What it does, step by step**
+1. **The feed.** About once a minute it reads the newest Solana pools on GeckoTerminal. So many coins launch every
+   minute that this list only covers the last minute or so, so young pools go on a watchlist and are looked at again
+   (30 at a time) when they're old enough: every 3 minutes while they're busy, less often while they're quiet, never
+   after 2 hours.
+2. **The trigger** picks a pool that is 3-120 minutes old, has $8,000+ in it, 10+ buys from 8+ different buyers in
+   the last 5 minutes with at least 1.5 buys per sell, a price up 5-40% in those 5 minutes, and a fully diluted value of
+   $20k-$5M. That's a **momentum guess**, nothing more. Each pool is picked once, each coin at most once a day; at most
+   20 wait, and one that waited over 10 minutes is skipped.
+3. **The 7-gate pre-flight checklist** (below). One failed gate stops the coin.
+4. **A paper buy** of 0.1 SOL (0.05 SOL when nobody knows who made the coin) when every gate passed.
+5. **Exits**, checked every 15 seconds with a Jupiter quote to sell the whole position: a **stop-loss** (-8% against
+   the SOL paid), a **trailing stop** (10% below the best value, once it was up 15%) and a **time stop** (4 hours). A
+   sale fills at the quote minus the haircut and the fee, and P/L counts every fee and haircut. If Jupiter finds no way
+   to sell, the value becomes an **estimate** (the price feed x your coins x 0.95) and nothing is sold until a real
+   quote comes back. After 3 "no way to sell" answers in a row the position is marked **CAN'T SELL** in red and you get
+   an error alert - with real money you'd be stuck.
+
+**The 7 gates.** No scores: a coin must pass all of them, and a pass never outvotes a fail. Anything that couldn't be
+checked - a source that didn't answer, a timeout, a missing or unknown field - is a **fail**, except where it says
+otherwise.
+
+| # | Gate | Passes when |
+|---|---|---|
+| 1 | Authority | Nobody can make more of the coin or freeze your coins. Checked on the Solana network and in RugCheck's report (and Jupiter's audit when Jupiter lists it). If they disagree, it fails. |
+| 2 | Sell check | The coin has no trick features (Token-2022 extensions other than a short harmless list - e.g. a transfer hook, a pause switch, a permanent delegate or frozen new accounts all fail), any transfer fee is at most 10% **and** can't be changed (a changeable fee fails even at 0%), and a real Jupiter round trip - buy the order size, then sell ALL of it back - works and loses under 10%. |
+| 3 | Liquidity | The pool's liquidity is burned or locked (99%+; pump.fun's bonding curve counts as locked), any time lock opens 30+ days from now (an unknown date fails), the pool, fetched again right now, holds $8,000+, and your buy is at most 2% of it. |
+| 4 | Holders | Leaving out pools, lockers and burned coins, the top 10 real holders own under 30% and nobody owns over 10%. Several accounts of one wallet count as one, all insiders RugCheck flags count as ONE holder, and any insider network fails. With your own RPC its holder list is checked too. |
+| 5 | Creator | The creator isn't known for rugs, RugCheck doesn't call the coin rugged, and the creator didn't launch 3+ coins in the last 24 hours (this one counts; unknown dates count as recent). **An unknown creator, or one with no history, passes at half size.** |
+| 6 | Chase + impact | A final Jupiter buy quote, right before the paper buy: the price ran up at most 15% since the coin was spotted, and the buy alone moves the price at most 3%. |
+| 7 | Freshness | At the moment of the paper buy, every piece of evidence is at most 10 seconds old and error-free. If that's the only problem and the run took under 25 seconds, the whole checklist runs once more. |
+
+They're numbered for people, but run cheapest first - 1, 3, 4, 5, then 2, 6, 7 - so most coins are turned down
+before Jupiter's tiny free allowance is used.
+
+**Desk limits** (they stop new paper buys, but open positions keep being watched and sold on paper): the app's **kill
+switch**, a **daily paper loss limit** (0.5 SOL, sold plus still open; until midnight UTC), at most **5 open
+positions**, **one position per coin**, and the **paper SOL** left (the wallet starts with 10 SOL).
+
+**The reject audit.** Every coin the checklist judged is looked up again 1 hour and 24 hours later:
+- **Rejected then ran**: a gate stopped it and its price later doubled - that gate may be too strict (or it was luck).
+- **Passed then rugged**: it passed every gate, then lost 80% of its price or its pool, or RugCheck marked it rugged -
+  the gates missed something.
+- For each gate: how many coins it stopped and how many of those ran anyway.
+
+**The Solana (paper) tab** shows a PAPER badge and the warning above, the paper wallet (SOL, and about how much in
+dollars), the live checklist feed (7 lights per coin: green passed, red failed, grey not checked - hover for the
+reason, click a coin for every gate's reason), open positions with live P/L and their exit levels, closed trades, the
+reject audit, and **Pause / Resume**, **Check the feed now** and **Reset paper wallet** (you type `RESET`; open
+positions are taken off the books and older trades show as "old wallet"). A small **Solana** light in the header shows
+the desk while it's on (red when a position can't be sold). Alerts reuse the usual types: a paper buy is "trade
+placed", a paper sale "trade filled", the daily paper loss limit "daily loss limit hit", and "can't sell" an error.
+
+**Where the data comes from** (all free and read-only; nothing is ever signed or sent):
+
+| Source | What for | Limit the desk keeps to |
+|---|---|---|
+| GeckoTerminal | new pools, pools again (Gate 3), follow-ups | under 25 calls a minute (about 30 for everyone) |
+| Solana network (the free public RPC, or your own) | the coin's mint account (Gates 1, 2) | one call every 0.5 s |
+| Jupiter (price quotes, prices, token info) | Gates 1, 2, 6 and the exits | one call every 1.5 s, and after "too many requests" none until Jupiter says |
+| RugCheck | the risk report (Gates 1-5), "rugged" in the follow-ups | one call a second |
+
+Your own RPC address (Settings -> Solana (paper)) is optional; only its host is ever shown or logged. The public RPC
+won't list a coin's biggest holders, so the holder list comes from RugCheck - with your own RPC it's checked there
+too. pump.fun's own website blocks apps, so it isn't used. **Logs -> Run diagnostics** checks each source while the
+desk is on.
+
+**Why there is no real-money mode.** A real memecoin trade needs a wallet on this computer, its keys, and code that
+signs and sends transactions. One bug, or one piece of malware, and the wallet is empty - and the coins themselves are
+mostly built to take your money. NewsTrader has none of that on purpose: there is no code to hold keys or send a
+transaction, and a test fails the build if anything like it appears (or a Solana signing library is added). Treat the
+paper results as a best case: the real thing would do worse.
+
+---
+
 ## The built-in simulator (no Alpaca account needed)
 
 No Alpaca account? NewsTrader can still trade - with fake money, at real prices, without signing up anywhere. The
@@ -697,9 +789,24 @@ The free Alpaca data plan (IEX) sees part of the market's trading, so volume num
 | Take-profit | 6% | Above the buy, watched by NewsTrader while it's open. |
 | Trade crypto on news automatically | on | Off = crypto news signals wait for your approval. |
 
+**Solana (paper)** - see [Solana memecoins (paper)](#solana-memecoins-paper). Pretend SOL only.
+| Setting | Default | Meaning |
+|---|---|---|
+| Run the Solana paper desk | off | Off = no internet calls at all. |
+| Paper buy size / wallet starts with | 0.1 SOL / 10 SOL | Half size when the creator is unknown. The starting SOL is used when you reset the paper wallet. |
+| Max open paper positions | 5 | |
+| Daily paper loss limit | 0.5 SOL | Sold plus still open, per UTC day. Then no new paper buys until midnight UTC. |
+| Stop-loss / trailing stop / time stop | 8% / 10% below the best once up 15% / 4 hours | Checked every 15 seconds with a quote to sell it all. |
+| Paper fill haircut / fee | 1% / 0.0005 SOL | Every paper buy and sale is this much worse than the quote. Real trades are usually worse still. |
+| Check new pools every | 60 s | |
+| Trigger | 3-120 min old, $8k+ in the pool, 10+ buys from 8+ buyers in 5 min, 1.5+ buys per sell, price +5% to +40% in 5 min, value $20k-$5M | A momentum guess - the reject audit measures it. |
+| Gate limits | see the gates table | Round-trip loss 10%, transfer fee 10%, 99% liquidity locked, locks 30+ days, buy at most 2% of the pool, top 10 under 30%, one holder at most 10%, 3 launches in 24 h, chase 15%, price impact 3%, evidence 10 s. |
+| Your own Solana RPC | empty | Optional, https only. Only its host is ever shown. |
+
 **Display:** times in the app can follow this computer's time zone, New York (market) time, or UTC. **Check for updates** (on) looks at GitHub once a day and shows a banner when a newer NewsTrader is out. In the downloaded app (v0.4 and newer) the banner has an **Update now** button; nothing is installed until you click it.
 
-**Alerts:** desktop pop-ups (Windows or Mac) and Discord, each on/off. You can also turn each alert type on/off:
+**Alerts:** desktop pop-ups (Windows or Mac) and Discord, each on/off. You can also turn each alert type on/off (the
+Solana paper desk uses the same switches for its paper buys, paper sales, daily paper loss limit and "can't sell"):
 - trade placed
 - trade filled/closed
 - manual review
@@ -765,6 +872,8 @@ hours, the blacklist / whitelist, the minimum price and whole shares):
 - cancels **every open order** on your Alpaca account.
 
 You can also tick **"close every position"** in its confirmation box.
+
+The Solana paper desk stops making new paper buys too; its open paper positions keep being watched and sold on paper.
 
 Cancelling orders also removes the stop-loss/take-profit protecting your positions, so close them or watch them. That includes the safety stops of crypto positions (NewsTrader puts those back when you re-arm). Trading stays stopped, even after a restart, until you click **RE-ARM TRADING**.
 
@@ -958,6 +1067,8 @@ newstrader/
   trading/            Alpaca broker, the built-in simulator (sim_broker, free_data, nyse_calendar), live-trading
                       lock, risk checks, trader, trading styles (presets), decision trail, P/L, crypto symbols and the
                       crypto exit manager (safety stops at Alpaca, take-profits while the app runs)
+  solana/             the Solana memecoin desk, PAPER ONLY: read-only data sources and their rate limits, parsers,
+                      the 7 gates, the entry trigger, the checklist, the paper wallet and exits, the reject audit
   alerts/             desktop pop-ups (Windows / Mac), Discord, alert manager
   performance/        price checkpoints, win-rate stats, speed timer, the "Why did it trade?" card
   backtest/           historical replay + bracket simulator

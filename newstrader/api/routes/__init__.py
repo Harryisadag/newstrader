@@ -13,6 +13,7 @@ from . import (
     settings,
     shared,
     signals,
+    solana,
     sources,
     status,
     streams,
@@ -39,5 +40,6 @@ ALL_ROUTERS = [
     ml.router,
     pro_ai.router,
     shared.router,
+    solana.router,
     updates.router,
 ]

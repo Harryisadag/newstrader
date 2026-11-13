@@ -6,6 +6,7 @@ document.addEventListener("alpine:init", () => {
     { id: "market", label: "Market" },
     { id: "portfolio", label: "Portfolio" },
     { id: "trades", label: "Trade Log" },
+    { id: "solana", label: "Solana (paper)" },
     { id: "performance", label: "Performance" },
     { id: "backtest", label: "Backtest" },
     { id: "settings", label: "Settings" },
@@ -157,6 +158,15 @@ document.addEventListener("alpine:init", () => {
       if (p.state === "downloading" && p.progress && p.progress.total) {
         label = `downloading ${Math.round((100 * p.progress.done) / p.progress.total)}%`;
       }
+      return { dot, label };
+    },
+
+    // the small Solana light in the header (shown while the paper desk is on)
+    get solLight() {
+      const d = this.s.solana || {};
+      const dot = { ok: "ok", warn: "warn", error: "error" }[d.level] || "off";
+      const label = { watching: "watching", paused: "paused", killed: "no new buys", halted: "halted today",
+        problem: d.cant_sell ? "can't sell!" : "problem" }[d.state] || "off";
       return { dot, label };
     },
 

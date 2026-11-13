@@ -390,6 +390,52 @@ async def _check_crypto(ctx: AppContext) -> list[dict]:
     return out
 
 
+BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"  # a long-lived Solana coin RugCheck always knows
+
+
+async def _check_solana(ctx: AppContext) -> list[dict]:
+    """Only when the Solana paper desk is on: does each of its free, read-only data sources answer?"""
+    s = ctx.config.settings.solana
+    if not s.enabled:
+        return []
+    from .solana.data import SolanaData
+    from .solana.parsers import SOL_MINT, rpc_host
+
+    desk = ctx.service("solana")
+    data = getattr(desk, "data", None)
+    own = data is None
+    if own:
+        data = SolanaData(rpc_url=s.rpc_url)
+    state = f" · {desk.summary()['text']}" if desk is not None else ""
+    out = [_check("Solana paper desk", "ok", f"PAPER ONLY - pretend SOL, no wallet, never a real trade{state}")]
+    host = rpc_host(s.rpc_url)
+
+    async def one(name: str, coro, ok_text, fix: str) -> dict:
+        try:
+            return _check(name, "ok", ok_text(await _with_timeout(coro, 25)))
+        except Exception as exc:
+            return _check(name, "error", f"{type(exc).__name__}: {exc}", fix)
+
+    try:
+        out += await asyncio.gather(
+            one("Solana: GeckoTerminal (new pools)", data.new_pools(max_wait=20),
+                lambda pools: f"answered: {len(pools)} new pools",
+                "Check your internet connection. GeckoTerminal allows about 30 calls a minute for everyone - try again "
+                "in a minute."),
+            one(f"Solana network ({host or 'free public RPC'})", data.mint_account(SOL_MINT, max_wait=20),
+                lambda m: f"answered: read the SOL coin ({m.program}, {m.decimals} decimals)",
+                "Check your internet connection" + (" and your RPC address (Settings -> Solana (paper))." if host
+                                                    else ". The free public RPC is sometimes busy - try again later.")),
+            one("Solana: Jupiter (prices and quotes)", data.sol_usd(max_wait=20), lambda usd: f"answered: SOL ${usd:,.2f}",
+                "Check your internet connection. Jupiter's free allowance is small - try again in a minute."),
+            one("Solana: RugCheck (risk reports)", data.rugcheck(BONK, max_wait=20), lambda _r: "answered: read a risk report",
+                "Check your internet connection (api.rugcheck.xyz). It is sometimes slow - try again later."))
+    finally:
+        if own:
+            await data.close()
+    return out
+
+
 async def run_diagnostics(ctx: AppContext) -> dict:
     where = " (trades go to the built-in simulator)" if _on_simulator(ctx) and ctx.state.mode == "paper" else ""
     checks: list[dict] = [_check("NewsTrader", "ok", f"version {__version__}, {ctx.state.mode.upper()} mode{where}"),
@@ -415,6 +461,10 @@ async def run_diagnostics(ctx: AppContext) -> dict:
         checks += await _with_timeout(_check_crypto(ctx), 40)
     except Exception as exc:
         checks.append(_check("Crypto", "error", f"{type(exc).__name__}: {exc}"))
+    try:
+        checks += await _with_timeout(_check_solana(ctx), 60)
+    except Exception as exc:
+        checks.append(_check("Solana paper desk", "error", f"{type(exc).__name__}: {exc}"))
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("ok", "warn", "error")}
     log.info("Diagnostics: %d ok, %d warnings, %d errors", summary["ok"], summary["warn"], summary["error"])
     return {"checks": checks, "summary": summary}

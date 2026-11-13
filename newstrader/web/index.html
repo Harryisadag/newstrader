@@ -20,6 +20,7 @@
   <script src="/static/js/performance.js"></script>
   <script src="/static/js/market.js"></script>
   <script src="/static/js/why.js"></script>
+  <script src="/static/js/solana.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body x-data="app" x-cloak @nt:refresh-status.window="refresh()">
@@ -70,6 +71,12 @@
     <div class="stat-value"><span class="dot" :class="proLight.dot"></span> <span class="small" x-text="proLight.label"></span></div>
   </div>
 
+  <div class="stat clickable" x-show="s.solana && s.solana.enabled" @click="store.setTab('solana')"
+       :title="((s.solana && s.solana.text) || '') + ' - pretend money only (click for the Solana tab)'">
+    <div class="stat-label">Solana <span class="paper-tag">paper</span></div>
+    <div class="stat-value"><span class="dot" :class="solLight.dot"></span> <span class="small" x-text="solLight.label"></span></div>
+  </div>
+
   <div class="stat" :title="tradingState.tip">
     <div class="stat-label">Trading</div>
     <div class="stat-value"><span class="pill" :class="tradingState.cls" x-text="tradingState.label"></span></div>
@@ -99,6 +106,8 @@
           <p class="warn-text">Cancelling orders also removes the stop-loss / take-profit protecting your open positions.</p>
           <p class="muted small">Crypto: its safety stops are cancelled too, and NewsTrader stops watching the take-profits.
             Both come back when you re-arm trading.</p>
+          <p class="muted small" x-show="s.solana && s.solana.enabled">Solana (paper): no new paper buys. Its open paper
+            positions keep being watched and sold on paper - it's pretend money either way.</p>
           <label class="row check"><input type="checkbox" x-model="closePositions">
             <span>Also <b>sell / close every open position</b> at market now</span></label>
           <p class="muted small">Trading stays stopped (even after a restart) until you click RE-ARM TRADING.</p>
@@ -755,6 +764,292 @@
       </table>
       <div x-show="!visible.length && !loading" class="muted pad">No trades yet.</div>
     </div>
+  </section>
+
+  <!-- ===================== SOLANA (PAPER) ===================== -->
+  <section x-show="store.tab === 'solana'" class="tab-page" x-data="solanaTab">
+    <div class="card sol-warning">
+      <div class="card-head">
+        <h2>Solana memecoins <span class="mode-badge paper small">PAPER ONLY</span></h2>
+        <span class="pill" :class="stateClass" x-text="stateText"></span>
+      </div>
+      <p class="warn-text"><b>Pretend money only.</b> This desk never has a wallet or any keys and can't send a real trade.
+        It reads public data, runs every coin through a 7-gate checklist and writes down pretend buys and sales.</p>
+      <ul class="small sol-honest">
+        <li><b>Real memecoins are mostly rugs.</b> Most new coins lose nearly everything within hours, and the people who
+          made them often sell on you. Passing every gate doesn't make a coin safe.</li>
+        <li><b>Paper fills are kinder than real ones.</b> Real trades face bots that buy first, transactions that fail,
+          and priority fees. Here a buy just takes the quote minus a 1% haircut and a small fee.</li>
+        <li><b>Nobody knows if this works.</b> The trigger is a momentum guess. The reject audit at the bottom measures it -
+          don't trust it until weeks of results say so, and even then it's paper.</li>
+      </ul>
+    </div>
+
+    <div class="card" x-show="data && !s.enabled">
+      <h2>The desk is off</h2>
+      <p class="muted">Turn it on in <b>Settings -> Solana (paper)</b>. While it's off it makes no internet calls at all.</p>
+      <button class="btn primary" @click="goto('settings', 'solana')">Open the settings</button>
+    </div>
+
+    <div class="banner bad sol-stuck" x-show="stuck.length">
+      <b>Can't sell:</b> <span x-text="stuck.map((p) => p.symbol).join(', ')"></span> - Jupiter found no way to sell it
+      3 checks in a row. With real money you'd be stuck holding it. Its value below is only an estimate.
+    </div>
+
+    <div class="kpis" x-show="data">
+      <div class="kpi"><div class="kpi-label">Paper wallet</div><div class="kpi-value" x-text="sol(w.sol, 3)"></div>
+        <div class="kpi-sub" x-text="w.sol_usd ? 'about ' + fmt.money(w.sol * w.sol_usd) : 'pretend SOL'"></div></div>
+      <div class="kpi"><div class="kpi-label">With open positions</div><div class="kpi-value" x-text="sol(w.total_sol, 3)"></div>
+        <div class="kpi-sub" x-text="w.usd ? 'about ' + fmt.money(w.usd) : 'if sold now'"></div></div>
+      <div class="kpi"><div class="kpi-label">Since the wallet started</div>
+        <div class="kpi-value" :class="fmt.plClass(w.total_sol - w.starting_sol)" x-text="signedSol(w.total_sol - w.starting_sol, 3)"></div>
+        <div class="kpi-sub" x-text="'started with ' + sol(w.starting_sol, 1) + ' · ' + fmt.dateTime(w.started_at)"></div></div>
+      <div class="kpi"><div class="kpi-label">Today (UTC)</div>
+        <div class="kpi-value" :class="fmt.plClass(w.today_pnl_sol)" x-text="signedSol(w.today_pnl_sol)"></div>
+        <div class="kpi-sub" x-text="'loss limit ' + sol(data && data.settings.daily_loss_limit_sol, 2)"></div></div>
+      <div class="kpi"><div class="kpi-label">Open paper positions</div>
+        <div class="kpi-value" x-text="(w.open || 0) + ' / ' + (data ? data.settings.max_open_positions : '')"></div>
+        <div class="kpi-sub" x-text="sol(data && data.settings.order_sol, 2) + ' per buy'"></div></div>
+    </div>
+
+    <div class="card" x-show="data && s.enabled">
+      <div class="card-head">
+        <h2>Desk</h2>
+        <div class="row gap">
+          <button class="btn ghost small" x-show="!s.paused" :disabled="busy" @click="pause()">Pause</button>
+          <button class="btn primary small" x-show="s.paused" :disabled="busy" @click="resume()">Resume</button>
+          <button class="btn ghost small" :disabled="busy || s.paused" @click="checkNow()">Check the feed now</button>
+          <button class="btn ghost small danger" :disabled="busy" @click="openReset()">Reset paper wallet</button>
+        </div>
+      </div>
+      <p class="small" x-text="s.text"></p>
+      <p class="small warn-text" x-show="w.halted_today" x-text="w.halted_reason"></p>
+      <p class="small muted" x-show="data && data.last_feed && data.last_feed.at"
+         x-text="data && data.last_feed ? `Last feed check ${fmt.ago(data.last_feed.at)}: ${data.last_feed.pools} new pools, ${data.last_feed.looked_at} young pools looked at again, ${data.last_feed.triggered} picked · ${s.watching} on the watchlist · ${s.queue} waiting` : ''"></p>
+      <table class="table compact">
+        <thead><tr><th>Data source</th><th>Last answer</th></tr></thead>
+        <tbody>
+          <template x-for="src in (data ? data.sources : [])" :key="src.source">
+            <tr><td x-text="src.name"></td><td :class="src.error ? 'warn-text' : 'muted'" x-text="sourceLine(src)"></td></tr>
+          </template>
+        </tbody>
+      </table>
+      <p class="note">Solana network data comes from <span x-text="data ? data.rpc_host : ''"></span>. Free sources have
+        small allowances (Jupiter allows about 5 quotes at a time), so the desk spaces its calls out and fails a gate
+        rather than guess when a source is busy.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Checklist feed <span class="tiny muted">every coin the trigger picked, newest first - click one for every gate's reason</span></h2>
+        <div class="seg">
+          <template x-for="[k, lab] in [['all', 'All'], ['rejected', 'Rejected'], ['bought', 'Passed'], ['skipped', 'Skipped']]" :key="k">
+            <button :class="{ active: feedFilter === k }" @click="feedFilter = k" x-text="lab"></button>
+          </template>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Time</th><th>Coin</th><th>Gates 1-7</th><th>Verdict</th><th>Why</th></tr></thead>
+          <tbody>
+            <template x-for="r in feed" :key="r.id">
+              <tr class="clickable" @click="show(r)">
+                <td class="nowrap" x-text="fmt.time(r.created_at)"></td>
+                <td><b x-text="r.symbol"></b><div class="tiny muted" x-text="[r.dex, r.trigger && r.trigger.why].filter(Boolean).join(' · ')"></div></td>
+                <td class="nowrap"><span class="sol-lights">
+                  <template x-for="l in r.lights" :key="l.gate">
+                    <span class="sol-light" :class="lightClass(l)" :title="lightTip(l)" x-text="l.gate"></span>
+                  </template></span></td>
+                <td class="nowrap"><span class="pill small" :class="statusClass(r.status)" x-text="statusLabel(r.status)"></span>
+                  <div class="tiny muted" x-show="r.outcome === 'ran'">ran later</div>
+                  <div class="tiny warn-text" x-show="r.outcome === 'rugged'">rugged later</div></td>
+                <td class="small" x-text="r.reason || (r.status === 'queued' ? 'Waiting for the checklist' : '')"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="data && !feed.length" class="muted pad">No coins yet. The trigger is strict on purpose: a quiet hour
+        with nothing picked is normal.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Open paper positions <span class="tiny muted">checked every 15 seconds with a Jupiter quote to sell it all</span></h2></div>
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Coin</th><th>Bought</th><th class="num">SOL paid</th><th class="num">Worth now</th><th class="num">P/L</th><th>Exits</th></tr></thead>
+          <tbody>
+            <template x-for="p in positions" :key="p.id">
+              <tr>
+                <td><b x-text="p.symbol"></b> <span class="pill small bad" x-show="p.cant_sell">CAN'T SELL</span></td>
+                <td class="nowrap" x-text="fmt.dateTime(p.opened_at)"></td>
+                <td class="num" x-text="sol(p.sol_in)"></td>
+                <td class="num" :title="valueTip(p)"><span x-text="sol(p.net_value_sol)"></span>
+                  <span class="tag warn" x-show="p.value_kind === 'estimate'">estimate</span></td>
+                <td class="num" :class="fmt.plClass(p.pnl_sol)"><span x-text="signedSol(p.pnl_sol)"></span>
+                  <div class="tiny" x-text="pctText(p.pnl_pct)"></div></td>
+                <td class="small muted" x-text="levelsText(p)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="data && !positions.length" class="muted pad">No open paper positions.</div>
+      <p class="note">P/L counts every fee and haircut: a sale fills at the quote minus 1% and 0.0005 SOL. Stop-loss at
+        -<span x-text="data ? data.settings.stop_loss_pct : ''"></span>% of the SOL paid, a trailing stop
+        <span x-text="data ? data.settings.trail_pct : ''"></span>% below the best value once it was up
+        <span x-text="data ? data.settings.trail_start_pct : ''"></span>%, and a time stop after
+        <span x-text="data ? data.settings.time_stop_hours : ''"></span> hours. When Jupiter can't quote a sale the value is
+        an estimate and nothing is sold until a real quote comes back.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Closed paper trades</h2></div>
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Coin</th><th>Bought</th><th>Sold</th><th class="num">SOL paid</th><th class="num">SOL back</th><th class="num">P/L</th><th>Why it sold</th></tr></thead>
+          <tbody>
+            <template x-for="p in closed" :key="p.id">
+              <tr :class="{ dim: p.old_wallet }">
+                <td><b x-text="p.symbol"></b> <span class="tag" x-show="p.old_wallet">old wallet</span></td>
+                <td class="nowrap" x-text="fmt.dateTime(p.opened_at)"></td>
+                <td class="nowrap" x-text="fmt.dateTime(p.closed_at)"></td>
+                <td class="num" x-text="sol(p.sol_in)"></td>
+                <td class="num" x-text="sol(p.sol_out)"></td>
+                <td class="num" :class="fmt.plClass(p.pnl_sol)" x-text="signedSol(p.pnl_sol)"></td>
+                <td class="small" :title="p.exit_reason" x-text="exitLabel(p)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="data && !closed.length" class="muted pad">No closed paper trades yet.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Reject audit <span class="tiny muted">what really happened 1 hour and 24 hours later</span></h2></div>
+      <p class="small muted">Every coin the checklist judged is looked up again after 1 hour and 24 hours.
+        <b>Rejected then ran</b>: a gate stopped it and its price later doubled (the gate may be too strict - or it was
+        luck). <b>Passed then rugged</b>: it passed every gate and then lost 80% of its price or its pool, or RugCheck
+        marked it rugged (the gates missed something). <span x-text="audit.waiting + ' coins still waiting for their 24-hour look'"></span>.</p>
+      <table class="table compact">
+        <thead><tr><th>Gate</th><th class="num">Coins it stopped</th><th class="num">Followed up</th><th class="num">Ran anyway</th></tr></thead>
+        <tbody>
+          <template x-for="g in audit.by_gate" :key="g.gate">
+            <tr><td x-text="g.gate + '. ' + g.name"></td><td class="num" x-text="g.stopped"></td>
+              <td class="num" x-text="g.followed_up"></td><td class="num" x-text="g.ran"></td></tr>
+          </template>
+          <tr><td><b>Passed every gate</b></td><td class="num" x-text="audit.passed.count"></td>
+            <td class="num" x-text="audit.passed.followed_up"></td>
+            <td class="num warn-text" x-text="audit.passed.rugged + ' rugged'"></td></tr>
+        </tbody>
+      </table>
+      <div class="sol-audit">
+        <div>
+          <h3 class="small">Rejected then ran</h3>
+          <template x-for="r in audit.rejected_then_ran" :key="r.id">
+            <div class="small"><b x-text="r.symbol"></b> <span class="pos" x-text="pctText(r.best_pct)"></span>
+              <span class="muted" x-text="'- stopped by gate ' + r.killer_gate + ' (' + r.killer_name + ') · ' + fmt.dateTime(r.created_at)"></span></div>
+          </template>
+          <div class="muted small" x-show="!audit.rejected_then_ran.length">None yet.</div>
+        </div>
+        <div>
+          <h3 class="small">Passed then rugged</h3>
+          <template x-for="r in audit.passed_then_rugged" :key="r.id">
+            <div class="small"><b x-text="r.symbol"></b> <span class="neg" x-text="pctText(r.worst_pct)"></span>
+              <span class="muted" x-text="(r.rugged_later ? 'marked rugged by RugCheck · ' : '') + 'pool ' + pctText(r.pool_change_pct) + ' · ' + fmt.dateTime(r.created_at)"></span></div>
+          </template>
+          <div class="muted small" x-show="!audit.passed_then_rugged.length">None yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" x-show="data">
+      <div class="card-head"><h2>Settings</h2>
+        <button class="btn ghost small" @click="goto('settings', 'solana')">Change them in Settings</button></div>
+      <div class="kpis" x-show="data">
+        <div class="kpi"><div class="kpi-label">Paper buy</div><div class="kpi-value small-text" x-text="sol(data && data.settings.order_sol, 2)"></div>
+          <div class="kpi-sub">half when the creator is unknown</div></div>
+        <div class="kpi"><div class="kpi-label">Fills</div><div class="kpi-value small-text" x-text="data ? data.settings.haircut_pct + '% haircut + ' + data.settings.fee_sol + ' SOL fee' : ''"></div>
+          <div class="kpi-sub">per paper buy or sale</div></div>
+        <div class="kpi"><div class="kpi-label">Exits</div><div class="kpi-value small-text" x-text="data ? `-${data.settings.stop_loss_pct}% stop · ${data.settings.trail_pct}% trail · ${data.settings.time_stop_hours} h` : ''"></div>
+          <div class="kpi-sub" x-text="data ? `the trailing stop starts at +${data.settings.trail_start_pct}%` : ''"></div></div>
+        <div class="kpi"><div class="kpi-label">Limits</div><div class="kpi-value small-text" x-text="data ? `${data.settings.max_open_positions} open · ${data.settings.daily_loss_limit_sol} SOL a day` : ''"></div>
+          <div class="kpi-sub">plus the kill switch, one per coin</div></div>
+        <div class="kpi"><div class="kpi-label">Solana network data</div><div class="kpi-value small-text" x-text="data ? data.rpc_host : ''"></div>
+          <div class="kpi-sub">only the host is ever shown</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>The 7 gates</h2><span class="small muted">A coin must pass all of them. One fail stops it - no scores, and anything unknown is a fail.</span></div>
+      <ol class="sol-gates small">
+        <template x-for="g in (data ? data.gates : [])" :key="g.gate">
+          <li><b x-text="g.name + ':'"></b> <span x-text="g.explain"></span></li>
+        </template>
+      </ol>
+      <p class="note">They run cheapest first (1, 3, 4, 5, then 2, 6, 7) to spare Jupiter's tiny free allowance, and
+        stop at the first fail. If the only problem is evidence older than 10 seconds and the run took under 25
+        seconds, the whole checklist runs once more.</p>
+    </div>
+
+    <template x-teleport="body">
+      <div class="modal-backdrop" x-show="detailOpen" x-transition.opacity @keydown.escape.window="detailOpen = false" @click.self="detailOpen = false">
+        <div class="modal wide" x-show="detail">
+          <template x-if="detail">
+            <div>
+              <h2><span x-text="detail.symbol"></span> <span class="small muted" x-text="detail.name"></span>
+                <span class="mode-badge paper small">PAPER</span></h2>
+              <p class="small"><span class="pill small" :class="statusClass(detail.status)" x-text="statusLabel(detail.status)"></span>
+                <span x-text="detail.reason"></span></p>
+              <p class="tiny muted">Coin <span class="mono" x-text="detail.mint"></span> · pool <span class="mono" x-text="detail.pool"></span></p>
+              <p class="small muted" x-text="'Picked because: ' + (detail.trigger.why || '?')"></p>
+              <template x-for="a in attempts" :key="a.n">
+                <div>
+                  <h3 class="small" x-show="attempts.length > 1" x-text="'Run ' + a.n"></h3>
+                  <table class="table compact">
+                    <thead><tr><th>Gate</th><th></th><th>Why</th></tr></thead>
+                    <tbody>
+                      <template x-for="g in a.gates" :key="g.id">
+                        <tr><td class="nowrap" x-text="g.gate + '. ' + g.name"></td>
+                          <td><span class="pill small" :class="g.passed ? 'good' : 'bad'" x-text="g.passed ? 'pass' : 'FAIL'"></span></td>
+                          <td class="small"><div x-text="g.reason"></div><div class="tiny muted" x-text="dataLine(g)"></div></td></tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+              <p class="small muted" x-show="!attempts.length">The checklist didn't run for this coin.</p>
+              <template x-if="detail.position">
+                <p class="small">Paper position: paid <b x-text="sol(detail.position.sol_in)"></b>,
+                  <span x-text="detail.position.status === 'open' ? 'worth ' + sol(detail.position.net_value_sol) + ' now' : 'got back ' + sol(detail.position.sol_out)"></span>
+                  (<span :class="fmt.plClass(detail.position.pnl_sol)" x-text="signedSol(detail.position.pnl_sol)"></span>).</p>
+              </template>
+              <div class="row end gap"><button class="btn ghost" @click="detailOpen = false">Close</button></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <template x-teleport="body">
+      <div class="modal-backdrop" x-show="resetOpen" x-transition.opacity @keydown.escape.window="resetOpen = false" @click.self="resetOpen = false">
+        <div class="modal danger">
+          <h2>Start a new paper wallet?</h2>
+          <p>The paper wallet starts again with <b x-text="sol(data && data.settings.starting_sol, 1)"></b> of pretend SOL.
+            Open paper positions are taken off the books (never sold, no P/L).</p>
+          <p class="muted small">Old paper trades stay in the list, marked "old wallet", so they never mix with the new
+            wallet. Nothing real is touched - there is nothing real.</p>
+          <label class="row gap">Type <b x-text="data ? data.reset_phrase : 'RESET'"></b> to confirm:
+            <input type="text" x-model="resetPhrase" autocomplete="off" style="width:120px"></label>
+          <div class="row end gap">
+            <button class="btn ghost" @click="resetOpen = false">Cancel</button>
+            <button class="btn danger-solid" :disabled="busy || resetPhrase.trim() !== (data ? data.reset_phrase : 'RESET')"
+                    @click="reset()">Reset paper wallet</button>
+          </div>
+        </div>
+      </div>
+    </template>
   </section>
 
   <!-- ===================== PERFORMANCE ===================== -->
@@ -1437,6 +1732,18 @@
                 fund flows, exchange hacks, regulators' lawsuits or approvals, country bans, big exchange listings or
                 delistings, and companies buying a coin for their treasury - anything else is sent to manual review. A
                 company's own news that only mentions a coin (a bitcoin miner's results) never trades the coin.</p>
+            </div>
+          </template>
+          <template x-if="section === 'solana'">
+            <div class="crypto-notes">
+              <p class="warn-text"><b>PAPER ONLY: pretend SOL, never a real trade.</b> The desk has no wallet and no keys,
+                and can't send anything to the Solana network - it only reads public data. Real memecoins are mostly
+                rugs, and paper fills are kinder than real ones (real trades face bots, failed transactions and priority
+                fees).</p>
+              <p class="note">Every coin the trigger picks must pass all 7 gates (see the Solana (paper) tab) before a
+                paper buy. The kill switch stops new paper buys, and so does the daily paper loss limit (until midnight
+                UTC); open paper positions keep being watched. Your own RPC address is optional - only its host is ever
+                shown. With one set, the holder list is checked on it too.</p>
             </div>
           </template>
           <template x-if="section === 'charts'">
