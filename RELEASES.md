@@ -68,6 +68,25 @@ Every release also lists a SHA-256 checksum for each file, so you can check a do
 
 ## Versions
 
+## v0.6.0 — 13 November 2026
+
+**New: Solana memecoins (paper only)**
+- A new **Solana (paper)** tab watches brand-new Solana coins (pump.fun, Raydium, Meteora and more) and trades them with **fake SOL**: a 10 SOL paper wallet, 0.1 SOL per trade. Off until you turn it on.
+- Every coin goes through a **7-gate pre-flight checklist**, and *any* failed gate kills the trade - a great chart can never outvote a red flag:
+  1. **Authority:** nobody can mint more coins or freeze yours.
+  2. **Sell check:** no hidden sell blocks or changeable taxes, and a real sell-back quote must work (round trip loses under 10%).
+  3. **Liquidity:** the pool's liquidity is locked or burned, and the order is at most 2% of the pool.
+  4. **Holders:** the top 10 holders (not counting the pool, with insiders merged into one) hold under 30%.
+  5. **Creator:** no history of rugs and not launching coin after coin (an unknown creator means half size).
+  6. **Chase + impact:** re-checked on the final quote, right before buying: under 15% above the signal price and 3% price impact.
+  7. **Freshness:** every check is under 10 seconds old; any error, timeout or missing answer means **no trade**.
+- Exits: stop at -8%, a trailing stop once it's up 15%, and a 4-hour time limit. Fees and a slippage haircut are counted.
+- **Reject audit:** every coin and the gate that stopped it is saved, and checked again an hour and a day later - "rejected, then ran" and "passed, then rugged" - so you can see which gates help and which ones leak.
+- **There is no real-money mode.** The app never holds a wallet key and never sends a Solana transaction; a test fails the build if signing code is ever added. Paper results are optimistic: real memecoin trades face bots, failed transactions and fees, and most of these coins go to zero.
+- Free data only (GeckoTerminal, Jupiter quotes, RugCheck, the public Solana network); they rate-limit hard, so the desk checks a few coins at a time.
+
+**Other**
+- If you're on v0.5, click **Update now** in the banner.
 ## v0.5.1 — 15 October 2026
 
 Fix for the Windows download.
