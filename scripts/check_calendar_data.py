@@ -21,7 +21,9 @@ import httpx
 
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/129.0 Safari/537.36")
-SEC_UA = "NewsTrader/0 personal news monitor (+https://github.com/Harryisadag/newstrader)"
+# sec.gov refuses tools that give no contact address ("Undeclared Automated Tool"). This check uses a placeholder;
+# the app itself asks the user for their own contact in Settings and sends it only to sec.gov.
+SEC_UA = "NewsTrader data check admin@example.com"
 
 
 def trim(obj, keep: int = 4):
@@ -36,6 +38,73 @@ def weekday(d: date) -> date:
     while d.weekday() >= 5:
         d += timedelta(days=1)
     return d
+
+
+def digests(c: httpx.Client, nasdaq: dict, sec: dict, today: date) -> list[str]:
+    """Samples that need a little digging: US economic events on coming days, the Fed's FOMC entries, and one
+    insider-trade (Form 4) document."""
+    out: list[str] = []
+    # 1. US economic events for the next 12 weekdays (names only), to learn what CPI / jobs / Fed days look like
+    d, lines = today, []
+    for _ in range(12):
+        d = weekday(d + timedelta(days=1))
+        try:
+            rows = c.get("https://api.nasdaq.com/api/calendar/economicevents", params={"date": d.isoformat()},
+                         headers=nasdaq).json().get("data", {}).get("rows") or []
+        except Exception as exc:
+            lines.append(f"{d}: error {exc}")
+            continue
+        us = [f"{r.get('gmt')} {r.get('eventName')} (consensus {str(r.get('consensus')).strip() or '-'})"
+              for r in rows if r.get("country") == "United States"]
+        lines.append(f"{d}: {len(rows)} events, US: " + "; ".join(us[:40]))
+        time.sleep(0.5)
+    out += ["### digest_us_economic_events", "", "```", *lines, "```", ""]
+    # 2. the Fed's calendar: which types exist, and every FOMC-looking entry
+    try:
+        text = c.get("https://www.federalreserve.gov/json/calendar.json",
+                     headers={"User-Agent": BROWSER_UA}).content.decode("utf-8-sig")
+        events = json.loads(text).get("events", [])
+        types: dict[str, int] = {}
+        for e in events:
+            types[e.get("type", "?")] = types.get(e.get("type", "?"), 0) + 1
+        fomc = [e for e in events if "FOMC" in (e.get("title", "") + e.get("type", "") + e.get("description", ""))]
+        newest = sorted(fomc, key=lambda e: (e.get("month", ""), e.get("days", "")), reverse=True)[:14]
+        out += ["### digest_fed_calendar", "", "```", f"{len(events)} events; types: {json.dumps(types)}",
+                *[json.dumps(e, separators=(",", ":"))[:420] for e in newest], "```", ""]
+    except Exception as exc:
+        out += ["### digest_fed_calendar", "", f"error: {exc}", ""]
+    # 3. one recent Form 4: the filing index, then its XML
+    try:
+        import re
+
+        feed = c.get("https://www.sec.gov/cgi-bin/browse-edgar",
+                     params={"action": "getcurrent", "type": "4", "company": "", "dateb": "", "owner": "only",
+                             "count": "10", "output": "atom"}, headers=sec).text
+        link = re.search(r'<link[^>]+href="(https://www\.sec\.gov/Archives/edgar/data/[^"]+-index\.htm)"', feed)
+        out += ["### digest_form4", "", "```", feed[feed.find("<entry>"):][:1800]]
+        if link:
+            time.sleep(0.5)
+            index = c.get(link.group(1), headers=sec).text
+            xml = re.search(r'href="(/Archives/edgar/data/[^"]+\.xml)"', index)
+            out.append(f"index page: {link.group(1)} -> xml: {xml.group(1) if xml else None}")
+            if xml:
+                time.sleep(0.5)
+                path = re.sub(r"/xslF345X\d+/", "/", xml.group(1))  # the raw XML, not the styled view
+                doc = c.get("https://www.sec.gov" + path, headers=sec).text
+                out.append(f"raw xml: {path}")
+                out.append(doc[:4500])
+        out += ["```", ""]
+    except Exception as exc:
+        out += ["### digest_form4", "", f"error: {exc}", ""]
+    # 4. one 8-K entry in full (items are in the summary)
+    try:
+        feed = c.get("https://www.sec.gov/cgi-bin/browse-edgar",
+                     params={"action": "getcurrent", "type": "8-K", "company": "", "dateb": "", "owner": "include",
+                             "count": "10", "output": "atom"}, headers=sec).text
+        out += ["### digest_8k_entries", "", "```", feed[:600], "...", feed[feed.find("<entry>"):][:2600], "```", ""]
+    except Exception as exc:
+        out += ["### digest_8k_entries", "", f"error: {exc}", ""]
+    return out
 
 
 def main() -> int:
@@ -92,6 +161,20 @@ def main() -> int:
         ("sec_fulltext_search", "https://efts.sec.gov/LatestSearch/rest/search-index",
          {"q": "", "forms": "8-K", "dateRange": "custom", "startdt": (today - timedelta(days=1)).isoformat(),
           "enddt": today.isoformat()}, sec, "SEC full-text search: recent 8-Ks (items in the hits)"),
+        ("sec_filing_index_json", "https://www.sec.gov/cgi-bin/browse-edgar",
+         {"action": "getcompany", "CIK": "0000320193", "type": "4", "dateb": "", "owner": "only", "count": "10",
+          "output": "atom"}, sec, "SEC EDGAR: one company's Form 4 filings (Atom)"),
+        ("sec_company_tickers_exchange", "https://www.sec.gov/files/company_tickers_exchange.json", {}, sec,
+         "SEC: ticker -> CIK -> exchange list"),
+        # more calendar samples
+        ("nasdaq_earnings_plus7", "https://api.nasdaq.com/api/calendar/earnings",
+         {"date": weekday(today + timedelta(days=7)).isoformat()}, nasdaq, "Nasdaq: earnings a week ahead"),
+        ("nasdaq_earnings_weekend", "https://api.nasdaq.com/api/calendar/earnings",
+         {"date": (today + timedelta(days=(5 - today.weekday()) % 7 or 7)).isoformat()}, nasdaq,
+         "Nasdaq: earnings on a Saturday (what an empty day looks like)"),
+        ("nasdaq_dividends", "https://api.nasdaq.com/api/calendar/dividends", {"date": day}, nasdaq,
+         "Nasdaq: ex-dividend dates"),
+        ("nasdaq_splits", "https://api.nasdaq.com/api/calendar/splits", {"date": day}, nasdaq, "Nasdaq: stock splits"),
         # phone alerts
         ("ntfy_health", "https://ntfy.sh/v1/health", {}, {"User-Agent": SEC_UA}, "ntfy.sh: service health"),
         # market holidays / S&P for the report card
@@ -127,6 +210,7 @@ def main() -> int:
                 outline = text[start:start + 3500]
             details += [f"### {name}", "", f"{note} - `{url}` {params}", "", "```", outline, "```", ""]
             time.sleep(0.4)  # SEC asks for at most 10 requests a second; be gentle everywhere
+        details += digests(c, nasdaq, sec, today)
     print("\n".join(rows + [""] + details))
     return 1 if failed == len(checks) else 0
 
