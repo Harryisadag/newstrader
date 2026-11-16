@@ -73,37 +73,45 @@ def digests(c: httpx.Client, nasdaq: dict, sec: dict, today: date) -> list[str]:
                 *[json.dumps(e, separators=(",", ":"))[:420] for e in newest], "```", ""]
     except Exception as exc:
         out += ["### digest_fed_calendar", "", f"error: {exc}", ""]
-    # 3. one recent Form 4: the filing index, then its XML
+    # 3. insider trades (Form 4) and 8-Ks through the fast per-company list (the "latest filings" feed is slow and
+    #    often times out): AAPL's recent filings, then the newest Form 4's raw XML and the newest 8-K's index
     try:
-        import re
-
-        feed = c.get("https://www.sec.gov/cgi-bin/browse-edgar",
-                     params={"action": "getcurrent", "type": "4", "company": "", "dateb": "", "owner": "only",
-                             "count": "10", "output": "atom"}, headers=sec).text
-        link = re.search(r'<link[^>]+href="(https://www\.sec\.gov/Archives/edgar/data/[^"]+-index\.htm)"', feed)
-        out += ["### digest_form4", "", "```", feed[feed.find("<entry>"):][:1800]]
-        if link:
-            time.sleep(0.5)
-            index = c.get(link.group(1), headers=sec).text
-            xml = re.search(r'href="(/Archives/edgar/data/[^"]+\.xml)"', index)
-            out.append(f"index page: {link.group(1)} -> xml: {xml.group(1) if xml else None}")
-            if xml:
-                time.sleep(0.5)
-                path = re.sub(r"/xslF345X\d+/", "/", xml.group(1))  # the raw XML, not the styled view
-                doc = c.get("https://www.sec.gov" + path, headers=sec).text
-                out.append(f"raw xml: {path}")
-                out.append(doc[:4500])
-        out += ["```", ""]
+        sub = c.get("https://data.sec.gov/submissions/CIK0000320193.json", headers=sec).json()
+        rec = sub["filings"]["recent"]
+        rows = list(zip(rec["form"], rec["accessionNumber"], rec["primaryDocument"], rec["acceptanceDateTime"],
+                        rec["items"], strict=False))
+        out += ["### digest_submissions_rows", "", "```", f"keys: {sorted(rec)}", f"{len(rows)} recent filings",
+                *[str(r) for r in rows[:25]], "```", ""]
+        four = next((r for r in rows if r[0] == "4"), None)
+        if four:
+            time.sleep(0.3)
+            acc, doc = four[1].replace("-", ""), four[2].split("/")[-1]
+            url = f"https://www.sec.gov/Archives/edgar/data/320193/{acc}/{doc}"
+            xml = c.get(url, headers=sec)
+            out += ["### digest_form4_xml", "", f"`{url}` -> HTTP {xml.status_code}", "", "```", xml.text[:6000],
+                    "```", ""]
+        eightk = next((r for r in rows if r[0] == "8-K"), None)
+        if eightk:
+            time.sleep(0.3)
+            acc = eightk[1].replace("-", "")
+            url = f"https://www.sec.gov/Archives/edgar/data/320193/{acc}/index.json"
+            idx = c.get(url, headers=sec)
+            out += ["### digest_8k_index", "", f"`{url}` -> HTTP {idx.status_code}", "", "```", idx.text[:2500],
+                    "```", ""]
     except Exception as exc:
-        out += ["### digest_form4", "", f"error: {exc}", ""]
-    # 4. one 8-K entry in full (items are in the summary)
-    try:
-        feed = c.get("https://www.sec.gov/cgi-bin/browse-edgar",
-                     params={"action": "getcurrent", "type": "8-K", "company": "", "dateb": "", "owner": "include",
-                             "count": "10", "output": "atom"}, headers=sec).text
-        out += ["### digest_8k_entries", "", "```", feed[:600], "...", feed[feed.find("<entry>"):][:2600], "```", ""]
-    except Exception as exc:
-        out += ["### digest_8k_entries", "", f"error: {exc}", ""]
+        out += ["### digest_submissions_rows", "", f"error: {type(exc).__name__}: {exc}", ""]
+    # 4. the slow "latest filings" feeds once more, with a long timeout, to see how slow they really are
+    for form in ("8-K", "4"):
+        t0 = time.monotonic()
+        try:
+            r = c.get("https://www.sec.gov/cgi-bin/browse-edgar",
+                      params={"action": "getcurrent", "type": form, "company": "", "dateb": "", "owner": "include",
+                              "count": "40", "output": "atom"}, headers=sec, timeout=90)
+            body = r.text
+            out += [f"### digest_latest_{form}", "", f"HTTP {r.status_code} in {time.monotonic() - t0:.1f} s, "
+                    f"{len(body):,} chars", "", "```", body[body.find("<entry>"):][:2200], "```", ""]
+        except Exception as exc:
+            out += [f"### digest_latest_{form}", "", f"error after {time.monotonic() - t0:.1f} s: {type(exc).__name__}", ""]
     return out
 
 
