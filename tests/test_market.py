@@ -697,6 +697,51 @@ async def test_fresh_data_fails_closed_when_ages_are_unknown(chase):
     assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
 
 
+def _undated(ctx, sig: dict, kind: str = "news") -> dict:
+    """Take the publish time off a signal's news item (a feed that gives no date); it arrived a minute ago."""
+    row = ctx.db.query_one("SELECT item_id FROM analyses WHERE id = ?", (sig["analysis_id"],))
+    ctx.db.update("news_items", row["item_id"], {"published_at": None, "received_at": iso(utcnow() - timedelta(minutes=1))})
+    ctx.db.update("analyses", sig["analysis_id"], {"item_kind": kind})
+    return sig
+
+
+async def test_fresh_data_undated_written_news_is_unknown(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    sig = _undated(chase.ctx, _news_signal(chase.ctx))  # an RSS item with no publish time: just arrived, age unknown
+    res = await chase.t.handle_signal(sig)
+    assert res["action"] == "review" and not res["traded"]
+    assert res["reason"].startswith("Couldn't tell when the news came out")
+    assert _trail_check(res, "Fresh data")["result"] == "review"
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
+    # don't-chase still measures from when it arrived, and approving it by hand skips the check
+    assert chase.t._news_time(sig) is not None and chase.t._news_time(sig, dated_only=True) is None
+    assert (await chase.t.handle_signal(sig, manual=True))["traded"]
+
+
+async def test_fresh_data_transcripts_use_when_they_arrived(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    sig = _undated(chase.ctx, _news_signal(chase.ctx), kind="transcript")  # live TV has no publish time
+    res = await chase.t.handle_signal(sig)
+    assert res["action"] == "bought", res
+    assert "news 1.0 min old" in _trail_check(res, "Fresh data")["detail"]
+    # a transcript that arrived too long ago is old like any other news
+    chase.ctx.config.update({"risk": {"ticker_cooldown_minutes": 0}})
+    old = _undated(chase.ctx, _news_signal(chase.ctx), kind="transcript")
+    item = chase.ctx.db.query_one("SELECT item_id FROM analyses WHERE id = ?", (old["analysis_id"],))["item_id"]
+    chase.ctx.db.update("news_items", item, {"received_at": iso(utcnow() - timedelta(minutes=50))})
+    res = await chase.t.handle_signal(old)
+    assert res["action"] == "review" and res["reason"].startswith("The news is 50 min old")
+
+
+async def test_fresh_data_dated_news_uses_its_publish_time(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    sig = _news_signal(chase.ctx, minutes_ago=10)
+    assert chase.t._news_time(sig, dated_only=True) == chase.t._news_time(sig)
+    res = await chase.t.handle_signal(sig)
+    assert res["action"] == "bought", res
+    assert "news 10.0 min old" in _trail_check(res, "Fresh data")["detail"]
+
+
 async def test_fresh_data_off(chase):
     _moved(chase.broker, 100.0, 100.0)
     chase.broker.price_times["AAPL"] = utcnow() - timedelta(minutes=10)

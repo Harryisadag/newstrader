@@ -111,7 +111,7 @@ async def test_tracker_records_checkpoints(ctx):
     from newstrader.trading.fake_broker import FakeBroker
 
     broker = FakeBroker(prices={"NVDA": 100.0})
-    t0 = datetime.now(UTC) - timedelta(days=3)
+    t0 = datetime(2026, 10, 6, 15, 0, tzinfo=UTC)  # a Tuesday, so "+1 trading day" is the next day whenever this runs
     broker.bar_data["NVDA"] = [bar(m, 100 + m * 0.01, 100 + m * 0.01, 100 + m * 0.01, 100 + m * 0.01, base=t0)
                                for m in range(0, 60 * 24 * 2)]
     ctx.services["trader"] = type("T", (), {"broker": broker})()
@@ -119,7 +119,7 @@ async def test_tracker_records_checkpoints(ctx):
                                     "confidence": 88, "source_name": "X", "source_type": "rss"})
     ctx.db.insert("signals", {"created_at": iso(t0), "ticker": "NVDA", "direction": "neutral", "confidence": 50})
     tr = PerformanceTracker(ctx)
-    await tr.run_once()
+    await tr.run_once(now=t0 + timedelta(days=3))
     row = ctx.db.query_one("SELECT * FROM signal_prices WHERE signal_id = ?", (sid,))
     assert row["price_t0"] == pytest.approx(100.0)
     assert row["price_5m"] == pytest.approx(100.05) and row["ret_5m"] == pytest.approx(0.05)

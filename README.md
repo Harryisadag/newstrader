@@ -706,7 +706,7 @@ All settings are saved to `config.json` and changed in the app (Settings tab). T
 | Sell on bearish | on | A strong bearish signal sells a position you already hold. |
 | Allow short selling | off | Strong bearish signals open a short when you don't hold the stock. |
 | Don't chase | 3% | If the price already moved this much in the signal's direction since the news came out, the signal goes to manual review instead of auto-trading. If the move can't be measured (no prices from before the news, or the lookup failed) it goes to manual review too. 0 = off. |
-| Fresh data only: news | 30 min | News older than this goes to manual review instead of auto-trading (it's probably priced in). Unknown age counts as too old. 0 = off. |
+| Fresh data only: news | 30 min | News older than this goes to manual review instead of auto-trading (it's probably priced in). Unknown age counts as too old: a written story whose feed doesn't say when it was published goes to manual review (live TV counts from when the words arrived). 0 = off. |
 | Fresh data only: price | 120 s | The price an order is sized on must be at most this old, or the signal goes to manual review. Quiet stocks on the free IEX feed can go a while without a trade, so raise this if too many signals stop here. 0 = off. |
 
 **Risk controls**
@@ -871,8 +871,9 @@ hours, the blacklist / whitelist, the minimum price and whole shares):
   old.
 - **Don't chase**: the price must not have already moved more than 3% toward the signal since the news.
 
-Both **fail closed**: if NewsTrader can't tell how old the news or the price is, or the price lookup fails or times
-out, the signal goes to manual review. A missing answer is never treated as a pass.
+Both **fail closed**: if NewsTrader can't tell how old the news or the price is (for example a feed that gives no
+publish time), or the price lookup fails or times out, the signal goes to manual review. A missing answer is never
+treated as a pass.
 
 ---
 

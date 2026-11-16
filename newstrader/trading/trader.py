@@ -738,25 +738,31 @@ class Trader:
                 with contextlib.suppress(Exception):  # already filled or cancelled
                     await asyncio.to_thread(self.broker.cancel_order, plan["stop_order_id"])
 
-    def _news_time(self, signal: dict) -> datetime | None:
-        """When the story behind a signal came out (when it arrived, for live-stream transcripts)."""
+    def _news_time(self, signal: dict, dated_only: bool = False) -> datetime | None:
+        """When the story behind a signal came out (when it arrived, for live-stream transcripts). `dated_only` (the
+        fresh-data check): a written story that doesn't say when it was published has no known time - when it
+        arrived says nothing about how old it is."""
         row = None
         if signal.get("analysis_id"):
             row = self.ctx.db.query_one(
                 "SELECT a.item_kind, n.published_at, n.received_at FROM analyses a "
                 "JOIN news_items n ON n.id = a.item_id WHERE a.id = ?", (signal["analysis_id"],))
         if row is not None:
-            if row["item_kind"] != "transcript" and row["published_at"]:
-                return parse_iso(row["published_at"])
+            if row["item_kind"] != "transcript":
+                if row["published_at"]:
+                    return parse_iso(row["published_at"])
+                if dated_only:
+                    return None
             if row["received_at"]:
                 return parse_iso(row["received_at"])
         return parse_iso(signal.get("created_at"))
 
     async def _news_age(self, signal: dict) -> float | None:
         """Seconds since the story behind a signal came out (None = unknown, which the fresh-data check treats as
-        too old). A time in the future (a feed's clock is off) counts as just now."""
+        too old - a written story with no publish time is unknown). A time in the future (a feed's clock is off)
+        counts as just now."""
         try:
-            news_at = await asyncio.to_thread(self._news_time, signal)
+            news_at = await asyncio.to_thread(self._news_time, signal, True)
         except Exception as exc:
             log.warning("Couldn't tell when the news for %s came out: %s", signal.get("ticker"), exc)
             return None
