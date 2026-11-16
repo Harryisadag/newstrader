@@ -52,7 +52,9 @@ class Trail:
             "settings": {
                 "buy_threshold": t.buy_threshold, "review_threshold": t.review_threshold,
                 "stop_loss_pct": t.stop_loss_pct, "take_profit_pct": t.take_profit_pct,
-                "max_chase_pct": t.max_chase_pct, "auto_trade": t.auto_trade, "allow_shorting": t.allow_shorting,
+                "max_chase_pct": t.max_chase_pct, "max_news_age_minutes": t.max_news_age_minutes,
+                "max_price_age_seconds": t.max_price_age_seconds, "auto_trade": t.auto_trade,
+                "allow_shorting": t.allow_shorting,
                 "sell_on_bearish": t.sell_on_bearish, "chart_confirm": settings.chart.confirm,
                 "max_dollars_per_trade": r.max_dollars_per_trade, "max_pct_per_stock": r.max_pct_per_stock,
                 "max_open_positions": r.max_open_positions, "daily_loss_limit_usd": r.daily_loss_limit_usd,

@@ -22,6 +22,7 @@ import pytest
 from newstrader import __version__, paths
 from newstrader import updater as upd
 from newstrader import updates as up
+from newstrader.db import iso
 from newstrader.trading.fake_broker import FakeBroker
 from newstrader.trading.trader import UPDATE_HOLD, Trader
 
@@ -447,7 +448,8 @@ async def test_trader_reports_busy_and_holds_orders_for_the_restart(ctx):
         with pytest.raises(RuntimeError, match="restarting"):
             await t.manual_close("AAPL")
         t.hold_for_update(False)
-        assert (await t.handle_signal({"id": 2, "ticker": "AAPL", "direction": "bullish", "confidence": 90}))["traded"]
+        assert (await t.handle_signal({"id": 2, "ticker": "AAPL", "direction": "bullish", "confidence": 90,
+                                     "created_at": iso()}))["traded"]
     finally:
         await t.stop()
 

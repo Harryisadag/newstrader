@@ -74,6 +74,9 @@ document.addEventListener("alpine:init", () => {
       const x = t.settings;
       return `Style ${this.styleName(t.style)} · buy at ${x.buy_threshold}+ · manual review ${x.review_threshold}-${x.buy_threshold - 1} · ` +
         `stop-loss ${x.stop_loss_pct}% · take-profit ${x.take_profit_pct}% · don't chase ${x.max_chase_pct ? x.max_chase_pct + "%" : "off"} · ` +
+        (x.max_news_age_minutes === undefined ? "" :  // trails from before "fresh data only" don't have it
+          `fresh data: news ${x.max_news_age_minutes ? "≤ " + x.max_news_age_minutes + " min" : "off"}, ` +
+          `price ${x.max_price_age_seconds ? "≤ " + x.max_price_age_seconds + " s" : "off"} · `) +
         `chart check ${x.chart_confirm}`;
     },
     get accountLine() {

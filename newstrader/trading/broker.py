@@ -36,6 +36,13 @@ def _iso(value: Any, timespec: str = "seconds") -> str | None:
     return str(value)
 
 
+def _utc(value: Any) -> datetime | None:
+    """An SDK timestamp as an aware UTC datetime (None if it isn't one)."""
+    if not isinstance(value, datetime):
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def _enum(value: Any) -> str | None:
     if value is None:
         return None
@@ -364,6 +371,51 @@ class Broker:
                                                                       timeframe=_timeframe(timeframe)))
         data = res.data if hasattr(res, "data") else {}
         return {crypto.normalize(sym): _bar_rows(rows) for sym, rows in data.items()}
+
+    def latest_price_info(self, symbol: str) -> tuple[float | None, datetime | None]:
+        """Like latest_price() (the last trade, or the quote midpoint when there's no trade) plus when that price was
+        printed (UTC) - for the "fresh data only" check before a trade. (None, None) when there's no price; the time
+        is None when Alpaca didn't say."""
+        coin = crypto.is_crypto(symbol)
+        sym = crypto.normalize(symbol) if coin else symbol
+        if coin:
+            from alpaca.data.requests import CryptoLatestQuoteRequest, CryptoLatestTradeRequest
+
+            client = self._crypto_client()
+
+            def trades():
+                return client.get_crypto_latest_trade(CryptoLatestTradeRequest(symbol_or_symbols=sym))
+
+            def quotes():
+                return client.get_crypto_latest_quote(CryptoLatestQuoteRequest(symbol_or_symbols=sym))
+        else:
+            from alpaca.data.requests import StockLatestQuoteRequest, StockLatestTradeRequest
+
+            def trades():
+                return self.data.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=sym,
+                                                                                feed=self._feed()))
+
+            def quotes():
+                return self.data.get_stock_latest_quote(StockLatestQuoteRequest(symbol_or_symbols=sym,
+                                                                                feed=self._feed()))
+        try:
+            res = trades()
+            t = res.get(sym) if isinstance(res, dict) else None
+            if t is not None and _f(t.price):
+                return _f(t.price), _utc(getattr(t, "timestamp", None))
+        except Exception as exc:
+            log.debug("latest trade failed for %s: %s", sym, exc)
+        try:
+            res = quotes()
+            q = res.get(sym) if isinstance(res, dict) else None
+            if q is not None:
+                bid, ask = _f(q.bid_price) or 0, _f(q.ask_price) or 0
+                mid = (bid + ask) / 2 if bid and ask else (ask or bid or None)
+                if mid:
+                    return (mid if coin else round(mid, 4)), _utc(getattr(q, "timestamp", None))
+        except Exception as exc:
+            log.debug("latest quote failed for %s: %s", sym, exc)
+        return None, None
 
     def latest_price(self, symbol: str) -> float | None:
         if crypto.is_crypto(symbol):

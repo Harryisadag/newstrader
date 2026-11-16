@@ -45,6 +45,7 @@ from .risk import (
     check_crypto_entry,
     check_entry,
     check_exit,
+    freshness_check,
 )
 from .trail import CRYPTO_CHECKS, EXIT_CHECKS, INFO, PASS, REVIEW, STOCK_CHECKS, STOP, Trail
 
@@ -613,8 +614,9 @@ class Trader:
                     trail: Trail | None = None) -> dict:
         trail = trail or Trail(self.ctx.config.settings, signal, manual)
         rctx = await self._risk_context(symbol)
-        price = await asyncio.to_thread(self.broker.latest_price, symbol)
+        price, price_age, age_known = await self._price(symbol)
         direction = "bullish" if side == "buy" else "bearish"
+        news_age = None if manual else await self._news_age(signal)
         pre_move = None if manual else await self._pre_move(symbol, direction, signal, price)
         decision = check_entry(symbol, side, price, rctx, manual=manual)
         if decision.halt_for_day and not self.ctx.state.halted_today:
@@ -625,7 +627,11 @@ class Trader:
             trail.check("Risk checks", STOP, decision.reason)
             return self._result("blocked", decision.reason)
         trail.check("Risk checks", PASS, decision.reason, passed=STOCK_CHECKS)
-        # Don't chase: approving it by hand skips this check.
+        # Fresh data only, then don't chase: approving it by hand skips both. Both fail closed (unknown -> review).
+        stale = self._fresh_check(trail, manual, news_age, price_age, age_known)
+        if stale:
+            log.info("Sent %s %s to manual review: %s", side, symbol, stale)
+            return self._result("review", stale)
         limit = self.ctx.config.settings.trading.max_chase_pct
         chase = "" if manual else chase_check(direction, pre_move, limit)
         trail.check("Don't chase", REVIEW if chase else PASS, chase or self._chase_note(manual, pre_move, limit))
@@ -669,7 +675,8 @@ class Trader:
         once the buy fills) and a take-profit NewsTrader watches (crypto_exits.py)."""
         trail = trail or Trail(self.ctx.config.settings, signal, manual)
         rctx = await self._risk_context(symbol)
-        price = await asyncio.to_thread(self.broker.latest_price, symbol)
+        price, price_age, age_known = await self._price(symbol)
+        news_age = None if manual else await self._news_age(signal)
         pre_move = None if manual else await self._pre_move(symbol, "bullish", signal, price)
         decision = check_crypto_entry(symbol, price, rctx, self.ctx.config.settings.crypto, manual=manual)
         if decision.halt_for_day and not self.ctx.state.halted_today:
@@ -680,6 +687,10 @@ class Trader:
             trail.check("Risk checks", STOP, decision.reason)
             return self._result("blocked", decision.reason)
         trail.check("Risk checks", PASS, decision.reason, passed=CRYPTO_CHECKS)
+        stale = self._fresh_check(trail, manual, news_age, price_age, age_known)
+        if stale:
+            log.info("Sent crypto buy %s to manual review: %s", symbol, stale)
+            return self._result("review", stale)
         limit = self.ctx.config.settings.trading.max_chase_pct
         chase = "" if manual else chase_check("bullish", pre_move, limit)
         trail.check("Don't chase", REVIEW if chase else PASS, chase or self._chase_note(manual, pre_move, limit))
@@ -741,9 +752,55 @@ class Trader:
                 return parse_iso(row["received_at"])
         return parse_iso(signal.get("created_at"))
 
+    async def _news_age(self, signal: dict) -> float | None:
+        """Seconds since the story behind a signal came out (None = unknown, which the fresh-data check treats as
+        too old). A time in the future (a feed's clock is off) counts as just now."""
+        try:
+            news_at = await asyncio.to_thread(self._news_time, signal)
+        except Exception as exc:
+            log.warning("Couldn't tell when the news for %s came out: %s", signal.get("ticker"), exc)
+            return None
+        if news_at is None:
+            return None
+        return max(0.0, (datetime.now(UTC) - news_at).total_seconds())
+
+    async def _price(self, symbol: str) -> tuple[float | None, float | None, bool]:
+        """(latest price, its age in seconds, whether the broker can tell the age at all). Fetched right before the
+        order, so sizing, the bracket prices and the chase check use the newest price there is."""
+        info = getattr(self.broker, "latest_price_info", None)
+        if info is None:  # a broker that can't say when its price is from
+            return await asyncio.to_thread(self.broker.latest_price, symbol), None, False
+        price, at = await asyncio.to_thread(info, symbol)
+        age = None if at is None else max(0.0, (datetime.now(UTC) - at).total_seconds())
+        return price, age, True
+
+    def _fresh_check(self, trail: Trail, manual: bool, news_age: float | None, price_age: float | None,
+                     age_known: bool) -> str:
+        """Fresh data only (Settings -> Trading): writes the check on the trail and returns why the signal goes to
+        manual review instead of being traded ("" = fresh enough). Approving it by hand skips it."""
+        t = self.ctx.config.settings.trading
+        if manual:
+            trail.check("Fresh data", PASS, "Skipped - you approved it by hand.")
+            return ""
+        stale = freshness_check(news_age, price_age, t.max_news_age_minutes, t.max_price_age_seconds, age_known)
+        if stale:
+            trail.check("Fresh data", REVIEW, stale)
+            return stale
+        if not t.max_news_age_minutes and not (t.max_price_age_seconds and age_known):
+            trail.check("Fresh data", PASS, "Off (Settings -> Trading -> Fresh data only).")
+            return ""
+        parts = []
+        if t.max_news_age_minutes and news_age is not None:
+            parts.append(f"news {news_age / 60:.1f} min old (limit {t.max_news_age_minutes} min)")
+        if t.max_price_age_seconds and age_known and price_age is not None:
+            parts.append(f"price {price_age:.0f} s old (limit {t.max_price_age_seconds} s)")
+        trail.check("Fresh data", PASS, "Fresh: " + ", ".join(parts) + ".")
+        return ""
+
     async def _pre_move(self, symbol: str, direction: str, signal: dict, price: float | None) -> float | None:
         """How far (%) the price already moved in the signal's direction since the news came out (looking back at
-        most an hour). Saved on the signal. None when a price is missing - then the chase check doesn't apply."""
+        most an hour). Saved on the signal. None when a price is missing or the lookup failed - then the chase check
+        sends the signal to manual review (it fails closed)."""
         if not price:
             return None
         now = datetime.now(UTC)
@@ -800,8 +857,6 @@ class Trader:
             return "Skipped - you approved it by hand."
         if not limit:
             return "Off (Settings -> Trading -> Don't chase)."
-        if pre_move is None:
-            return "Couldn't tell how far the price had already moved (no prices from before the news) - not checked."
         return f"The price had moved {pre_move:+.1f}% toward the signal since the news (limit {limit:g}%)."
 
     def _save_order_row(self, values: dict) -> int:

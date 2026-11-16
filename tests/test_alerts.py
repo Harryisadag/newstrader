@@ -135,7 +135,10 @@ async def test_trader_uses_alert_manager(setup):
     ctx.services["alerts"] = mgr
     t = Trader(ctx, broker_factory=lambda: FakeBroker())
     await t.connect()
-    await t.handle_signal({"id": 1, "ticker": "AAPL", "direction": "bullish", "confidence": 90, "reasoning": "r"})
+    from newstrader.db import iso
+
+    await t.handle_signal({"id": 1, "ticker": "AAPL", "direction": "bullish", "confidence": 90, "reasoning": "r",
+                           "created_at": iso()})
     assert any(r["embeds"][0]["title"].startswith("Bought") for r in rec.requests)
     await t.kill()
     assert any("KILL SWITCH" in r["embeds"][0]["title"] for r in rec.requests)

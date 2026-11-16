@@ -23,7 +23,7 @@ from newstrader.market.detect import (
 )
 from newstrader.market.monitor import MarketMonitor, build_universe, load_events
 from newstrader.trading.fake_broker import DEMO_SPIKE, FakeBroker
-from newstrader.trading.risk import chase_check
+from newstrader.trading.risk import chase_check, freshness_check
 from newstrader.trading.trader import Trader
 from tests.helpers import make_tickers
 
@@ -562,7 +562,8 @@ def test_chase_check():
     assert chase_check("bullish", 2.9, 3.0) == ""
     assert chase_check("bullish", -6.0, 3.0) == ""  # moved the other way: not chasing
     assert chase_check("bullish", 9.0, 0) == ""  # 0 = off
-    assert chase_check("bullish", None, 3.0) == ""  # no data, no guard
+    assert chase_check("bullish", None, 3.0).startswith("Couldn't tell how far")  # no data: fails closed (review)
+    assert chase_check("bullish", None, 0) == ""  # ...unless the check is off
     assert chase_check("neutral", 9.0, 3.0) == ""
 
 
@@ -628,12 +629,81 @@ async def test_chase_guard_bypassed_by_manual_approval(chase):
 
 
 async def test_chase_guard_looks_back_at_most_an_hour(chase):
+    # (3-hour-old news goes to review on its own with "fresh data only" on - test the chase guard alone)
+    chase.ctx.config.update({"trading": {"max_news_age_minutes": 0}})
     # 3-hour-old news, price jumped 35 minutes ago: inside the hour, so it counts
     _moved(chase.broker, 100.0, 105.0, minutes_since=35)
     assert (await chase.t.handle_signal(_news_signal(chase.ctx, minutes_ago=180)))["action"] == "review"
     # ...but a jump 90 minutes ago is older than the hour we look back: the price an hour ago was already 105
     _moved(chase.broker, 100.0, 105.0, minutes_since=90)
     assert (await chase.t.handle_signal(_news_signal(chase.ctx, minutes_ago=180)))["action"] == "bought"
+
+
+def _trail_check(res: dict, name: str) -> dict:
+    return next(c for c in res["trail"]["checks"] if c["name"] == name)
+
+
+def test_freshness_check():
+    # news: limit in minutes, ages in seconds
+    assert freshness_check(10 * 60, 5, 30, 120) == ""
+    assert "The news is 45 min old (limit 30 min)" in freshness_check(45 * 60, 5, 30, 120)
+    assert freshness_check(None, 5, 30, 120).startswith("Couldn't tell when the news came out")  # fails closed
+    assert freshness_check(None, 5, 0, 120) == ""  # news half off
+    # price
+    assert "The latest price is 10 min old (limit 120 s)" in freshness_check(60, 600, 30, 120)
+    assert freshness_check(60, None, 30, 120).startswith("Couldn't tell how old the latest price is")  # fails closed
+    assert freshness_check(60, None, 30, 120, price_age_known=False) == ""  # a source that can't tell at all
+    assert freshness_check(60, 600, 30, 0) == ""  # price half off
+    assert freshness_check(None, None, 0, 0) == ""  # all off
+
+
+async def test_fresh_data_passes_recent_news_and_price(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    res = await chase.t.handle_signal(_news_signal(chase.ctx, minutes_ago=20))
+    assert res["action"] == "bought", res
+    check = _trail_check(res, "Fresh data")
+    assert check["result"] == "pass" and "news 20" in check["detail"] and "price 0 s old" in check["detail"]
+
+
+async def test_fresh_data_sends_old_news_to_review(chase):
+    _moved(chase.broker, 100.0, 100.0)  # the price never moved, so "don't chase" alone would buy it
+    sig = _news_signal(chase.ctx, minutes_ago=45)
+    res = await chase.t.handle_signal(sig)
+    assert res["action"] == "review" and not res["traded"]
+    assert res["reason"].startswith("The news is 45 min old (limit 30 min)")
+    assert _trail_check(res, "Fresh data")["result"] == "review"
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
+    # approving it by hand skips the check
+    assert (await chase.t.handle_signal(sig, manual=True))["traded"]
+
+
+async def test_fresh_data_sends_a_stale_price_to_review(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    chase.broker.price_times["AAPL"] = utcnow() - timedelta(minutes=10)
+    res = await chase.t.handle_signal(_news_signal(chase.ctx))
+    assert res["action"] == "review" and res["reason"].startswith("The latest price is 10 min old (limit 120 s)")
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
+
+
+async def test_fresh_data_fails_closed_when_ages_are_unknown(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    # no news time at all
+    res = await chase.t.handle_signal({"id": 99, "ticker": "AAPL", "direction": "bullish", "confidence": 90})
+    assert res["action"] == "review" and res["reason"].startswith("Couldn't tell when the news came out")
+    # the price source answered without a time
+    chase.broker.latest_price_info = lambda sym: (chase.broker.prices[sym], None)
+    res = await chase.t.handle_signal(_news_signal(chase.ctx))
+    assert res["action"] == "review" and res["reason"].startswith("Couldn't tell how old the latest price is")
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
+
+
+async def test_fresh_data_off(chase):
+    _moved(chase.broker, 100.0, 100.0)
+    chase.broker.price_times["AAPL"] = utcnow() - timedelta(minutes=10)
+    chase.ctx.config.update({"trading": {"max_news_age_minutes": 0, "max_price_age_seconds": 0}})
+    res = await chase.t.handle_signal(_news_signal(chase.ctx, minutes_ago=45))
+    assert res["action"] == "bought", res
+    assert _trail_check(res, "Fresh data")["detail"].startswith("Off")
 
 
 async def test_chase_guard_uses_the_monitors_recent_bars(chase):
@@ -643,7 +713,20 @@ async def test_chase_guard_uses_the_monitors_recent_bars(chase):
     assert res["action"] == "review"
 
 
-async def test_chase_guard_skipped_without_price_history(chase):
-    chase.broker.bar_data["AAPL"] = []  # no bars at all -> no guard
+async def test_chase_guard_fails_closed_without_price_history(chase):
+    chase.broker.bar_data["AAPL"] = []  # no bars at all: the move can't be measured -> manual review, not a blind buy
     res = await chase.t.handle_signal(_news_signal(chase.ctx))
-    assert res["action"] == "bought"
+    assert res["action"] == "review" and not res["traded"] and "Couldn't tell how far" in res["reason"]
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
+    # approving it by hand still trades it
+    assert (await chase.t.handle_signal(_news_signal(chase.ctx), manual=True))["traded"]
+
+
+async def test_chase_guard_fails_closed_when_the_price_lookup_errors(chase):
+    def broken(*_a, **_k):
+        raise TimeoutError("bars timed out")
+
+    chase.broker.bars = broken
+    res = await chase.t.handle_signal(_news_signal(chase.ctx))
+    assert res["action"] == "review" and "Couldn't tell how far" in res["reason"]
+    assert not any(c[0] == "submit_bracket" for c in chase.broker.calls)
